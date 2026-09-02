@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Competitor Promotion Intelligence Platform</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {}
+            }
+        }
+    </script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .gradient-header {
+            background: linear-gradient(135deg, #1e3a8a 0%, #0284c7 100%);
+        }
+        .dark .gradient-header {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+        }
+    </style>
+    <script>
+        // Init dark mode immediately to avoid flash
+        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    </script>
+</head>
+<body class="bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 antialiased min-h-screen flex flex-col transition-colors duration-200">
+    <!-- Header -->
+    <header class="gradient-header text-white shadow-lg sticky top-0 z-30 border-b border-white/10 dark:border-slate-800">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-wrap justify-between items-center gap-4">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-xl bg-white/20 dark:bg-slate-800 flex items-center justify-center backdrop-blur-sm border border-white/10">
+                    <i class="fa-solid fa-chart-line text-xl text-amber-300"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold tracking-tight">Competitor Promotion Intelligence</h1>
+                    <p class="text-xs text-blue-100 dark:text-slate-400">FMCG Biscuit, Cracker, Wafer & Cookies Market Intelligence</p>
+                </div>
+            </div>
+            <div class="flex items-center space-x-3">
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+                    <span class="w-2 h-2 mr-2 bg-emerald-400 rounded-full animate-pulse"></span> Live System
+                </span>
+
+                <!-- Dark Mode Toggle Button -->
+                <button onclick="toggleDarkMode()" id="theme-toggle" class="p-2 bg-white/10 hover:bg-white/20 dark:bg-slate-800 dark:hover:bg-slate-700 text-amber-300 dark:text-amber-400 rounded-xl transition border border-white/20 dark:border-slate-700 flex items-center justify-center w-9 h-9" title="Toggle Dark Mode">
+                    <i id="theme-icon" class="fa-solid fa-moon"></i>
+                </button>
+
+                <button onclick="fetchTop10(); fetchStats();" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-medium rounded-lg transition border border-white/20 dark:border-slate-700 flex items-center gap-1.5">
+                    <i class="fa-solid fa-arrows-rotate"></i> Refresh
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full space-y-8">
+        <!-- KPI Cards -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4" id="kpi-cards">
+            <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-sm border border-slate-200/80 dark:border-slate-800 flex items-center gap-4 transition-colors">
+                <div class="w-12 h-12 rounded-xl bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 flex items-center justify-center text-xl">
+                    <i class="fa-solid fa-tags"></i>
+                </div>
+                <div>
+                    <div class="text-2xl font-bold text-slate-900 dark:text-white" id="stat-active">--</div>
+                    <div class="text-xs font-medium text-slate-500 dark:text-slate-400">Active Promotions</div>
+                </div>
+            </div>
+            <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-sm border border-slate-200/80 dark:border-slate-800 flex items-center gap-4 transition-colors">
+                <div class="w-12 h-12 rounded-xl bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-xl">
+                    <i class="fa-solid fa-building"></i>
+                </div>
+                <div>
+                    <div class="text-2xl font-bold text-slate-900 dark:text-white" id="stat-competitors">--</div>
+                    <div class="text-xs font-medium text-slate-500 dark:text-slate-400">Competitors Tracked</div>
+                </div>
+            </div>
+            <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-sm border border-slate-200/80 dark:border-slate-800 flex items-center gap-4 transition-colors">
+                <div class="w-12 h-12 rounded-xl bg-violet-50 dark:bg-violet-950 text-violet-600 dark:text-violet-400 flex items-center justify-center text-xl">
+                    <i class="fa-solid fa-certificate"></i>
+                </div>
+                <div>
+                    <div class="text-2xl font-bold text-slate-900 dark:text-white" id="stat-brands">--</div>
+                    <div class="text-xs font-medium text-slate-500 dark:text-slate-400">Brands Monitored</div>
+                </div>
+            </div>
+            <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-sm border border-slate-200/80 dark:border-slate-800 flex items-center gap-4 transition-colors">
+                <div class="w-12 h-12 rounded-xl bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400 flex items-center justify-center text-xl">
+                    <i class="fa-solid fa-store"></i>
+                </div>
+                <div>
+                    <div class="text-2xl font-bold text-slate-900 dark:text-white" id="stat-retailers">--</div>
+                    <div class="text-xs font-medium text-slate-500 dark:text-slate-400">Retailers Monitored</div>
+                </div>
+            </div>
+            <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-sm border border-slate-200/80 dark:border-slate-800 flex items-center gap-4 transition-colors">
+                <div class="w-12 h-12 rounded-xl bg-rose-50 dark:bg-rose-950 text-rose-600 dark:text-rose-400 flex items-center justify-center text-xl">
+                    <i class="fa-solid fa-hourglass-half"></i>
+                </div>
+                <div>
+                    <div class="text-2xl font-bold text-slate-900 dark:text-white" id="stat-expiring">--</div>
+                    <div class="text-xs font-medium text-slate-500 dark:text-slate-400">Expiring &le; 7 Days</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filter Bar -->
+        <div class="bg-white dark:bg-slate-900 p-4 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 flex flex-wrap gap-4 items-center justify-between transition-colors">
+            <div class="flex flex-wrap gap-3 items-center">
+                <div>
+                    <label class="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Category</label>
+                    <select id="filter-category" onchange="fetchTop10()" class="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-lg px-3 py-2 font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                        <option value="">All Categories</option>
+                        <option value="BISCUIT">Biscuit</option>
+                        <option value="CRACKER">Cracker</option>
+                        <option value="WAFER">Wafer</option>
+                        <option value="COOKIE">Cookie</option>
+                        <option value="SNACK">Snack</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Retailer</label>
+                    <select id="filter-retailer" onchange="fetchTop10()" class="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-lg px-3 py-2 font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                        <option value="">All Retailers</option>
+                        <option value="Indomaret">Indomaret</option>
+                        <option value="Alfamart">Alfamart</option>
+                        <option value="Superindo">Superindo</option>
+                        <option value="Hypermart">Hypermart</option>
+                        <option value="Yogya">Yogya Supermarket</option>
+                    </select>
+                </div>
+            </div>
+            <div class="text-xs text-slate-400 dark:text-slate-500 flex items-center gap-2">
+                <i class="fa-regular fa-clock"></i>
+                <span>Rule: Active &le; 3 Months &bull; Deduplicated &bull; Ranked by Commercial Impact</span>
+            </div>
+        </div>
+
+        <!-- Top 10 Table -->
+        <div class="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden transition-colors">
+            <div class="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
+                <div>
+                    <h2 class="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                        <span class="w-3 h-3 bg-amber-500 rounded-full inline-block"></span>
+                        Top 10 Currently Active Competitor Promotions
+                    </h2>
+                    <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Ranked using PRD multi-factor scoring (Strength, Reliability, Freshness, Relevance, AI Confidence)</p>
+                </div>
+                <span id="gen-timestamp" class="text-xs text-slate-400 dark:text-slate-500"></span>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm">
+                    <thead class="bg-slate-50/80 dark:bg-slate-800/80 text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wider font-semibold border-b border-slate-100 dark:border-slate-800">
+                        <tr>
+                            <th class="py-3.5 px-4 w-12 text-center">Rank</th>
+                            <th class="py-3.5 px-4">Competitor & Brand</th>
+                            <th class="py-3.5 px-4">Product</th>
+                            <th class="py-3.5 px-4">Promotion Mechanic</th>
+                            <th class="py-3.5 px-4 text-right">Regular Price</th>
+                            <th class="py-3.5 px-4 text-right">Promo Price</th>
+                            <th class="py-3.5 px-4 text-center">Saving %</th>
+                            <th class="py-3.5 px-4">Retailer</th>
+                            <th class="py-3.5 px-4">Valid Until</th>
+                            <th class="py-3.5 px-4 text-center">Score</th>
+                            <th class="py-3.5 px-4 text-center">Audit</th>
+                        </tr>
+                    </thead>
+                    <tbody id="promo-table-body" class="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
+                        <tr>
+                            <td colspan="11" class="py-12 text-center text-slate-400 dark:text-slate-500">
+                                <i class="fa-solid fa-circle-notch fa-spin text-2xl text-blue-500 mb-2"></i>
+                                <div>Loading Top 10 Promotions...</div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <!-- Evidence Modal -->
+    <div id="evidence-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-2xl w-full p-6 space-y-4 border border-slate-200 dark:border-slate-800 transition-colors">
+            <div class="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-3">
+                <h3 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <i class="fa-solid fa-fingerprint text-blue-600 dark:text-blue-400"></i>
+                    Audit Evidence & Verification
+                </h3>
+                <button onclick="closeModal()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-lg">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div class="space-y-3">
+                <div>
+                    <span class="text-xs text-slate-400 dark:text-slate-500 uppercase font-bold tracking-wider">Product</span>
+                    <div id="modal-product" class="text-sm font-semibold text-slate-800 dark:text-slate-100 mt-0.5"></div>
+                </div>
+                <div>
+                    <span class="text-xs text-slate-400 dark:text-slate-500 uppercase font-bold tracking-wider">Exact Source Quote</span>
+                    <div id="modal-evidence" class="p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono text-slate-700 dark:text-slate-300 whitespace-pre-wrap mt-1"></div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <span class="text-xs text-slate-400 dark:text-slate-500 uppercase font-bold tracking-wider">AI Extraction Confidence</span>
+                        <div id="modal-confidence" class="text-sm font-semibold text-emerald-600 dark:text-emerald-400 mt-0.5"></div>
+                    </div>
+                    <div>
+                        <span class="text-xs text-slate-400 dark:text-slate-500 uppercase font-bold tracking-wider">Source Reliability</span>
+                        <div id="modal-reliability" class="text-sm font-semibold text-blue-600 dark:text-blue-400 mt-0.5"></div>
+                    </div>
+                </div>
+                <div>
+                    <span class="text-xs text-slate-400 dark:text-slate-500 uppercase font-bold tracking-wider">Source Webpage</span>
+                    <div class="mt-1">
+                        <a id="modal-url" href="#" target="_blank" class="text-xs text-blue-600 dark:text-blue-400 hover:underline break-all flex items-center gap-1">
+                            <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i> <span id="modal-url-text"></span>
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="pt-2 flex justify-end">
+                <button onclick="closeModal()" class="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-semibold rounded-lg text-slate-700 dark:text-slate-200 transition">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentPromotions = [];
+
+        function updateThemeIcon() {
+            const isDark = document.documentElement.classList.contains('dark');
+            const icon = document.getElementById('theme-icon');
+            if (isDark) {
+                icon.className = 'fa-solid fa-sun';
+            } else {
+                icon.className = 'fa-solid fa-moon';
+            }
+        }
+
+        function toggleDarkMode() {
+            const isDark = document.documentElement.classList.toggle('dark');
+            localStorage.theme = isDark ? 'dark' : 'light';
+            updateThemeIcon();
+        }
+
+        async function fetchStats() {
+            try {
+                const res = await fetch('/api/v1/stats/');
+                const data = await res.json();
+                document.getElementById('stat-active').textContent = data.active_promotions;
+                document.getElementById('stat-competitors').textContent = data.competitors_tracked;
+                document.getElementById('stat-brands').textContent = data.brands_tracked;
+                document.getElementById('stat-retailers').textContent = data.retailers_tracked;
+                document.getElementById('stat-expiring').textContent = data.expiring_soon_7days;
+            } catch (e) {
+                console.error("Error fetching stats:", e);
+            }
+        }
+
+        async function fetchTop10() {
+            const cat = document.getElementById('filter-category').value;
+            const ret = document.getElementById('filter-retailer').value;
+            let url = '/api/v1/promotions/top10?';
+            if (cat) url += `category=${encodeURIComponent(cat)}&`;
+            if (ret) url += `retailer=${encodeURIComponent(ret)}&`;
+
+            try {
+                const res = await fetch(url);
+                const data = await res.json();
+                currentPromotions = data.promotions || [];
+                renderTable(currentPromotions);
+                if (data.generated_at) {
+                    document.getElementById('gen-timestamp').textContent = 'Updated ' + new Date(data.generated_at).toLocaleTimeString();
+                }
+            } catch (e) {
+                console.error("Error fetching Top 10:", e);
+                document.getElementById('promo-table-body').innerHTML = `
+                    <tr><td colspan="11" class="py-8 text-center text-rose-500 font-semibold">Failed to load promotions. Please try again.</td></tr>
+                `;
+            }
+        }
+
+        function formatIDR(val) {
+            if (!val) return '-';
+            return 'Rp' + Number(val).toLocaleString('id-ID');
+        }
+
+        function renderTable(promos) {
+            const tbody = document.getElementById('promo-table-body');
+            if (!promos || promos.length === 0) {
+                tbody.innerHTML = `
+                    <tr><td colspan="11" class="py-12 text-center text-slate-400 dark:text-slate-500">No active promotions found matching criteria.</td></tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = promos.map((p, idx) => {
+                const rankColor = p.rank === 1 ? 'bg-amber-400 text-amber-950 font-bold' : (
+                    p.rank === 2 ? 'bg-slate-300 dark:bg-slate-600 text-slate-800 dark:text-white font-bold' : (
+                        p.rank === 3 ? 'bg-amber-600 text-white font-bold' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                    )
+                );
+
+                const discountBadge = p.effective_discount > 0 ? `
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-400 border border-rose-200/50 dark:border-rose-900/50">
+                        ${p.effective_discount}% OFF
+                    </span>
+                ` : '<span class="text-slate-300 dark:text-slate-600">-</span>';
+
+                return `
+                    <tr class="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition">
+                        <td class="py-3.5 px-4 text-center">
+                            <span class="w-6 h-6 rounded-full inline-flex items-center justify-center text-xs ${rankColor}">${p.rank}</span>
+                        </td>
+                        <td class="py-3.5 px-4">
+                            <div class="font-bold text-slate-900 dark:text-white">${p.brand || 'Competitor Brand'}</div>
+                            <div class="text-[11px] text-slate-500 dark:text-slate-400">${p.competitor || 'FMCG Manufacturer'}</div>
+                        </td>
+                        <td class="py-3.5 px-4">
+                            <div class="font-medium text-slate-800 dark:text-slate-200">${p.product_name}</div>
+                            <div class="text-[11px] text-slate-400 dark:text-slate-500">${p.pack_size || p.category}</div>
+                        </td>
+                        <td class="py-3.5 px-4">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200/60 dark:border-blue-900/60">
+                                ${p.promotion_type.replace(/_/g, ' ')}
+                            </span>
+                        </td>
+                        <td class="py-3.5 px-4 text-right text-slate-400 dark:text-slate-500 line-through text-xs font-mono">
+                            ${formatIDR(p.regular_price)}
+                        </td>
+                        <td class="py-3.5 px-4 text-right text-emerald-600 dark:text-emerald-400 font-bold font-mono">
+                            ${formatIDR(p.promo_price)}
+                        </td>
+                        <td class="py-3.5 px-4 text-center">
+                            ${discountBadge}
+                        </td>
+                        <td class="py-3.5 px-4">
+                            <span class="inline-flex items-center gap-1.5 text-xs font-medium text-slate-700 dark:text-slate-300">
+                                <i class="fa-solid fa-shop text-slate-400 dark:text-slate-500 text-[10px]"></i> ${p.retailer || 'Supermarket'}
+                            </span>
+                        </td>
+                        <td class="py-3.5 px-4 text-xs text-slate-600 dark:text-slate-400 font-mono">
+                            ${p.valid_until}
+                        </td>
+                        <td class="py-3.5 px-4 text-center">
+                            <span class="text-xs font-bold text-slate-700 dark:text-slate-300">${(p.rank_score * 100).toFixed(1)}</span>
+                        </td>
+                        <td class="py-3.5 px-4 text-center">
+                            <button onclick="openModal(${idx})" class="w-7 h-7 rounded-lg bg-slate-100 hover:bg-blue-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 hover:text-blue-700 dark:hover:text-blue-300 inline-flex items-center justify-center text-xs transition">
+                                <i class="fa-solid fa-magnifying-glass"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function openModal(idx) {
+            const p = currentPromotions[idx];
+            if (!p) return;
+            document.getElementById('modal-product').textContent = `${p.brand ? p.brand + ' - ' : ''}${p.product_name}`;
+            document.getElementById('modal-evidence').textContent = p.evidence_quote || "No exact quote captured.";
+            document.getElementById('modal-confidence').textContent = `${(p.ai_confidence * 100).toFixed(0)}%`;
+            document.getElementById('modal-reliability').textContent = `${(p.source_reliability * 100).toFixed(0)}%`;
+            document.getElementById('modal-url').href = p.source_url || '#';
+            document.getElementById('modal-url-text').textContent = p.source_url || 'Unknown Source';
+            document.getElementById('evidence-modal').classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('evidence-modal').classList.add('hidden');
+        }
+
+        // Initialize on load
+        updateThemeIcon();
+        fetchStats();
+        fetchTop10();
+    </script>
+</body>
+</html>
