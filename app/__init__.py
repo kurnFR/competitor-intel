@@ -1,0 +1,1 @@
+"""Competitor Intel application package."""
