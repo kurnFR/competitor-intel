@@ -20,7 +20,7 @@ target_metadata = Base.metadata
 
 # Use admin URL for migrations
 admin_url = settings.DATABASE_URL_ADMIN or settings.DATABASE_URL
-config.set_main_option("sqlalchemy.url", admin_url)
+config.set_main_option("sqlalchemy.url", admin_url.replace("%", "%%"))
 
 
 def run_migrations_offline() -> None:

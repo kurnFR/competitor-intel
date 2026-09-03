@@ -17,12 +17,8 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
 
     # Database
-    DATABASE_URL: str = (
-        "postgresql+psycopg://competitor_intel_app:CompIntelApp2026!Secure@192.168.1.122:5431/competitor_intel"
-    )
-    DATABASE_URL_ADMIN: Optional[str] = (
-        "postgresql+psycopg://competitor_intel_owner:CompIntel2026!Secure@192.168.1.122:5431/competitor_intel"
-    )
+    DATABASE_URL: str = "postgresql+psycopg://user:password@localhost:5432/competitor_intel"
+    DATABASE_URL_ADMIN: Optional[str] = None
     DATABASE_SCHEMA: str = "competitor_intel"
 
     # Redis
