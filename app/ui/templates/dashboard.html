@@ -15,6 +15,8 @@
     </script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <style>
+        .results-scroll { overflow-x: auto; width: 100%; }
+        .results-scroll table { min-width: 1180px; }
         .gradient-header {
             background: linear-gradient(135deg, #1e3a8a 0%, #0284c7 100%);
         }
@@ -97,7 +99,7 @@
                 </div>
                 <div>
                     <div class="text-2xl font-bold text-slate-900 dark:text-white" id="stat-retailers">--</div>
-                    <div class="text-xs font-medium text-slate-500 dark:text-slate-400">Retailers Monitored</div>
+                    <div class="text-xs font-medium text-slate-500 dark:text-slate-400">Outlets Monitored</div>
                 </div>
             </div>
             <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-sm border border-slate-200/80 dark:border-slate-800 flex items-center gap-4 transition-colors">
@@ -126,14 +128,30 @@
                     </select>
                 </div>
                 <div>
-                    <label class="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Retailer</label>
-                    <select id="filter-retailer" onchange="fetchTop10()" class="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-lg px-3 py-2 font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none">
-                        <option value="">All Retailers</option>
+                    <label class="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Industry *</label>
+                    <select id="filter-industry" onchange="fetchTop10()" required class="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-lg px-3 py-2 font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                        <option value="FMCG" selected>FMCG</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Search</label>
+                    <input id="filter-search" onkeydown="if(event.key==='Enter') fetchTop10()" placeholder="All products, outlets, promotions..." class="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-lg px-3 py-2 font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Outlet</label>
+                    <select id="filter-outlet" onchange="fetchTop10()" class="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-lg px-3 py-2 font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                        <option value="">All Outlets</option>
                         <option value="Indomaret">Indomaret</option>
                         <option value="Alfamart">Alfamart</option>
                         <option value="Superindo">Superindo</option>
                         <option value="Hypermart">Hypermart</option>
                         <option value="Yogya">Yogya Supermarket</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Channel</label>
+                    <select id="filter-channel" onchange="fetchTop10()" class="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-lg px-3 py-2 font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                        <option value="">All Channels</option><option>Retail</option><option>Modern Trade</option><option>General Trade</option><option>E-commerce</option><option>Wholesale</option><option>Distributor</option><option>Foodservice</option><option>N/A</option>
                     </select>
                 </div>
             </div>
@@ -156,7 +174,7 @@
                 <span id="gen-timestamp" class="text-xs text-slate-400 dark:text-slate-500"></span>
             </div>
 
-            <div class="overflow-x-auto">
+            <div class="results-scroll" tabindex="0" aria-label="Scrollable promotion results">
                 <table class="w-full text-left text-sm">
                     <thead class="bg-slate-50/80 dark:bg-slate-800/80 text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wider font-semibold border-b border-slate-100 dark:border-slate-800">
                         <tr>
@@ -167,15 +185,17 @@
                             <th class="py-3.5 px-4 text-right">Regular Price</th>
                             <th class="py-3.5 px-4 text-right">Promo Price</th>
                             <th class="py-3.5 px-4 text-center">Saving %</th>
-                            <th class="py-3.5 px-4">Retailer</th>
+                            <th class="py-3.5 px-4">Outlet</th>
+                            <th class="py-3.5 px-4">Channel</th>
+                            <th class="py-3.5 px-4">Geography</th>
                             <th class="py-3.5 px-4">Valid Until</th>
                             <th class="py-3.5 px-4 text-center">Score</th>
-                            <th class="py-3.5 px-4 text-center">Audit</th>
+                            <th class="py-3.5 px-4 text-center">Audit Status</th>
                         </tr>
                     </thead>
                     <tbody id="promo-table-body" class="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
                         <tr>
-                            <td colspan="11" class="py-12 text-center text-slate-400 dark:text-slate-500">
+                            <td colspan="13" class="py-12 text-center text-slate-400 dark:text-slate-500">
                                 <i class="fa-solid fa-circle-notch fa-spin text-2xl text-blue-500 mb-2"></i>
                                 <div>Loading Top 10 Promotions...</div>
                             </td>
@@ -266,11 +286,17 @@
         }
 
         async function fetchTop10() {
+            const industry = document.getElementById('filter-industry').value;
+            if (!industry) return;
             const cat = document.getElementById('filter-category').value;
-            const ret = document.getElementById('filter-retailer').value;
-            let url = '/api/v1/promotions/top10?';
+            const outlet = document.getElementById('filter-outlet').value;
+            const channel = document.getElementById('filter-channel').value;
+            const search = document.getElementById('filter-search').value.trim();
+            let url = '/api/v1/promotions/top10?industry=' + encodeURIComponent(industry);
             if (cat) url += `category=${encodeURIComponent(cat)}&`;
-            if (ret) url += `retailer=${encodeURIComponent(ret)}&`;
+            if (outlet) url += `outlet=${encodeURIComponent(outlet)}&`;
+            if (channel) url += `channel=${encodeURIComponent(channel)}&`;
+            if (search) url += `q=${encodeURIComponent(search)}&`;
 
             try {
                 const res = await fetch(url);
@@ -283,7 +309,7 @@
             } catch (e) {
                 console.error("Error fetching Top 10:", e);
                 document.getElementById('promo-table-body').innerHTML = `
-                    <tr><td colspan="11" class="py-8 text-center text-rose-500 font-semibold">Failed to load promotions. Please try again.</td></tr>
+                    <tr><td colspan="13" class="py-8 text-center text-rose-500 font-semibold">Failed to load promotions. Please try again.</td></tr>
                 `;
             }
         }
@@ -297,7 +323,7 @@
             const tbody = document.getElementById('promo-table-body');
             if (!promos || promos.length === 0) {
                 tbody.innerHTML = `
-                    <tr><td colspan="11" class="py-12 text-center text-slate-400 dark:text-slate-500">No active promotions found matching criteria.</td></tr>
+                    <tr><td colspan="13" class="py-12 text-center text-slate-400 dark:text-slate-500">No active promotions found matching criteria.</td></tr>
                 `;
                 return;
             }
@@ -344,18 +370,20 @@
                         </td>
                         <td class="py-3.5 px-4">
                             <span class="inline-flex items-center gap-1.5 text-xs font-medium text-slate-700 dark:text-slate-300">
-                                <i class="fa-solid fa-shop text-slate-400 dark:text-slate-500 text-[10px]"></i> ${p.retailer || 'Supermarket'}
+                                <i class="fa-solid fa-shop text-slate-400 dark:text-slate-500 text-[10px]"></i> ${p.outlet || p.retailer || 'N/A'}
                             </span>
                         </td>
+                        <td class="py-3.5 px-4 text-xs">${p.channel || 'N/A'}</td>
+                        <td class="py-3.5 px-4 text-xs">${p.geography || 'N/A'}</td>
                         <td class="py-3.5 px-4 text-xs text-slate-600 dark:text-slate-400 font-mono">
-                            ${p.valid_until}
+                            ${p.valid_from || '-'} to ${p.valid_until || '-'}
                         </td>
                         <td class="py-3.5 px-4 text-center">
                             <span class="text-xs font-bold text-slate-700 dark:text-slate-300">${(p.rank_score * 100).toFixed(1)}</span>
                         </td>
                         <td class="py-3.5 px-4 text-center">
-                            <button onclick="openModal(${idx})" class="w-7 h-7 rounded-lg bg-slate-100 hover:bg-blue-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 hover:text-blue-700 dark:hover:text-blue-300 inline-flex items-center justify-center text-xs transition">
-                                <i class="fa-solid fa-magnifying-glass"></i>
+                            <button onclick="openModal(${idx})" class="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-100 hover:bg-blue-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 hover:text-blue-700 dark:hover:text-blue-300 text-[11px] transition" title="View audit evidence">
+                                <i class="fa-solid fa-magnifying-glass"></i> ${p.source_status || 'Unverified source'}
                             </button>
                         </td>
                     </tr>
@@ -370,8 +398,10 @@
             document.getElementById('modal-evidence').textContent = p.evidence_quote || "No exact quote captured.";
             document.getElementById('modal-confidence').textContent = `${(p.ai_confidence * 100).toFixed(0)}%`;
             document.getElementById('modal-reliability').textContent = `${(p.source_reliability * 100).toFixed(0)}%`;
-            document.getElementById('modal-url').href = p.source_url || '#';
-            document.getElementById('modal-url-text').textContent = p.source_url || 'Unknown Source';
+            const modalUrl = document.getElementById('modal-url');
+            modalUrl.href = p.source_url || '#';
+            modalUrl.classList.toggle('hidden', !p.source_url);
+            document.getElementById('modal-url-text').textContent = p.source_url || 'Unverified source: no audit link available';
             document.getElementById('evidence-modal').classList.remove('hidden');
         }
 

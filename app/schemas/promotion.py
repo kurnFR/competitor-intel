@@ -25,7 +25,9 @@ class Top10PromotionItem(BaseModel):
     category: str
     pack_size: Optional[str] = None
     retailer: Optional[str] = None
+    outlet: Optional[str] = None
     channel: Optional[str] = None
+    geography: Optional[str] = None
     promotion_type: str
     buy_quantity: Optional[int] = None
     free_quantity: Optional[int] = None
@@ -34,11 +36,13 @@ class Top10PromotionItem(BaseModel):
     discount_percentage: Optional[float] = None
     effective_discount: Optional[float] = None
     valid_until: Optional[str] = None
+    valid_from: Optional[str] = None
     rank_score: float
     ai_confidence: float
     source_reliability: float
     evidence_quote: Optional[str] = None
     source_url: Optional[str] = None
+    source_status: str = "Unverified source"
     last_verified: datetime
 
 
