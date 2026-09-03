@@ -111,6 +111,8 @@ PYTHONPATH=. python3 scripts/seed_data.py
 PYTHONPATH=. python3 scripts/run_pipeline.py
 ```
 
+`Refresh` only reloads promotions already stored in PostgreSQL. To collect new promotion data, click `Scan now` in the dashboard or run the command above. The scan needs reachable source websites and, for AI extraction, the configured LLM gateway. Records without usable evidence are not treated as verified.
+
 ### Starting the Web Server & Dashboard
 ```bash
 ./scripts/start_server.sh
@@ -154,6 +156,8 @@ Returns counts of active promotions, competitors tracked, brands monitored, reta
 ## Automated Background Jobs
 * **Crawl & Extraction Pipeline**: Runs automatically every 30 minutes via APScheduler.
 * **Expiration Worker**: Runs every 15 minutes to transition promotions past their end date from `ACTIVE` to `EXPIRED`, and stale records (>7 days without end date) to `UNKNOWN`.
+
+To run the crawler once per day, set `CRAWL_INTERVAL_MINUTES=1440` in `.env` and restart the server. The scheduler uses UTC and requires the application process to remain running. `Scan now` starts an immediate one-off scan and does not change the daily schedule.
 
 ---
 

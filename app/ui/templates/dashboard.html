@@ -56,7 +56,11 @@
                     <i id="theme-icon" class="fa-solid fa-moon"></i>
                 </button>
 
-                <button onclick="fetchTop10(); fetchStats();" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-medium rounded-lg transition border border-white/20 dark:border-slate-700 flex items-center gap-1.5">
+                <button onclick="scanNow()" id="scan-button" class="px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 text-xs font-medium rounded-lg transition border border-emerald-400/30 flex items-center gap-1.5">
+                    <i class="fa-solid fa-satellite-dish"></i> Scan now
+                </button>
+
+                <button onclick="fetchTop10(); fetchStats();" title="Reload promotions already stored in the database" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-medium rounded-lg transition border border-white/20 dark:border-slate-700 flex items-center gap-1.5">
                     <i class="fa-solid fa-arrows-rotate"></i> Refresh
                 </button>
             </div>
@@ -312,6 +316,37 @@
                     <tr><td colspan="13" class="py-8 text-center text-rose-500 font-semibold">Failed to load promotions. Please try again.</td></tr>
                 `;
             }
+        }
+
+        async function scanNow() {
+            const button = document.getElementById('scan-button');
+            button.disabled = true;
+            button.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Scanning...';
+            try {
+                const response = await fetch('/api/v1/pipeline/run', {method: 'POST'});
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.detail || 'Scan could not start');
+                pollScanStatus();
+            } catch (error) {
+                button.disabled = false;
+                button.innerHTML = '<i class="fa-solid fa-satellite-dish"></i> Scan now';
+                alert(error.message);
+            }
+        }
+
+        async function pollScanStatus() {
+            const response = await fetch('/api/v1/pipeline/status');
+            const status = await response.json();
+            if (status.status === 'running' || status.status === 'queued') {
+                setTimeout(pollScanStatus, 2000);
+                return;
+            }
+            const button = document.getElementById('scan-button');
+            button.disabled = false;
+            button.innerHTML = '<i class="fa-solid fa-satellite-dish"></i> Scan now';
+            fetchTop10();
+            fetchStats();
+            if (status.status === 'failed') alert('Scan failed: ' + status.error);
         }
 
         function formatIDR(val) {
