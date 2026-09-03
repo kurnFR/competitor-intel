@@ -296,7 +296,7 @@
             const outlet = document.getElementById('filter-outlet').value;
             const channel = document.getElementById('filter-channel').value;
             const search = document.getElementById('filter-search').value.trim();
-            let url = '/api/v1/promotions/top10?industry=' + encodeURIComponent(industry);
+            let url = '/api/v1/promotions/top10?industry=' + encodeURIComponent(industry) + '&';
             if (cat) url += `category=${encodeURIComponent(cat)}&`;
             if (outlet) url += `outlet=${encodeURIComponent(outlet)}&`;
             if (channel) url += `channel=${encodeURIComponent(channel)}&`;

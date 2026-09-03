@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     # LLM (9router)
     LLM_BASE_URL: str = "http://localhost:20128/v1"
     LLM_API_KEY: str = ""
-    LLM_MODEL: str = "hermes-auto-fallback"
+    LLM_MODEL: str = "auto/best-fast"
 
     # Engine Tuning
     CRAWL_INTERVAL_MINUTES: int = 30
