@@ -1,199 +1,167 @@
-# SOURCE_STRATEGY.md — Multi-Source Discovery, Registry and Crawling Strategy
+# SOURCE_STRATEGY.md — Multi-Source Discovery, Registry & Collection
 
-## 1. Purpose
+## Purpose
 
-The platform must not depend on a single promotion source. Hemat.id is only an initial source, not the permanent source of truth.
+Competitor Intel is a multi-source promotion intelligence platform, not a single-source scraper. The system discovers candidate public sources, evaluates them, registers approved sources and useful URLs, then continuously crawls the registered inventory.
 
-The system should discover, register, evaluate and continuously monitor multiple publicly available sources that can contain relevant FMCG competitor information.
+Hemat.id is only an initial source adapter, not the permanent source of truth.
 
-The goal is:
+## Source categories
+
+The registry may contain:
+
+- Official manufacturer and brand websites
+- Official retailer / modern-trade websites
+- Regional and local retailer websites
+- Public e-commerce and marketplace pages where collection is permitted
+- Public campaign, catalog, flyer and promotion pages
+- Public news and media pages containing promotion evidence
+- Other approved public sources discovered by the system or added by an administrator
+
+Examples include brand sites, Superindo, Alfamart, Indomaret, Hypermart, Tokopedia, Shopee, TikTok Shop and local retailers. These are examples, not a guarantee that every platform can or should be crawled.
+
+## Public-access collection policy
+
+The crawler may use standard HTTP clients, browser automation, JavaScript rendering, public feeds, sitemaps and publicly exposed endpoints to collect information that is accessible without authentication and may be collected under the source's applicable terms and restrictions.
+
+The system must not circumvent authentication, CAPTCHA challenges, paywalls, private data, private APIs, or technical controls specifically intended to restrict automated access.
+
+If a source becomes inaccessible, the crawler records the reason and stops that collection path. It must not repeatedly hammer the source or attempt increasingly aggressive bypasses.
+
+## Source lifecycle
 
 ```text
-Discover sources once
-      ↓
-Register approved sources
-      ↓
-Evaluate source reliability + access rules
-      ↓
-Crawl according to source policy
-      ↓
-Persist evidence + observations
-      ↓
-Future runs crawl only eligible registered sources/URLs
-      ↓
-Re-discover periodically to detect new source pages
+DISCOVERED → CANDIDATE → ASSESSED → APPROVED → ACTIVE
+                                      ↓
+                         HEALTHY / WARNING / STALE
+                                      ↓
+                         BLOCKED / DISABLED / MANUAL_ONLY
 ```
 
-## 2. Source Classes
+Only APPROVED and ACTIVE sources are eligible for scheduled crawling.
 
-The source registry must support at least:
-
-1. Official manufacturer/company websites
-2. Official brand websites and campaign pages
-3. Official retailer websites and weekly/catalog promotion pages
-4. Modern trade websites such as supermarkets and hypermarkets
-5. Convenience retail websites/apps where public content is accessible
-6. Verified marketplace stores and product/promotion pages
-7. E-commerce platforms where public pages are legally and technically accessible
-8. Promotion/price aggregation sites
-9. Established news/media websites
-10. Public social/content pages where permitted
-11. Local/regional modern trade and retail websites
-12. Other approved public sources
-
-Examples of discovery targets include company sites, Superindo, Alfamart, Indomaret, Hypermart, Tokopedia, Shopee, TikTok Shop and local retailers. These are examples of source candidates, not a guarantee that every platform can or should be crawled.
-
-## 3. Important Access Rule
-
-Only collect publicly accessible information in accordance with the website's terms, robots directives, applicable law and technical restrictions.
-
-Do not bypass login controls, CAPTCHAs, paywalls, anti-bot controls or other access restrictions.
-
-A source that cannot be collected compliantly should be marked `BLOCKED` or `MANUAL_ONLY`, not circumvented.
-
-## 4. Source Registry
+## Source registry
 
 `source_registry` is the control plane for collection.
 
 Minimum concepts:
 
 ```text
-source
-source domain
-source type
-owner/organization
-base URL
-source reliability
+source_id
+canonical_name
+domain
+source_type
+market
+authority_level
+public_access_status
+access_mode
+crawl_frequency
 priority
-crawl frequency
-allowed status
-access policy
-adapter type
-last discovery
-last successful crawl
-last failure
+status
+first_discovered_at
+last_assessed_at
+last_successful_crawl_at
+failure_count
+notes
 ```
 
-A source is not considered production-eligible merely because it was discovered by search or an LLM.
+Recommended `access_mode` values:
 
-## 5. Source Lifecycle
+- HTTP
+- BROWSER
+- PUBLIC_API
+- FEED
+- SITEMAP
+- MANUAL
+
+Recommended access statuses:
+
+- ACTIVE
+- JS_REQUIRED
+- RATE_LIMITED
+- BLOCKED
+- LOGIN_REQUIRED
+- CAPTCHA_REQUIRED
+- PAYWALL
+- DISABLED
+- MANUAL_ONLY
+
+## URL registry
+
+A source is not enough. The system should register useful URLs or URL patterns within each source.
+
+Each URL record should track:
+
+- source_id
+- URL and canonical URL
+- page type
+- category hint
+- crawl priority
+- crawl frequency
+- active state
+- last crawled
+- last successful crawl
+- last content hash
+- HTTP status
+- failure count
+- next crawl time
+
+This lets future runs focus on known high-value targets instead of repeatedly searching the entire internet.
+
+## Normal scan vs discovery scan
+
+### Normal scan
+
+The normal scheduled run uses approved sources and URLs:
 
 ```text
-DISCOVERED
-   ↓
-CANDIDATE
-   ↓
-ASSESSED
-   ↓
-APPROVED
-   ↓
-ACTIVE
-   ├── HEALTHY
-   ├── WARNING
-   ├── STALE
-   ├── BLOCKED
-   └── DISABLED
+Approved source registry
+        ↓
+URLs due for crawl
+        ↓
+Fetch / browser render
+        ↓
+Content change detection
+        ↓
+Extract only changed/new content
 ```
-
-Sources can return to `CANDIDATE` or `DISABLED` after repeated quality/access failures.
-
-## 6. Source Discovery
-
-Discovery is a separate process from regular crawling.
-
-### Regular crawl
-
-Crawl already-approved source targets.
 
 ### Discovery scan
 
-Periodically search for new candidate sources and new relevant URLs within approved domains.
+A separate periodic process searches for new candidate sources and useful URLs within approved domains. Discovery may use search engines, sitemaps, RSS/feeds, site navigation, category pages, retailer promotion pages and public indexes.
 
-The discovery process should use:
+Discovery results first enter the source/URL candidate queue. They do not automatically become trusted canonical promotion data.
 
-- search engines
-- source sitemaps
-- RSS/feeds where available
-- site navigation
-- category pages
-- retailer promotion pages
-- public product/category indexes
-- known URL patterns
-
-Discovery results must not automatically enter the canonical promotion dataset. They first enter the source/URL candidate queue.
-
-## 7. URL Target Registry
-
-The system should eventually maintain a URL-level registry in addition to the domain-level source registry.
-
-Suggested concepts:
-
-```text
-source_id
-url
-canonical_url
-page_type
-category_hint
-crawl_priority
-crawl_frequency
-is_active
-last_crawled_at
-last_success_at
-last_content_hash
-last_http_status
-```
-
-This enables the next run to focus on URLs that have previously produced useful information instead of repeatedly crawling the entire internet.
-
-## 8. Adaptive Crawling
+## Adaptive crawling
 
 Not every URL needs the same frequency.
 
-Recommended policy:
-
 ```text
-High-value promotion page       frequent
-Retailer weekly promotion page  frequent
-Product page with stable data   moderate
-Company product catalog         moderate
-News article                     event/recent based
+High-value promotion page        frequent
+Retailer weekly promotion page   frequent
+Stable product page              moderate
+Company catalog                  moderate
+Recent news                      event/recent based
 Historical page                  low frequency
 Failed/blocked URL               backoff/manual review
 ```
 
-The scheduler should prioritize URLs based on:
+Prioritize using promotion yield, freshness needs, source priority, recent changes, active promotion periods, crawl success and failure state.
 
-- previous promotion yield
-- freshness needs
-- source priority
-- recent content changes
-- upcoming/active promotion periods
-- previous crawl success
-- failure/backoff state
+## Content change detection
 
-## 9. Content Change Detection
-
-Before invoking expensive AI extraction, compare the new content hash with the previous successful version where practical.
-
-If content is unchanged:
+Where practical, compare content hashes or other stable fingerprints before expensive AI extraction.
 
 ```text
-crawl → hash comparison → no extraction required
+crawl → unchanged → skip extraction
+crawl → changed   → extract → validate → persist observation
 ```
 
-If content changed materially:
+Dynamic sources may require source-specific change detection.
 
-```text
-crawl → changed → extract → validate → persist observation
-```
+## Source-specific adapters
 
-Do not assume unchanged HTML always means unchanged commercial data when the source uses dynamic content. Source adapters may define a more appropriate change detector.
-
-## 10. Source-Specific Adapters
-
-Use an adapter per source family where structure differs.
-
-Examples:
+Use an adapter per source family where structure differs:
 
 ```text
 HematAdapter
@@ -203,15 +171,11 @@ MarketplaceAdapter
 NewsAdapter
 ```
 
-An adapter is responsible for discovery and extraction of source content, not for making final business decisions.
+Adapters handle source-specific discovery and extraction. Shared services handle validation, geography normalization, entity resolution, promotion matching and ranking.
 
-Canonical validation, geography normalization, entity resolution and ranking remain shared services.
+## Source reliability
 
-## 11. Source Reliability
-
-Reliability must be configurable and evidence-based.
-
-Track operational metrics such as:
+Track:
 
 ```text
 crawl success rate
@@ -224,13 +188,11 @@ historical contradiction rate
 review rate
 ```
 
-A source's reliability score may be adjusted based on observed quality, but changes must be auditable.
+Reliability adjustments must be auditable.
 
-## 12. Source Priority
+## Source authority
 
-Source priority should consider both authority and commercial usefulness.
-
-Suggested precedence for conflicting facts:
+Default guidance:
 
 ```text
 Direct official promotion/retailer evidence
@@ -240,51 +202,55 @@ Direct official promotion/retailer evidence
         > public social/other
 ```
 
-This is a conflict-resolution aid, not permission to discard lower-tier observations. All useful observations remain available for audit.
+Authority is context-dependent. Lower-tier observations are not silently deleted when a higher-tier observation exists.
 
-## 13. Multi-Source Conflict Handling
+## Multi-source conflict handling
 
-When two sources report different values for the same product/promotion:
+When sources disagree:
 
 1. retain both observations
 2. compare timestamps
 3. compare source reliability
 4. compare geographic scope
 5. compare retailer/channel
-6. determine whether they are actually different commercial activities
-7. if unresolved and material, send to review
+6. determine whether the records represent different commercial activities
+7. send material unresolved conflicts to review
 
 Never overwrite one source simply because another source arrived later.
 
-## 14. Source-to-Canonical Flow
+## Regional and local source strategy
 
-```text
-Source Registry
-      ↓
-URL Target Registry
-      ↓
-Crawler
-      ↓
-Raw Crawl Document
-      ↓
-Extraction Observation
-      ↓
-Validation
-      ↓
-Geography + Entity Resolution
-      ↓
-Promotion Matching
-      ↓
-Quality Gate
-      ↓
-Canonical Promotion
-```
+Regional and local sources are first-class sources. Preserve source geography exactly as observed and store normalized geography separately. Never convert a regional promotion into nationwide coverage without evidence.
 
-The source layer must remain independently queryable.
+## Source freshness
 
-## 15. Recommended Initial Rollout
+Keep these concepts separate:
 
-Do not attempt to crawl every possible website on day one.
+- `last_successful_crawl_at`: source collection time
+- `last_seen_at`: observation time
+- `last_verified_at`: validation time
+- `valid_from` / `valid_until`: stated commercial validity
+
+A fresh crawl does not automatically mean the promotion is valid today.
+
+## Source onboarding acceptance criteria
+
+A source is production-ready when:
+
+1. Domain and source type are registered.
+2. Public access mode is understood.
+3. Relevant promotion/product URLs are registered.
+4. Parser/browser strategy is documented.
+5. Evidence can be retained.
+6. Geography can be extracted or explicitly marked unknown.
+7. Price and promotion conditions can be extracted or explicitly marked unknown.
+8. Failure and stale states are observable.
+9. Fixture/test data exists.
+10. The source can be disabled without code changes.
+
+## Initial rollout
+
+Do not crawl every possible website on day one.
 
 ### Wave 1
 
@@ -308,13 +274,11 @@ Do not attempt to crawl every possible website on day one.
 
 - additional public social/content sources where compliant
 
-The source registry should make adding a new source a configuration + adapter task rather than a rewrite of the canonical database model.
+Adding a source should be a configuration + adapter task, not a rewrite of the canonical promotion model.
 
-## 16. What the Next Run Should Do
+## What the next run should do
 
-A normal scheduled run should NOT search the entire web from scratch.
-
-It should:
+A normal scheduled run should:
 
 1. load active approved sources
 2. load active URL targets
@@ -325,25 +289,23 @@ It should:
 7. update observations
 8. run validation and matching
 9. update source health
-10. periodically run source discovery to find new candidate sources
+10. periodically run discovery for new candidate sources
 
-This reduces cost, latency and unnecessary crawling while still allowing the system to discover new sources.
+A crawl failure must never be interpreted as zero promotions.
 
-## 17. Source Discovery Cadence
-
-Suggested defaults:
+## Suggested starting cadence
 
 ```text
-Known high-value promotion URLs: 15–60 minutes
-Known retailer/product pages:    1–6 hours
+High-value promotion URLs:       15–60 minutes
+Retailer/product pages:          1–6 hours
 Official company catalogs:       6–24 hours
 Recent news:                     1–6 hours
-Source discovery:                daily/weekly depending on source class
+Source discovery:                daily/weekly, configurable
 ```
 
-These are starting values and must be configurable.
+These are starting values, not hard-coded guarantees.
 
-## 18. Acceptance Criteria
+## Acceptance criteria
 
 The multi-source architecture is accepted when:
 
@@ -356,6 +318,6 @@ The multi-source architecture is accepted when:
 7. Multiple sources can produce observations for the same canonical promotion.
 8. Conflicting regional prices remain separate when commercially material.
 9. Source reliability is configurable and auditable.
-10. The system can periodically discover candidate new sources without automatically trusting them.
-11. The next scheduled run primarily uses the approved source/URL registry rather than restarting from an unrestricted web search.
-12. No collection mechanism bypasses access controls or other source restrictions.
+10. The system can periodically discover candidate sources without automatically trusting them.
+11. Normal runs primarily use the approved source/URL registry rather than restarting from unrestricted web search.
+12. No collection mechanism circumvents authentication, CAPTCHA, paywalls or other access controls.
