@@ -1,500 +1,312 @@
-# TECHNICAL_DESIGN.md
-
-# Competitor Promotion Intelligence Platform
+# TECHNICAL_DESIGN.md — Production Architecture
 
 ## 1. Purpose
 
-This document defines the technical architecture and implementation requirements for the **Competitor Promotion Intelligence Platform**.
+This document is the implementation contract for the Competitor Promotion Intelligence Platform.
 
-The platform continuously discovers, crawls, extracts, validates, normalizes, deduplicates, and ranks competitor marketing promotions for FMCG products, with an initial focus on:
+The system collects public promotion intelligence, stores immutable observations and source evidence, validates and normalizes commercial facts, resolves entities, deduplicates observations without losing material regional differences, creates canonical promotions, ranks eligible activities, and serves PostgreSQL-backed data to the dashboard.
 
-* Biscuits
-* Crackers
-* Cookies
-* Wafers
-* Similar snack products
+The primary production source for the MVP is **Hemat.id**. Source-specific behavior must be isolated behind adapters.
 
-The system should identify currently valid competitor activities such as:
+## 2. Architecture Principles
 
-* Buy 1 Get 1
-* Buy 2 Get 1
-* Buy X Get Y
-* Percentage discounts
-* Fixed-price discounts
-* Multi-buy promotions
-* Bundle promotions
-* Member prices
-* Cashback
-* Vouchers
-* Gifts with purchase
-* Minimum-spend promotions
-* Other commercially relevant promotional mechanics
+1. PostgreSQL is the canonical source of truth for the UI.
+2. Raw observations are immutable.
+3. Evidence is mandatory for verified commercial facts.
+4. Geography is a first-class relational dimension.
+5. Source geography must be preserved verbatim.
+6. Unknown values are never fabricated.
+7. Quality gates run before ranking.
+8. Regional differences must not be deduplicated away.
+9. Monetary values use PostgreSQL `NUMERIC`, not floating point.
+10. `last_seen_at` and `last_verified_at` are separate concepts.
+11. The application may use the existing PostgreSQL server but must remain isolated from `dwh_prod`.
+12. Source adapters must be testable with fixtures.
 
-The primary output is a ranked list of the **Top 10 currently active competitor promotions**.
+## 3. Database Boundary
 
----
-
-# 2. Critical Database Architecture Decision
-
-## 2.1 Existing PostgreSQL Server Will Be Reused
-
-The project will **not deploy a new PostgreSQL server** and will **not run PostgreSQL inside Docker**.
-
-The existing PostgreSQL server will be reused.
-
-However, the project must create a **new dedicated PostgreSQL database**:
+The application uses the existing PostgreSQL server and the dedicated database:
 
 ```text
 competitor_intel
 ```
 
-This database must initially be empty and populated exclusively by this project.
-
-The existing database:
-
-```text
-dwh_prod
-```
-
-is completely outside the scope of this application.
-
----
-
-## 2.2 Database Isolation Requirement
-
-The application must never connect to `dwh_prod`.
-
-The application must receive credentials that can connect only to:
+with schema:
 
 ```text
 competitor_intel
 ```
 
-Recommended PostgreSQL structure:
+The application must not connect to, query, migrate, or modify `dwh_prod`.
+
+Recommended topology:
 
 ```text
 Existing PostgreSQL Server
-│
-├── dwh_prod
-│   └── Existing DWH
-│
-├── competitor_intel
-│   └── competitor_intel schema
-│       ├── source_registry
-│       ├── crawl_jobs
-│       ├── crawl_documents
-│       ├── promotion_observations
-│       ├── promotions
-│       ├── promotion_evidence
-│       ├── competitors
-│       ├── brands
-│       ├── products
-│       ├── retailers
-│       ├── entity_mapping
-│       ├── review_queue
-│       └── ...
-│
-└── Other existing databases
+├── dwh_prod                 <- out of scope
+└── competitor_intel         <- application database
+    └── competitor_intel     <- application schema
 ```
 
-This database-level separation is a mandatory security and implementation boundary.
+No cross-database foreign keys are allowed.
 
----
-
-# 3. Explicit Non-Goals
-
-The MVP must NOT:
-
-* Modify `dwh_prod`
-* Create tables in `dwh_prod`
-* Alter tables in `dwh_prod`
-* Read data from `dwh_prod`
-* Require access credentials to `dwh_prod`
-* Inspect the existing DWH schema
-* Create foreign keys across databases
-* Depend on existing DWH tables
-* Assume any existing project-specific tables
-* Reuse existing DWH business logic
-* Require PostgreSQL to run inside Docker
-
-There must be no implementation step called:
+## 4. High-Level Data Flow
 
 ```text
-inspect_dwh.py
+Source Registry
+      |
+      v
+Scheduler / Discovery
+      |
+      v
+Source Adapter
+      |
+      v
+HTTP / Browser Fetch
+      |
+      v
+Raw Crawl Document
+      |
+      v
+Text / OCR / Structured Content
+      |
+      v
+AI Extraction
+      |
+      v
+Field Validation
+      |
+      v
+Geography Normalization
+      |
+      v
+Entity Resolution
+      |
+      v
+Promotion Matching
+      |
+      +-------- existing commercial event --------+
+      |                                             |
+      v                                             v
+Update canonical promotion                Create canonical promotion
+      |                                             |
+      +-------------------+-------------------------+
+                          v
+                     Quality Gate
+                     /          \
+                    /            \
+                 PASS            REVIEW
+                  |                |
+                  v                v
+               Ranking       Review Queue
+                  |
+                  v
+             PostgreSQL
+                  |
+                  v
+                API
+                  |
+                  v
+                 UI
 ```
 
-and no requirement to generate a:
+## 5. Runtime Components
 
 ```text
-DWH_SCHEMA_MAPPING.md
+app/
+├── api
+├── core
+├── db
+├── models
+├── schemas
+├── services
+│   ├── crawling
+│   ├── extraction
+│   ├── validation
+│   ├── geography
+│   ├── entity_resolution
+│   ├── deduplication
+│   ├── ranking
+│   └── review
+└── web
 ```
 
-The Competitor Intelligence database must be designed independently from the DWH.
+Recommended stack:
 
----
+| Concern | Technology |
+|---|---|
+| Language | Python 3.12+ |
+| API | FastAPI |
+| Validation | Pydantic |
+| ORM | SQLAlchemy 2 |
+| Driver | psycopg3 |
+| HTTP | httpx |
+| HTML | BeautifulSoup / selectolax |
+| Content extraction | trafilatura |
+| Browser | Playwright when required |
+| PDF | PyMuPDF |
+| OCR | Tesseract or approved equivalent |
+| AI | Structured-output LLM gateway |
+| Database | Existing PostgreSQL server / `competitor_intel` DB |
+| Similarity | pg_trgm; pgvector optional |
+| Scheduler | APScheduler for MVP; queue worker later if needed |
+| Cache/queue | Redis optional |
+| Object storage | S3-compatible or local persistent storage |
 
-# 4. Infrastructure Architecture
+Do not introduce infrastructure merely for architectural fashion. Add Redis/Celery/object storage only when the actual workload requires it.
 
-## 4.1 High-Level Architecture
+## 6. PostgreSQL Provisioning
 
-```text
-                         PUBLIC WEB
-                             │
-              ┌──────────────┴──────────────┐
-              │                             │
-        Retailer Websites             Brand Websites
-              │                             │
-        Marketplaces                    Promo Pages
-              │                             │
-              └──────────────┬──────────────┘
-                             │
-                     Source Discovery
-                             │
-                         Crawler
-                             │
-                    Raw Document Store
-                             │
-                  HTML / PDF / Image / Text
-                             │
-                      Content Extraction
-                             │
-                         OCR / Parser
-                             │
-                     AI Promotion Extraction
-                             │
-                     Validation & Normalization
-                             │
-                      Entity Resolution
-                             │
-                        Deduplication
-                             │
-                        Ranking Engine
-                             │
-                  PostgreSQL: competitor_intel
-                             │
-                  ┌──────────┴──────────┐
-                  │                     │
-              REST API             Dashboard
-                  │
-              Top 10 Promotions
-```
-
----
-
-# 5. Runtime Components
-
-The application should consist of the following logical components:
-
-```text
-competitor-intel/
-│
-├── API
-├── Scheduler
-├── Source Discovery
-├── Crawler
-├── Document Processor
-├── OCR Processor
-├── AI Extraction
-├── Validation
-├── Entity Resolution
-├── Deduplication
-├── Ranking
-├── Alerting
-└── Database
-```
-
-Recommended technology stack:
-
-| Component          | Technology                                   |
-| ------------------ | -------------------------------------------- |
-| Language           | Python 3.12+                                 |
-| API                | FastAPI                                      |
-| Validation         | Pydantic                                     |
-| ORM                | SQLAlchemy 2                                 |
-| PostgreSQL driver  | psycopg3                                     |
-| HTTP client        | httpx                                        |
-| HTML parsing       | BeautifulSoup                                |
-| Content extraction | trafilatura                                  |
-| Browser automation | Playwright                                   |
-| PDF extraction     | PyMuPDF                                      |
-| OCR                | Tesseract or equivalent                      |
-| AI                 | LLM with structured JSON / vision capability |
-| Database           | Existing PostgreSQL server                   |
-| Search             | PostgreSQL + pg_trgm                         |
-| Vector search      | pgvector, optional                           |
-| Background jobs    | Celery or equivalent                         |
-| Queue/cache        | Redis, optional                              |
-| Object storage     | S3-compatible storage or local storage       |
-| Containers         | Docker for application services only         |
-| Deployment         | Docker Compose initially                     |
-
----
-
-# 6. PostgreSQL Provisioning
-
-## 6.1 Database
-
-Create a new database:
+Create the database once on the existing PostgreSQL server:
 
 ```sql
 CREATE DATABASE competitor_intel;
 ```
 
-Do not create any application tables in `dwh_prod`.
-
----
-
-## 6.2 Dedicated Database Owner
-
-Create a dedicated owner:
+Create a dedicated application role:
 
 ```sql
-CREATE ROLE competitor_intel_owner
-WITH LOGIN
-PASSWORD '<STRONG_PASSWORD>';
+CREATE ROLE competitor_intel_app LOGIN PASSWORD '<STRONG_PASSWORD>';
+GRANT CONNECT ON DATABASE competitor_intel TO competitor_intel_app;
 ```
 
-Then:
+Inside the database:
 
 ```sql
-ALTER DATABASE competitor_intel
-OWNER TO competitor_intel_owner;
-```
-
-The actual production password must be stored in a secret manager or environment configuration, never committed to Git.
-
----
-
-## 6.3 Application Role
-
-Create a separate application role:
-
-```sql
-CREATE ROLE competitor_intel_app
-WITH LOGIN
-PASSWORD '<STRONG_PASSWORD>';
-```
-
-Grant access only to the new database:
-
-```sql
-GRANT CONNECT ON DATABASE competitor_intel
-TO competitor_intel_app;
-```
-
-The application role must not receive:
-
-```sql
-CONNECT ON DATABASE dwh_prod
-```
-
-or any equivalent access.
-
----
-
-# 7. PostgreSQL Schema
-
-Inside `competitor_intel`, create:
-
-```sql
-CREATE SCHEMA competitor_intel;
-```
-
-Recommended extensions:
-
-```sql
+CREATE SCHEMA competitor_intel AUTHORIZATION competitor_intel_app;
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 ```
 
-Optionally:
+Do not put passwords in Git.
 
-```sql
-CREATE EXTENSION IF NOT EXISTS vector;
-```
+The runtime role should receive only the permissions required by the application. Migration ownership and application runtime permissions may be separated in production.
 
-`pgvector` should only be enabled if semantic similarity is implemented.
-
----
-
-# 8. Application Database URL
-
-The application must use an environment variable.
-
-Example:
+## 7. Configuration
 
 ```env
-DATABASE_URL=postgresql+psycopg://competitor_intel_app:<PASSWORD>@<POSTGRES_HOST>:5432/competitor_intel
-```
-
-Additional environment variables:
-
-```env
-POSTGRES_HOST=
-POSTGRES_PORT=5432
-POSTGRES_DB=competitor_intel
-POSTGRES_USER=competitor_intel_app
-POSTGRES_PASSWORD=
-
+DATABASE_URL=postgresql+psycopg://competitor_intel_app:<PASSWORD>@<HOST>:5432/competitor_intel
 DATABASE_SCHEMA=competitor_intel
 ```
 
-Never hard-code database credentials.
+Other configuration must include:
 
-Never provide `dwh_prod` credentials to the application.
-
----
-
-# 9. Migration Strategy
-
-The project must use database migrations.
-
-Recommended:
-
-```text
-Alembic
+```env
+LLM_BASE_URL=
+LLM_API_KEY=
+LLM_MODEL=
+CRAWL_INTERVAL_MINUTES=30
+HTTP_TIMEOUT_SECONDS=30
+TOP10_MAX_AGE_DAYS=90
 ```
 
-Migration flow:
+The application must fail clearly at startup when required configuration is missing.
 
-```text
-Fresh competitor_intel database
-            │
-            ▼
-       Alembic upgrade
-            │
-            ▼
-      Empty application schema
-            │
-            ▼
-       Seed base data
-```
+## 8. Migration Rules
 
-The first migration should create the complete MVP schema.
-
-A developer must be able to provision a new environment with:
+Use Alembic.
 
 ```bash
 alembic upgrade head
 ```
 
-without depending on any existing database tables.
+The schema must be buildable from an empty `competitor_intel` database. No migration may depend on existing DWH tables.
 
----
+Every schema change must have:
 
-# 10. Database Model
+- an Alembic migration
+- corresponding model/schema updates
+- tests for important integrity constraints
+- documentation update when business behavior changes
 
-The database should contain the following major entities.
+## 9. Canonical Data Model
+
+The production model has seven layers:
 
 ```text
-source_registry
-crawl_jobs
-crawl_documents
-promotion_observations
-promotions
-promotion_evidence
-competitors
-brands
-products
-retailers
-entity_mapping
-review_queue
+SOURCE
+  source_registry
+  crawl_jobs
+  crawl_documents
+
+OBSERVATION
+  extraction_runs
+  promotion_observations
+
+MASTER DATA
+  competitors
+  brands
+  products
+  retailers
+  geography_reference
+
+CANONICAL COMMERCIAL DATA
+  promotions
+  promotion_geographies
+  promotion_conditions
+
+PROVENANCE
+  promotion_evidence
+  observation_links
+
+QUALITY
+  validation_results
+  review_queue
+
+ANALYTICS
+  ranking snapshots/views as required
 ```
 
-Additional supporting tables may be introduced where necessary.
+## 10. Source Registry
 
----
-
-# 11. source_registry
-
-Stores known sources that the crawler monitors.
-
-Suggested columns:
+Suggested fields:
 
 ```text
-id
-name
-base_url
-source_type
-tier
-country
-language
-category
-crawl_frequency_minutes
-priority
-is_active
-robots_allowed
-last_crawled_at
-last_success_at
-last_error_at
-created_at
-updated_at
+id UUID PK
+name TEXT NOT NULL
+base_url TEXT NOT NULL
+domain TEXT NOT NULL
+source_type ENUM/TEXT
+tier INTEGER
+reliability_score NUMERIC(5,4)
+country_code TEXT
+language_code TEXT
+is_active BOOLEAN
+crawl_frequency_minutes INTEGER
+priority INTEGER
+robots_allowed BOOLEAN
+last_crawled_at TIMESTAMPTZ
+last_success_at TIMESTAMPTZ
+last_error_at TIMESTAMPTZ
+created_at TIMESTAMPTZ
+updated_at TIMESTAMPTZ
 ```
 
-Source types:
+MVP source:
 
 ```text
-RETAILER
-BRAND
-MARKETPLACE
-PROMOTION_AGGREGATOR
-NEWS
-SOCIAL
-OTHER
+Hemat.id
 ```
 
-Source reliability tiers:
+The source adapter should not hard-code reliability into business ranking. The registry owns the configurable value.
+
+## 11. Crawl Jobs
+
+Track every crawl attempt:
 
 ```text
-TIER_1
-TIER_2
-TIER_3
-TIER_4
-TIER_5
-```
-
-Recommended interpretation:
-
-### Tier 1
-
-Official retailer and official brand sources.
-
-### Tier 2
-
-Official marketplace stores and established marketplace promotion pages.
-
-### Tier 3
-
-Promotion aggregators.
-
-### Tier 4
-
-News and media.
-
-### Tier 5
-
-Social media and other secondary sources.
-
----
-
-# 12. crawl_jobs
-
-Tracks individual crawl attempts.
-
-Suggested columns:
-
-```text
-id
-source_id
-url
-job_type
-status
-started_at
-completed_at
-http_status
-error_message
-retry_count
-content_hash
-created_at
+id UUID PK
+source_id UUID FK
+url TEXT
+job_type TEXT
+status TEXT
+started_at TIMESTAMPTZ
+completed_at TIMESTAMPTZ
+http_status INTEGER
+error_code TEXT
+error_message TEXT
+retry_count INTEGER
+content_hash TEXT
+created_at TIMESTAMPTZ
 ```
 
 Statuses:
@@ -504,938 +316,465 @@ QUEUED
 RUNNING
 SUCCESS
 FAILED
-SKIPPED
 BLOCKED
+SKIPPED
 ```
 
----
+Retries must use bounded backoff. Repeated source failures must not cause infinite loops.
 
-# 13. crawl_documents
+## 12. Crawl Documents
 
-Stores normalized metadata about retrieved documents.
+Store a durable representation of each retrieved source document:
 
-Suggested columns:
+```text
+id UUID PK
+crawl_job_id UUID FK
+source_id UUID FK
+url TEXT NOT NULL
+canonical_url TEXT
+content_type TEXT
+title TEXT
+raw_content_uri TEXT
+text_content TEXT
+content_hash TEXT
+published_at TIMESTAMPTZ
+retrieved_at TIMESTAMPTZ
+language_code TEXT
+http_status INTEGER
+metadata JSONB
+created_at TIMESTAMPTZ
+```
+
+Use SHA-256 for content hashing.
+
+For large PDF/image/html payloads, store the payload in durable object storage and retain URI + metadata in PostgreSQL. The MVP may retain extracted text directly in PostgreSQL.
+
+## 13. Extraction Runs
+
+Every AI extraction request should be identifiable:
+
+```text
+id UUID PK
+document_id UUID FK
+model_name TEXT
+prompt_version TEXT
+schema_version TEXT
+started_at TIMESTAMPTZ
+completed_at TIMESTAMPTZ
+status TEXT
+raw_response JSONB
+error_message TEXT
+created_at TIMESTAMPTZ
+```
+
+This makes model/prompt changes auditable.
+
+## 14. Promotion Observations
+
+This is the immutable observation layer.
+
+Suggested fields:
+
+```text
+id UUID PK
+document_id UUID FK
+extraction_run_id UUID FK
+source_promotion_key TEXT
+raw_extracted JSONB
+normalized_extracted JSONB
+observed_at TIMESTAMPTZ
+created_at TIMESTAMPTZ
+```
+
+An observation answers:
+
+> What did the system believe the source said at this point in time?
+
+Do not overwrite historical observations merely because the same promotion is seen again.
+
+## 15. Master Data
+
+### Competitors
 
 ```text
 id
-crawl_job_id
-source_id
-url
-canonical_url
-document_type
-title
-raw_content_uri
-text_content
-content_hash
-published_at
-retrieved_at
-language
-http_status
-created_at
-```
-
-Document types:
-
-```text
-HTML
-PDF
-IMAGE
-JSON
-TEXT
-OTHER
-```
-
-Large raw files should preferably be stored in object storage.
-
-PostgreSQL should store the URI and metadata rather than unnecessarily storing large binary objects.
-
----
-
-# 14. promotion_observations
-
-This table represents what the crawler/AI observed from a specific source at a specific time.
-
-This is important because the same promotion may change over time.
-
-Suggested columns:
-
-```text
-id
-document_id
-extraction_run_id
-raw_text
-raw_evidence
-extracted_json
-ai_confidence
-observed_at
-created_at
-```
-
-This table should preserve the original observation independently from the canonical promotion record.
-
----
-
-# 15. promotions
-
-This is the primary canonical promotion table.
-
-Suggested columns:
-
-```text
-id
-
-competitor_id
-retailer_id
-brand_id
-product_id
-
-product_name
-sku
-pack_size
-category
-
-regular_price
-promo_price
-currency
-
-discount_percentage
-
-promotion_type
-
-buy_quantity
-free_quantity
-
-bundle_quantity
-
-cashback_amount
-voucher_amount
-
-minimum_purchase_amount
-minimum_purchase_quantity
-
-gift_description
-
-promotion_title
-promotion_description
-
-start_date
-end_date
-
-channel
-geography
-
+name
+normalized_name
 status
-
-source_reliability
-ai_confidence
-
-first_seen_at
-last_seen_at
-
 created_at
 updated_at
 ```
 
----
-
-# 16. Promotion Types
-
-The system must use a controlled taxonomy.
-
-```text
-DISCOUNT
-BUY_X_GET_Y
-MULTIBUY
-CASHBACK
-VOUCHER
-MEMBER_PRICE
-GIFT_WITH_PURCHASE
-BUNDLE
-MINIMUM_SPEND
-OTHER
-```
-
-The system may add more promotion types later without breaking existing records.
-
----
-
-# 17. Promotion Status
-
-Allowed statuses:
-
-```text
-ACTIVE
-EXPIRED
-UPCOMING
-UNKNOWN
-REVIEW_REQUIRED
-```
-
-A promotion is considered active when:
-
-```text
-start_date <= current_timestamp
-AND
-(
-    end_date >= current_timestamp
-    OR
-    end_date IS NULL
-)
-```
-
-However, promotions with no explicit end date require recent verification.
-
-Recommended rule:
-
-```text
-end_date IS NULL
-AND
-last_seen_at >= current_timestamp - interval '7 days'
-```
-
-Otherwise the promotion should not automatically appear in the Top 10.
-
----
-
-# 18. Three-Month Recency Rule
-
-The Top 10 must contain promotions that are:
-
-1. Relevant to the target category
-2. Active
-3. Recent
-4. Supported by reliable evidence
-
-A promotion is considered recent when:
-
-```sql
-last_seen_at >= NOW() - INTERVAL '3 months'
-```
-
-The preferred interpretation is:
-
-> A promotion must currently be valid and must have been observed within the last three months.
-
-Promotions older than three months must not appear in the default Top 10.
-
----
-
-# 19. Promotion Evidence
-
-Every promotion extracted by AI must have supporting evidence.
-
-Suggested table:
-
-```text
-promotion_evidence
-```
-
-Columns:
-
-```text
-id
-promotion_id
-document_id
-
-evidence_type
-evidence_text
-
-source_url
-page_number
-image_uri
-
-captured_at
-created_at
-```
-
-Evidence types:
-
-```text
-TEXT
-TABLE
-IMAGE
-OCR
-PRICE
-PROMOTION_BADGE
-DATE
-OTHER
-```
-
-A promotion should not be considered high confidence without supporting evidence.
-
----
-
-# 20. Competitors
-
-Suggested table:
-
-```text
-competitors
-```
-
-Columns:
-
-```text
-id
-name
-normalized_name
-website
-importance_score
-is_active
-created_at
-updated_at
-```
-
-`importance_score` can be used by the ranking engine to prioritize strategically important competitors.
-
----
-
-# 21. Brands
-
-Suggested table:
-
-```text
-brands
-```
-
-Columns:
+### Brands
 
 ```text
 id
 competitor_id
 name
 normalized_name
-manufacturer
+status
 created_at
 updated_at
 ```
 
----
-
-# 22. Products
-
-Suggested table:
-
-```text
-products
-```
-
-Columns:
+### Products
 
 ```text
 id
 brand_id
 name
 normalized_name
-sku
-barcode
 variant
-pack_size
-unit
+pack_size_value
+pack_size_unit
+sku
 category
-subcategory
+status
 created_at
 updated_at
 ```
 
-The system must support products without known SKU or barcode.
-
-Unknown values must remain `NULL`.
-
-The AI must never invent a SKU, barcode, price, or promotion date.
-
----
-
-# 23. Retailers
-
-Suggested table:
-
-```text
-retailers
-```
-
-Columns:
+### Retailers
 
 ```text
 id
 name
 normalized_name
-website
-channel
-country
-created_at
-updated_at
-```
-
-Example channels:
-
-```text
-SUPERMARKET
-MINIMARKET
-E_COMMERCE
-MARKETPLACE
-OFFICIAL_STORE
-OTHER
-```
-
----
-
-# 24. Entity Mapping
-
-The system must resolve extracted entities to canonical entities.
-
-Suggested table:
-
-```text
-entity_mapping
-```
-
-Columns:
-
-```text
-id
-entity_type
-source_value
-canonical_entity_id
-match_method
-confidence
-created_at
-updated_at
-```
-
-Match methods:
-
-```text
-EXACT
-NORMALIZED_EXACT
-SKU
-BARCODE
-FUZZY
-SEMANTIC
-AI
-MANUAL
-```
-
----
-
-# 25. Review Queue
-
-Low-confidence or ambiguous records should be routed to:
-
-```text
-review_queue
-```
-
-Suggested columns:
-
-```text
-id
-entity_type
-entity_id
-reason
-priority
+retailer_type
 status
-assigned_to
 created_at
-reviewed_at
-review_notes
+updated_at
 ```
 
-Statuses:
+Unknown manufacturer/competitor must remain `NULL` or `UNKNOWN`; never use placeholder values such as `FMCG Manufacturer`.
+
+## 16. Geography Model
+
+Do not use one `promotions.geography TEXT` column as the canonical geography model.
+
+### geography_reference
+
+Suggested fields:
 
 ```text
-PENDING
-IN_REVIEW
-APPROVED
-REJECTED
+id UUID PK
+parent_id UUID NULL FK
+scope_type TEXT
+name TEXT
+normalized_name TEXT
+country_code TEXT
+is_active BOOLEAN
+mapping_version TEXT
+created_at TIMESTAMPTZ
+updated_at TIMESTAMPTZ
 ```
 
----
-
-# 26. AI Extraction
-
-The AI extraction layer converts unstructured web content into structured promotion data.
-
-Input:
+Scope types:
 
 ```text
-HTML
-PDF
-Image
-OCR text
-Plain text
-Marketplace content
-Retailer catalog
-Promotion page
+NATIONAL
+ISLAND_GROUP
+REGION
+PROVINCE
+METRO
+CITY
+DISTRICT
+STORE
+STORE_GROUP
+ONLINE
+OTHER
+UNKNOWN
 ```
 
-Output must conform to a strict schema.
+### promotion_geographies
+
+```text
+id UUID PK
+promotion_id UUID FK
+geography_id UUID NULL FK
+scope_type TEXT NOT NULL
+scope_name TEXT NOT NULL
+source_text TEXT NOT NULL
+scope_role TEXT NOT NULL   -- INCLUDE / EXCLUDE
+confidence NUMERIC(5,4)
+created_at TIMESTAMPTZ
+```
+
+A promotion can have many included and excluded scopes.
 
 Example:
 
-```json
-{
-  "competitor": null,
-  "retailer": null,
-  "brand": null,
-  "product": null,
-  "sku": null,
-  "pack_size": null,
-  "category": null,
-  "regular_price": null,
-  "promo_price": null,
-  "discount_percentage": null,
-  "promotion_type": "BUY_X_GET_Y",
-  "buy_quantity": 2,
-  "free_quantity": 1,
-  "start_date": null,
-  "end_date": null,
-  "minimum_purchase_quantity": null,
-  "minimum_purchase_amount": null,
-  "gift_description": null,
-  "source_url": null,
-  "evidence": [],
-  "confidence": 0.0
-}
+```text
+Promotion 123
+INCLUDE Jawa
+INCLUDE Bali
+INCLUDE Lombok
+EXCLUDE Indomaret Point
 ```
 
----
+The exact source sentence remains in `source_text`.
 
-# 27. AI Extraction Rules
+## 17. Geography Normalization Rules
 
-The AI must follow these rules:
+1. Preserve source wording exactly.
+2. Normalize only through deterministic mappings or validated AI suggestions.
+3. Never turn missing geography into `Indonesia` automatically.
+4. Do not expand `Jawa` into provinces unless a mapping is explicitly configured.
+5. Keep commercial regions such as `Jabodetabek` as valid scopes.
+6. Keep retailer/store exclusions separate from geographic inclusion.
+7. If geography is ambiguous and materially affects applicability, set `REVIEW_REQUIRED`.
 
-### Rule 1 — Never invent
+## 18. Canonical Promotions
 
-If a value is not present:
+Use `NUMERIC(18,2)` for monetary values.
+
+Suggested fields:
 
 ```text
-NULL
+id UUID PK
+competitor_id UUID NULL FK
+brand_id UUID NULL FK
+product_id UUID NULL FK
+retailer_id UUID NULL FK
+
+product_name TEXT
+sku TEXT
+pack_size_value NUMERIC(12,3)
+pack_size_unit TEXT
+category TEXT
+
+regular_price NUMERIC(18,2)
+promo_price NUMERIC(18,2)
+currency CHAR(3)
+
+discount_percentage_stated NUMERIC(7,3)
+discount_percentage_calculated NUMERIC(7,3)
+
+promotion_type TEXT
+buy_quantity INTEGER
+free_quantity INTEGER
+bundle_quantity INTEGER
+cashback_amount NUMERIC(18,2)
+voucher_amount NUMERIC(18,2)
+minimum_purchase_amount NUMERIC(18,2)
+minimum_purchase_quantity INTEGER
+maximum_quantity INTEGER
+gift_description TEXT
+promotion_title TEXT
+promotion_description TEXT
+
+start_date TIMESTAMPTZ NULL
+end_date TIMESTAMPTZ NULL
+channel TEXT
+
+source_geography_text TEXT NULL
+
+status TEXT
+
+source_reliability NUMERIC(5,4)
+ai_confidence NUMERIC(5,4)
+
+first_seen_at TIMESTAMPTZ
+last_seen_at TIMESTAMPTZ
+last_verified_at TIMESTAMPTZ
+
+rank_score NUMERIC(8,3)
+created_at TIMESTAMPTZ
+updated_at TIMESTAMPTZ
 ```
 
-must be returned.
+`source_geography_text` is retained for convenient display, while `promotion_geographies` is authoritative for normalized scope.
 
-### Rule 2 — Evidence required
+## 19. Promotion Conditions
 
-Each important extracted field should have evidence where practical.
-
-### Rule 3 — Preserve source wording
-
-The original promotion wording should be preserved.
-
-### Rule 4 — Normalize separately
-
-Do not destroy the original evidence during normalization.
-
-### Rule 5 — Dates
-
-If only a date range is present, normalize it.
-
-If no date is available, do not invent one.
-
-### Rule 6 — Prices
-
-Preserve:
-
-* Original price
-* Promotional price
-* Currency
-* Unit/pack context
-
-### Rule 7 — Promotion mechanism
-
-Explicitly identify whether the activity is:
+Do not overload the promotion table with every possible condition. Use a child table where conditions are variable.
 
 ```text
-DISCOUNT
-BUY_X_GET_Y
-MULTIBUY
-CASHBACK
-VOUCHER
-MEMBER_PRICE
-GIFT_WITH_PURCHASE
-BUNDLE
-MINIMUM_SPEND
-OTHER
-```
-
----
-
-# 28. Buy X Get Y Normalization
-
-For example:
-
-```text
-Buy 1 Get 1
-```
-
-becomes:
-
-```text
-buy_quantity = 1
-free_quantity = 1
-```
-
-```text
-Buy 2 Get 1
-```
-
-becomes:
-
-```text
-buy_quantity = 2
-free_quantity = 1
-```
-
-```text
-Buy 3 Get 1
-```
-
-becomes:
-
-```text
-buy_quantity = 3
-free_quantity = 1
-```
-
----
-
-# 29. Effective Promotion Strength
-
-For equivalent free products:
-
-```text
-effective_discount =
-free_quantity /
-(buy_quantity + free_quantity)
-* 100
+promotion_conditions
+---------------------
+id
+promotion_id
+condition_type
+condition_value_text
+condition_value_numeric
+source_text
+created_at
 ```
 
 Examples:
 
 ```text
-B1G1 = 50%
-B2G1 = 33.33%
-B3G1 = 25%
+MEMBER_ONLY
+PAYMENT_METHOD
+APP_ONLY
+MINIMUM_PURCHASE
+MAXIMUM_QUANTITY
+STORE_EXCLUSION
+GEOGRAPHY_EXCLUSION
+VOUCHER_CODE
+OTHER
 ```
 
-This normalized value can be used by the ranking engine.
+## 20. Evidence
 
-It must not replace the original promotion wording.
-
----
-
-# 30. Discount Normalization
-
-For percentage discounts:
+Every canonical promotion must link to one or more evidence records.
 
 ```text
-discount_percentage =
-(
-    regular_price - promo_price
-)
-/
-regular_price
-* 100
+promotion_evidence
+------------------
+id UUID PK
+promotion_id UUID FK
+document_id UUID FK
+field_name TEXT
+ evidence_text TEXT
+source_url TEXT
+page_number INTEGER NULL
+locator JSONB NULL
+confidence NUMERIC(5,4)
+created_at TIMESTAMPTZ
 ```
 
-The system should retain the retailer's stated discount when explicitly available and may calculate a normalized discount for comparison.
+There must be no verified promotion without source evidence.
 
----
+Evidence should be granular enough to support price, mechanic, validity and geography separately where possible.
 
-# 31. Bundle Normalization
+## 21. Validation
 
-Bundle promotions should retain:
+Validation is deterministic after AI extraction.
 
-```text
-bundle_quantity
-bundle_price
-regular_total_price
-discount_percentage
-bundle_description
-```
+### Price
 
-Example:
+- price must be non-negative
+- promo price should not exceed regular price for ordinary discount mechanics unless evidence explains the exception
+- currency must be known or explicitly defaulted to IDR by an approved source rule
+- stated and calculated discount differences must be flagged when materially inconsistent
 
-```text
-3 packs for Rp25,000
-```
+### Dates
 
-must not automatically be interpreted as B2G1 unless the source explicitly states that mechanism.
+- end date must not precede start date
+- dates must be interpreted in Indonesia/local source context where known
+- an expired promotion cannot be active
+- missing end date requires recent verification
 
----
+### Geography
 
-# 32. Source Discovery
+- source text must exist when geography is claimed
+- normalized scope must map to a controlled reference or remain `UNKNOWN`
+- material ambiguity enters review
 
-The source discovery system should identify:
+### Identity
 
-* Retailer promotion pages
-* Brand promotion pages
-* E-commerce stores
-* Marketplace stores
-* Digital catalogs
-* Promotional PDFs
-* Weekly flyers
-* Product pages
-* News articles
-* Promotion aggregators
+- brand/product matching uses exact normalized match first, then controlled fuzzy matching
+- unresolved identity is not silently assigned to a competitor
 
-Discovery methods may include:
+## 22. Status Lifecycle
+
+Allowed canonical statuses:
 
 ```text
-Search engines
-Known source registry
-Sitemaps
-Internal site links
-RSS feeds
-Marketplace category pages
-Retailer promotion pages
-```
-
----
-
-# 33. Crawler
-
-The crawler must support:
-
-### Static HTML
-
-Use:
-
-```text
-httpx
-BeautifulSoup
-trafilatura
-```
-
-### JavaScript-heavy pages
-
-Use:
-
-```text
-Playwright
-```
-
-### PDF
-
-Use:
-
-```text
-PyMuPDF
-```
-
-### Images
-
-Use OCR.
-
-### Structured data
-
-Extract:
-
-```text
-JSON-LD
-OpenGraph
-Product schema
-Price schema
-```
-
-where available.
-
----
-
-# 34. Crawl Scheduling
-
-Recommended initial schedules:
-
-| Source                       |  Frequency |
-| ---------------------------- | ---------: |
-| High-priority promotion page |  15–60 min |
-| Marketplace                  |  1–3 hours |
-| Retailer catalog             |  3–6 hours |
-| Brand promotion page         |  3–6 hours |
-| News/media                   | 6–12 hours |
-| Social                       | 6–24 hours |
-
-The scheduler should eventually become adaptive.
-
-For example:
-
-```text
-Promotion expires in 2 hours
-        ↓
-Increase crawl frequency
-        ↓
-Promotion expires
-        ↓
-Mark EXPIRED
-```
-
----
-
-# 35. Crawl Reliability
-
-The crawler must implement:
-
-* Retry
-* Exponential backoff
-* Timeout
-* Rate limiting
-* User-agent management
-* Duplicate URL prevention
-* Content hashing
-* HTTP status handling
-* robots.txt compliance where applicable
-* Crawl logging
-* Error classification
-
-Potential errors:
-
-```text
-TIMEOUT
-DNS_ERROR
-HTTP_403
-HTTP_404
-HTTP_429
-SERVER_ERROR
-PARSER_ERROR
-OCR_ERROR
-AI_ERROR
+UPCOMING
+ACTIVE
+EXPIRED
 UNKNOWN
+REVIEW_REQUIRED
+REJECTED
 ```
 
----
-
-# 36. Deduplication
-
-The same promotion can appear on:
-
-* Retailer website
-* Retailer PDF
-* News article
-* Promotion aggregator
-* Marketplace
-* Social post
-
-The system must avoid showing duplicates in the Top 10.
-
-Deduplication should use multiple layers.
-
-## Layer 1 — Deterministic
-
-Potential key:
+Recommended active rule:
 
 ```text
-competitor
-retailer
-product
-promotion_type
-start_date
-end_date
-promotion_mechanism
+start_date <= now
+AND (end_date >= now OR end_date IS NULL)
+AND last_verified_at satisfies the no-end-date freshness rule when end_date is NULL
+AND quality gate = PASS
 ```
 
-## Layer 2 — Fuzzy matching
+A promotion with an explicit expired end date is `EXPIRED`, even if it was crawled recently.
+
+## 23. Freshness
+
+The default Top 10 freshness limit is 90 days.
 
 Use:
 
-```text
-pg_trgm
+```sql
+last_verified_at >= NOW() - INTERVAL '90 days'
 ```
 
-for product/promotion text similarity.
+for trust/freshness gating.
 
-## Layer 3 — Semantic matching
+Do not use a 90-day observation to imply that the promotion is still active. Current validity must also be satisfied.
 
-Optionally use:
+For promotions without explicit end dates, use a much stricter configured verification window, recommended at 7 days for MVP.
 
-```text
-pgvector
-```
+## 24. Entity Resolution
 
-for embedding-based similarity.
+Resolution order:
 
----
+1. exact stable source identifier when available
+2. exact normalized brand/product/retailer combination
+3. SKU match
+4. approved alias mapping
+5. pg_trgm similarity
+6. review queue
 
-# 37. Canonical Promotion Selection
+Never resolve solely from a weak product-name similarity when the commercial impact could change.
 
-When multiple observations represent the same promotion:
-
-```text
-Canonical Promotion
-        │
-        ├── Official retailer evidence
-        ├── Marketplace evidence
-        ├── News evidence
-        └── Aggregator evidence
-```
-
-The canonical record should retain multiple evidence records rather than discarding source information.
-
-Prefer the most authoritative source for:
-
-* Promotion validity
-* Price
-* Dates
-* Mechanism
-* Product identity
-
----
-
-# 38. Source Reliability Score
-
-Suggested baseline:
+Store resolution decisions in `entity_mapping`:
 
 ```text
-Tier 1 = 1.00
-Tier 2 = 0.85
-Tier 3 = 0.70
-Tier 4 = 0.55
-Tier 5 = 0.40
+id
+entity_type
+source_value
+canonical_id
+match_method
+similarity_score
+approved_by
+created_at
 ```
 
-These values may be tuned using historical accuracy.
+## 25. Deduplication and Promotion Matching
 
----
+The system must distinguish:
 
-# 39. AI Confidence
+- duplicate observations of the same commercial activity
+- materially different regional/channel/store activities
 
-Every extraction should have:
+A candidate match should consider:
 
 ```text
-field-level confidence
-overall confidence
+product_id / resolved product
+retailer_id
+channel
+promotion_type
+mechanic parameters
+price
+validity
+geographic inclusion
+geographic exclusion
 ```
 
-Example:
+If geography, price, validity or conditions differ materially, keep separate canonical promotions or separate promotion observations as appropriate.
 
-```json
-{
-  "product_confidence": 0.97,
-  "price_confidence": 0.99,
-  "promotion_type_confidence": 0.98,
-  "date_confidence": 0.72,
-  "overall_confidence": 0.91
-}
-```
+Do not deduplicate merely on product name + retailer.
 
-Low-confidence records should enter the review queue.
+## 26. Ranking
 
----
+Ranking is performed only after the quality gate.
 
-# 40. Ranking Engine
-
-The Top 10 ranking should consider:
+Suggested normalized factors:
 
 ```text
-Promotion Strength
-Source Reliability
-Freshness
-Category Relevance
-Competitor Importance
-AI Confidence
+promotion_strength
+source_reliability
+freshness
+category_relevance
+ai_confidence
+evidence_quality
+commercial_impact
 ```
 
-Recommended initial formula:
+Example configurable formula:
 
 ```text
 rank_score =
@@ -1443,1149 +782,278 @@ rank_score =
   + 0.20 * source_reliability
   + 0.15 * freshness
   + 0.15 * category_relevance
-  + 0.10 * competitor_importance
   + 0.10 * ai_confidence
+  + 0.10 * evidence_quality
 ```
 
-All component scores must be normalized between:
+The exact weights must be configuration, not hidden code constants.
+
+The UI label should be `Impact Score`, not `Accuracy`.
+
+Ranking must be deterministic for equal input data.
+
+## 27. Top 10 Query Contract
+
+Default eligibility:
 
 ```text
-0.0
+status = ACTIVE
+quality gate = PASS
+last_verified_at >= now - 90 days
+category in configured target categories
+evidence_count > 0
 ```
 
-and
+Then:
 
 ```text
-1.0
+ORDER BY rank_score DESC, last_verified_at DESC, id
+LIMIT 10
 ```
 
----
+User filters may narrow the result. A historical explorer may use a different date range but must not label historical records as current Top 10.
 
-# 41. Promotion Strength
+## 28. API Requirements
 
-Initial suggested values:
-
-| Promotion    | Score |
-| ------------ | ----: |
-| B1G1         |  1.00 |
-| 50% discount |  0.95 |
-| B2G1         |  0.90 |
-| 40% discount |  0.85 |
-| B3G1         |  0.70 |
-| 30% discount |  0.75 |
-| 20% discount |  0.60 |
-| Multibuy     |  0.55 |
-| Member price |  0.50 |
-| Bundle       |  0.45 |
-| Cashback     |  0.40 |
-| Gift         |  0.40 |
-| Voucher      |  0.40 |
-| Other        |  0.20 |
-
-These values are configuration, not hard-coded business truth.
-
-They should eventually be calibrated using actual commercial relevance.
-
----
-
-# 42. Freshness Score
-
-Freshness should decay over time.
-
-Example:
-
-```text
-0 days old       → 1.00
-1–7 days         → 0.95
-8–30 days        → 0.85
-31–60 days       → 0.70
-61–90 days       → 0.50
->90 days         → 0.00
-```
-
-The exact curve should be configurable.
-
----
-
-# 43. Category Relevance
-
-The initial target categories are:
-
-```text
-BISCUIT
-CRACKER
-COOKIE
-WAFER
-SNACK
-```
-
-Category relevance should be highest for the core target categories.
-
-Irrelevant products should not enter the Top 10 simply because they have a strong discount.
-
----
-
-# 44. Top 10 API
-
-Primary endpoint:
-
-```http
-GET /api/v1/promotions/top10
-```
-
-Example response:
-
-```json
-{
-  "generated_at": "2026-09-02T10:00:00Z",
-  "count": 10,
-  "items": [
-    {
-      "rank": 1,
-      "competitor": "Example Competitor",
-      "retailer": "Example Retailer",
-      "brand": "Example Brand",
-      "product": "Example Biscuit 200g",
-      "promotion_type": "BUY_X_GET_Y",
-      "buy_quantity": 1,
-      "free_quantity": 1,
-      "regular_price": 20000,
-      "promo_price": 10000,
-      "start_date": "2026-09-01",
-      "end_date": "2026-09-07",
-      "source_url": "...",
-      "rank_score": 0.94,
-      "ai_confidence": 0.98,
-      "last_verified": "2026-09-02T09:50:00Z"
-    }
-  ]
-}
-```
-
----
-
-# 45. Promotion Detail API
-
-```http
-GET /api/v1/promotions/{promotion_id}
-```
-
-The detail endpoint should return:
-
-* Canonical promotion
-* Product information
-* Competitor
-* Retailer
-* Promotion mechanism
-* Dates
-* Price
-* Evidence
-* Source URLs
-* AI confidence
-* Crawl history
-* Observations
-* Ranking score
-
----
-
-# 46. Filtering API
-
-The API should eventually support:
-
-```text
-competitor
-brand
-retailer
-category
-promotion_type
-status
-date range
-minimum discount
-source tier
-```
-
-Example:
-
-```http
-GET /api/v1/promotions?promotion_type=BUY_X_GET_Y
-```
-
----
-
-# 47. Dashboard
-
-The MVP dashboard should display:
-
-## Top 10
-
-```text
-Rank
-Competitor
-Brand
-Product
-Promotion
-Price
-Discount
-Validity
-Retailer
-Source
-Confidence
-```
-
-## Filters
-
-```text
-Competitor
-Retailer
-Brand
-Promotion type
-Category
-Active/Expired
-Date
-```
-
-## Promotion Detail
-
-Display the original source evidence.
-
----
-
-# 48. Alerts
-
-The platform should eventually support alerts for:
-
-* New B1G1
-* New B2G1
-* Large discount
-* Competitor promotion detected
-* Promotion ending soon
-* Important competitor activity
-* Significant price change
-
-Example alert:
-
-```text
-Competitor promotion detected
-
-Competitor: Example Competitor
-Brand: Example Brand
-Product: Example Biscuit 200g
-
-Promotion: Buy 1 Get 1
-Retailer: Example Retailer
-
-Valid until: 7 Sep 2026
-
-Confidence: 97%
-```
-
----
-
-# 49. Object Storage
-
-Raw web evidence should preferably be stored outside PostgreSQL.
-
-Recommended structure:
-
-```text
-bucket/
-  source/
-    year/
-      month/
-        day/
-          crawl_id/
-            page.html
-            page.pdf
-            image-01.png
-            screenshot.png
-```
-
-Database stores:
-
-```text
-raw_content_uri
-image_uri
-screenshot_uri
-```
-
-This keeps PostgreSQL focused on structured data.
-
----
-
-# 50. Security
-
-## Database
-
-The application role must only have access to:
-
-```text
-competitor_intel
-```
-
-It must not have access to:
-
-```text
-dwh_prod
-```
-
-## Credentials
-
-Secrets must not be committed to Git.
-
-Use:
-
-```text
-.env
-```
-
-locally and a proper secret-management mechanism in production.
-
-## API
-
-The API should eventually implement:
-
-* Authentication
-* Authorization
-* Rate limiting
-* Request validation
-* Audit logging
-
----
-
-# 51. Application Docker Architecture
-
-PostgreSQL is external to Docker.
-
-Docker may run:
-
-```text
-┌──────────────────────────────┐
-│ Docker Compose               │
-│                              │
-│ FastAPI                      │
-│ Worker                       │
-│ Scheduler                    │
-│ Redis                        │
-│ Playwright/Crawler           │
-└──────────────┬───────────────┘
-               │
-               │ PostgreSQL connection
-               ▼
-     Existing PostgreSQL Server
-               │
-               └── competitor_intel
-```
-
-There must be no:
-
-```text
-postgres:
-```
-
-service in the project's Docker Compose file unless explicitly needed for isolated automated tests.
-
----
-
-# 52. Local Development
-
-Developers should be able to run:
-
-```bash
-docker compose up
-```
-
-while PostgreSQL remains on the existing server.
-
-Environment:
-
-```env
-DATABASE_URL=postgresql+psycopg://competitor_intel_app:<PASSWORD>@<HOST>:5432/competitor_intel
-```
-
-If the PostgreSQL server is not reachable from containers, configure the appropriate network route or host address.
-
-Do not solve this by connecting the application to `dwh_prod`.
-
----
-
-# 53. Testing
-
-Tests must use a separate test database.
-
-Recommended:
-
-```text
-competitor_intel_test
-```
-
-The test environment must never run against:
-
-```text
-dwh_prod
-```
-
-Automated tests should include:
-
-### Database
-
-* Migration from empty database
-* Rollback
-* Constraints
-* Indexes
-* Foreign keys
-
-### Extraction
-
-* Discount extraction
-* B1G1 extraction
-* B2G1 extraction
-* Bundle extraction
-* Member price extraction
-* Cashback extraction
-* Voucher extraction
-
-### Dates
-
-* Active promotion
-* Expired promotion
-* Upcoming promotion
-* Missing end date
-* Three-month cutoff
-
-### Deduplication
-
-* Exact duplicate
-* Same promotion from different sources
-* Slightly different product naming
-* Different observation timestamps
-
-### Ranking
-
-* Strong promotion
-* Fresh promotion
-* Reliable source
-* High-confidence extraction
-
----
-
-# 54. Acceptance Tests
-
-The MVP is successful when the following conditions are met.
-
-## Database
-
-A completely empty `competitor_intel` database can be initialized using:
-
-```bash
-alembic upgrade head
-```
-
-No existing database tables are required.
-
-## Isolation
-
-The application can operate without any access to:
-
-```text
-dwh_prod
-```
-
-## Crawling
-
-The system can crawl at least:
-
-* One retailer website
-* One marketplace
-* One promotion/news source
-
-## Extraction
-
-The system can correctly extract:
-
-* Product
-* Brand
-* Price
-* Promotion type
-* Promotion mechanic
-* Dates
-* Source
-* Evidence
-* Confidence
-
-## Ranking
-
-The system returns:
-
-```text
-Top 10
-```
-
-active promotions.
-
-## Recency
-
-Promotions older than three months are excluded.
-
-## Validity
-
-Expired promotions are excluded from the default Top 10.
-
-## Evidence
-
-Every Top 10 item has a source and evidence.
-
-## Deduplication
-
-The same commercial promotion is not displayed multiple times simply because it appears on several sources.
-
----
-
-# 55. Recommended Project Structure
-
-```text
-competitor-intel/
-│
-├── app/
-│   ├── api/
-│   ├── core/
-│   ├── db/
-│   ├── models/
-│   ├── schemas/
-│   ├── repositories/
-│   ├── services/
-│   │   ├── crawler/
-│   │   ├── extraction/
-│   │   ├── ocr/
-│   │   ├── ai/
-│   │   ├── validation/
-│   │   ├── entity_resolution/
-│   │   ├── deduplication/
-│   │   └── ranking/
-│   ├── workers/
-│   └── main.py
-│
-├── migrations/
-│
-├── tests/
-│   ├── unit/
-│   ├── integration/
-│   └── fixtures/
-│
-├── scripts/
-│   ├── create_database.sql
-│   ├── seed_sources.py
-│   └── seed_reference_data.py
-│
-├── docker/
-│
-├── docker-compose.yml
-├── Dockerfile
-├── alembic.ini
-├── pyproject.toml
-├── .env.example
-├── README.md
-└── TECHNICAL_DESIGN.md
-```
-
----
-
-# 56. Database Provisioning Script
-
-The project should provide a script for an administrator to create the database.
-
-Example:
-
-```sql
-CREATE ROLE competitor_intel_owner
-WITH LOGIN PASSWORD '<OWNER_PASSWORD>';
-
-CREATE DATABASE competitor_intel
-OWNER competitor_intel_owner;
-```
-
-Then connect to the new database and create the application role:
-
-```sql
-CREATE ROLE competitor_intel_app
-WITH LOGIN PASSWORD '<APP_PASSWORD>';
-
-GRANT CONNECT ON DATABASE competitor_intel
-TO competitor_intel_app;
-```
-
-The exact production provisioning process should be documented separately from application migrations because creating a PostgreSQL database requires server-level privileges.
-
----
-
-# 57. Schema Permissions
-
-After migrations, the application role should receive only the permissions it requires.
-
-Example:
-
-```sql
-GRANT USAGE ON SCHEMA competitor_intel
-TO competitor_intel_app;
-
-GRANT SELECT, INSERT, UPDATE, DELETE
-ON ALL TABLES IN SCHEMA competitor_intel
-TO competitor_intel_app;
-
-GRANT USAGE, SELECT, UPDATE
-ON ALL SEQUENCES IN SCHEMA competitor_intel
-TO competitor_intel_app;
-```
-
-Default privileges should also be configured for future tables.
-
-The application role should not be a PostgreSQL superuser.
-
-It should not own the database.
-
-It should not have broad server privileges.
-
----
-
-# 58. Data Lifecycle
-
-The lifecycle of a promotion is:
-
-```text
-DISCOVERED
-    ↓
-CRAWLED
-    ↓
-EXTRACTED
-    ↓
-VALIDATED
-    ↓
-ENTITY RESOLVED
-    ↓
-DEDUPLICATED
-    ↓
-RANKED
-    ↓
-ACTIVE
-    ↓
-EXPIRED
-```
-
-If extraction fails:
-
-```text
-CRAWLED
-    ↓
-EXTRACTION_FAILED
-    ↓
-RETRY / REVIEW
-```
-
-If confidence is insufficient:
-
-```text
-EXTRACTED
-    ↓
-REVIEW_REQUIRED
-```
-
----
-
-# 59. Observability
-
-The system must log:
-
-* Crawl start
-* Crawl completion
-* Crawl failures
-* Extraction duration
-* AI calls
-* AI token/cost metrics where available
-* Validation failures
-* Deduplication decisions
-* Ranking execution
-* API latency
-* Database errors
-
-Metrics should include:
-
-```text
-pages_crawled
-pages_failed
-promotions_extracted
-promotions_validated
-promotions_rejected
-promotions_reviewed
-promotions_active
-promotions_expired
-ai_extraction_success_rate
-crawl_success_rate
-top10_generation_time
-```
-
----
-
-# 60. AI Cost Control
-
-AI should not be called unnecessarily.
-
-Use a pipeline such as:
-
-```text
-URL
- ↓
-Fetch
- ↓
-Content hash
- ↓
-Has content changed?
- ├── NO → skip AI
- └── YES
-       ↓
-   lightweight extraction
-       ↓
-   Is promotion likely?
-       ├── NO → skip
-       └── YES
-             ↓
-          AI extraction
-```
-
-Images and vision models should only be used when required.
-
----
-
-# 61. Source Priority
-
-The crawler should prioritize sources based on:
-
-```text
-business importance
-source reliability
-historical promotion frequency
-freshness
-crawl cost
-expected information value
-```
-
-Example:
-
-```text
-Official retailer promotion page
-        ↓
-Official retailer catalog
-        ↓
-Official marketplace store
-        ↓
-Official brand source
-        ↓
-Promotion aggregator
-        ↓
-News
-        ↓
-Social
-```
-
----
-
-# 62. Compliance
-
-The crawler must respect applicable:
-
-* robots.txt
-* Terms of Service
-* Rate limits
-* Copyright restrictions
-* Authentication requirements
-* Anti-bot restrictions
-
-The system should prioritize publicly available information.
-
-It must not attempt to bypass:
-
-* CAPTCHA
-* Login controls
-* Access restrictions
-* Technical security mechanisms
-
----
-
-# 63. Future DWH Integration
-
-Integration with `dwh_prod` is explicitly deferred.
-
-The future architecture may be:
-
-```text
-competitor_intel
-       │
-       │ validated export
-       ▼
-ETL / ELT
-       │
-       ▼
-dwh_prod
-```
-
-Possible integration methods:
-
-```text
-Scheduled ETL
-API
-CSV export
-Parquet export
-Database replication
-Data pipeline
-```
-
-This should be implemented only after the Competitor Intelligence platform has stable and validated data.
-
-The application itself should continue to remain isolated from `dwh_prod`.
-
----
-
-# 64. MVP Implementation Order
-
-## Phase 1 — Infrastructure
-
-1. Create `competitor_intel` database.
-2. Create dedicated database owner.
-3. Create restricted application role.
-4. Verify application cannot access `dwh_prod`.
-5. Configure environment variables.
-6. Configure Alembic.
-7. Create initial migration.
-
-## Phase 2 — Database
-
-Implement:
-
-```text
-source_registry
-crawl_jobs
-crawl_documents
-promotion_observations
-promotions
-promotion_evidence
-competitors
-brands
-products
-retailers
-entity_mapping
-review_queue
-```
-
-## Phase 3 — Crawler
-
-Implement:
-
-* HTTP crawler
-* Playwright crawler
-* PDF extraction
-* OCR
-* Content hashing
-* Crawl scheduling
-
-## Phase 4 — AI Extraction
-
-Implement:
-
-* Structured extraction schema
-* Evidence extraction
-* Confidence scoring
-* Date normalization
-* Promotion normalization
-
-## Phase 5 — Validation
-
-Implement:
-
-* Required-field validation
-* Price validation
-* Date validation
-* Promotion mechanism validation
-* Category validation
-
-## Phase 6 — Entity Resolution
-
-Implement:
-
-* Brand matching
-* Product matching
-* Retailer matching
-* Competitor matching
-
-## Phase 7 — Deduplication
-
-Implement:
-
-* Deterministic matching
-* `pg_trgm`
-* Optional vector similarity
-
-## Phase 8 — Ranking
-
-Implement:
-
-* Promotion strength
-* Freshness
-* Source reliability
-* Category relevance
-* Competitor importance
-* AI confidence
-
-## Phase 9 — API
-
-Implement:
+At minimum:
 
 ```text
 GET /api/v1/promotions/top10
 GET /api/v1/promotions/{id}
 GET /api/v1/promotions
+GET /api/v1/stats/
+GET /api/v1/sources/health
+GET /health
 ```
 
-## Phase 10 — Dashboard
+Top 10 response should include:
 
-Implement:
+```json
+{
+  "promotion_id": "...",
+  "competitor": "Mayora",
+  "brand": "Roma",
+  "product": "Roma Sari Gandum Sandwich",
+  "category": "BISCUIT",
+  "regular_price": 11990,
+  "promo_price": 7900,
+  "discount_percentage": 34.0,
+  "promotion_type": "DISCOUNT",
+  "retailer": "Hypermart",
+  "channel": "OFFLINE_RETAIL",
+  "geography": {
+    "source_text": "Berlaku di Jawa",
+    "includes": ["Jawa"],
+    "excludes": []
+  },
+  "valid_from": "...",
+  "valid_until": "...",
+  "last_verified_at": "...",
+  "impact_score": 89.0,
+  "confidence": {
+    "product": 0.98,
+    "price": 0.99,
+    "promotion": 0.97,
+    "geography": 0.96,
+    "validity": 0.95
+  }
+}
+```
 
-* Top 10
-* Filters
-* Detail page
-* Evidence
-* Source links
-* Confidence
+The API must return an explicit data freshness timestamp.
 
----
+## 29. UI Data Contract
 
-# 65. Definition of Done
-
-The MVP is considered complete when:
-
-* A dedicated `competitor_intel` database exists on the existing PostgreSQL server.
-* PostgreSQL itself does not run inside Docker.
-* The application has no credentials for `dwh_prod`.
-* The database can be initialized from zero using migrations.
-* At least three source types can be crawled.
-* Promotions can be extracted using AI.
-* Evidence is preserved.
-* Promotion types are normalized.
-* Products and brands can be resolved.
-* Duplicate promotions are consolidated.
-* Expired promotions are excluded.
-* Promotions older than three months are excluded from the default Top 10.
-* The system produces a ranked Top 10.
-* Each Top 10 promotion has source evidence.
-* Low-confidence results can be reviewed.
-* Crawl and extraction failures are observable.
-* The system can run without modifying any existing DWH infrastructure.
-
----
-
-# 66. Key Architectural Principle
-
-The most important implementation principle is:
-
-> **Reuse the existing PostgreSQL server, but isolate this application in its own database.**
-
-The architecture therefore deliberately separates:
+The dashboard reads only through the API.
 
 ```text
-Infrastructure reuse
-        +
-Database isolation
-        +
-Application isolation
-        +
-Independent schema
+PostgreSQL
+   -> SQLAlchemy/service
+   -> FastAPI
+   -> frontend
 ```
 
-This provides the lowest implementation risk while avoiding unnecessary duplication of PostgreSQL infrastructure.
+No production promotion constants are permitted in frontend code.
 
-`dwh_prod` remains untouched and is not a dependency of the Competitor Promotion Intelligence Platform.
+If PostgreSQL has no rows, render an empty state.
 
-# 56. Web Application & User Interface
+If PostgreSQL is unavailable, render a database error state.
 
-This section defines the web-based interface and user workflows for the Competitor Promotion Intelligence Platform.
+If source data is stale, render a stale-data warning.
 
-## 56.1 Left Panel Navigation
+## 30. Source Adapter Design
 
-The application features a fixed left panel with the following navigation items:
+Each source should implement a predictable adapter contract:
 
-### Home
-- Dashboard section displaying KPI cards:
-  - Active Promotions count
-  - Competitors Tracked
-  - Brands Tracked
-  - Retailers Tracked
-  - Promotions Today
-  - Promotions Expiring < 7 Days
-- Quick links to Top 10 Active Promotions
-- Summary of recent additions and promotions recently validated
-
-### Settings (expandable/collapsible)
-- **Master Data** (child view)
-  - View and manage all reference tables
-  - CRUD operations supported with role-based permissions
-  - Filterable and searchable data grids
-  - Product categories validated: biscuits, crackers, cookies, wafers, sandwich biscuits, cream biscuits, sweet biscuits, savory crackers, related snack products
-  - Tables: Competitors, Brands, Products, Retailers, Source Registry, Promotions
-
-- **Source Management**
-  - Configure and add new data sources manually
-  - Add sources with: name, domain, source type, reliability score, country, crawl frequency, robots.txt compliance
-  - Toggle source active/inactive status
-  - Configure crawl frequency per source tier (15-60 min for high-priority, 1-3h for marketplace, 3-6h for catalog, 6-24h for social)
-
-- **User Permissions**
-  - Manage role-based access control
-  - Role definitions: Admin (full CRUD), Editor (add/edit promotions/products), Viewer (read-only), Crawler (source config only)
-  - Permission matrix controlling access to master data operations
-
-## 56.2 Master Data CRUD Operations
-
-### Data Tables with Create/Read/Update/Delete Support:
-
-1. **Competitors** - Manage competitor brands/entities
-   - Fields: id, name, normalized_name, website, importance_score, is_active, created_at, updated_at
-   - `importance_score` used by ranking engine to prioritize strategically important competitors
-
-2. **Brands** - Manage product brands under competitors
-   - Fields: id, competitor_id, name, normalized_name, manufacturer, created_at, updated_at
-
-3. **Products** - Manage product catalog
-   - Fields: id, brand_id, name, normalized_name, sku, barcode, variant, pack_size, unit, category, subcategory, created_at, updated_at
-   - System must support products without known SKU or barcode
-   - Unknown values remain NULL; AI must never invent SKU, barcode, price, or promotion date
-
-4. **Retailers** - Manage retailer/channels
-   - Fields: id, name, normalized_name, website, channel, country, created_at, updated_at
-   - Example channels: SUPERMARKET, MINIMARKET, E_COMMERCE, MARKETPLACE, OFFICIAL_STORE, OTHER
-
-5. **Source Registry** - Manage data source configuration
-   - Fields: id, source_name, domain, source_type, reliability_score, country, active, crawl_frequency_minutes, robots_allowed, created_at, updated_at
-   - Source types: RETAILER, BRAND, MARKETPLACE, PROMOTION_AGGREGATOR, NEWS, SOCIAL, OTHER
-   - Reliability tiers: TIER_1 (1.00), TIER_2 (0.85), TIER_3 (0.70), TIER_4 (0.55), TIER_5 (0.40)
-
-6. **Promotions** - View and manage promotion records
-   - Fields: id, competitor_id, brand_id, product_id, retailer_id, promotion_type, promotion_title, regular_price, promo_price, currency, discount_percentage, buy_quantity, free_quantity, bundle_quantity, cashback_amount, voucher_amount, minimum_purchase_amount, minimum_purchase_quantity, gift_description, promotion_start, promotion_end, channel, geography, source_id, source_url, evidence_text, evidence_json, ai_confidence, source_reliability, status, first_seen_at, last_seen_at, created_at, updated_at
-
-### CRUD Operations by Role:
-
-| Operation | Competitors | Brands | Products | Retailers | Sources | Promotions |
-|-----------|-------------|--------|----------|-----------|---------|------------|
-| **Create** | Admin, Editor | Admin, Editor | Admin, Editor | Admin, Editor | Admin | Admin, Editor |
-| **Read** | All authenticated users | All authenticated users | All authenticated users | All authenticated users | All authenticated users | All authenticated users |
-| **Update** | Admin, Editor | Admin, Editor | Admin, Editor | Admin, Editor | Admin | Admin, Editor |
-| **Delete** | Admin only | Admin only | Admin only | Admin only | Admin only | Admin only |
-
-### Permission Matrix:
-
-```
-                    | Competitors | Brands | Products | Retailers | Sources | Promotions | Settings
----------------------------------------------------------------------------
-Admin               | ✓ CRUD      | ✓ CRUD | ✓ CRUD   | ✓ CRUD    | ✓ CRUD  | ✓ CRUD     | ✓ Full
-Editor              | ✓ CRUD      | ✓ CRUD | ✓ CRUD   | ✓ CRUD    | ✓ CRUD  | ✓ Add/Edit | ✓ Add/Edit
-Viewer              | ✓ Read      | ✓ Read | ✓ Read   | ✓ Read    | ✗       | ✓ Read     | ✗
-Crawler             | ✗           | ✗      | ✗        | ✗         | ✓ Config| ✗          | ✗
+```text
+SourceAdapter
+├── discover()
+├── fetch(url)
+├── parse_documents()
+├── extract_candidates()
+├── extract_source_metadata()
+└── health_check()
 ```
 
-## 56.3 Manual Source Addition
+Hemat.id should have fixture tests covering:
 
-### Workflow for Users Discovering New Source Websites:
+- normal promotion page
+- missing price
+- percentage discount
+- Buy X Get Y
+- missing dates
+- explicit geographic scope
+- multiple geographic scopes
+- geographic exclusions
+- retailer/store exclusions
+- changed HTML structure
+- blocked/timeout response
 
-1. **Navigate to Settings → Source Management → Add New Source**
-2. **Fill in source details:**
-   - Source name (e.g., "Promo Situs X")
-   - Domain (e.g., "promositusx.com")
-   - Source type (retailer, marketplace, aggregator, social media, news)
-   - Reliability score (0.0000 - 1.0000; Tier 1 = 1.00, Tier 2 = 0.85, etc.)
-   - Country (e.g., Indonesia)
-   - Crawl frequency (minutes; 15-60 for high-priority, 1-3h for marketplace, etc.)
-   - Robots.txt compliance status
-3. **Save source** - added to source_registry and available for crawling
-4. **Optional: Add initial test URL** to verify crawling works
+## 31. Scheduler
 
-### Manual Promotion Entry:
+MVP may use APScheduler.
 
-1. **Navigate to Settings → Master Data → Add Promotion Manually**
-2. **Fill in promotion details:**
-   - Competitor brand selection
-   - Product name and variant
-   - Pack size
-   - Promotion type (DISCOUNT, BUY_X_GET_Y, MULTIBUY, CASHBACK, VOUCHER, GIFT_WITH_PURCHASE, MEMBER_PRICE, BUNDLE)
-   - Regular price (IDR)
-   - Promo price (IDR)
-   - Discount percentage
-   - Buy quantity and free quantity
-   - Minimum purchase quantity and value
-   - Promotion start date
-   - Promotion end date
-   - Retailer
-   - Channel type (modern_trade, minimarket, supermarket, hypermarket, ecommerce, marketplace, official_brand_store, offline_retail)
-   - Geography (e.g., Indonesia)
-   - Source URL
-   - Evidence text (original promotion wording)
-   - AI confidence score (lower default for manual entries, e.g., 0.70)
-3. **Save promotion** - record added to promotions table with status DISCOVERED
-4. Manual entries maintain evidence trail and can be flagged for admin review
+Recommended baseline:
 
-## 56.4 User Authentication & Authorization
+- Hemat.id: 30–60 minutes for priority pages
+- source-specific schedules configurable in `source_registry`
+- retries with exponential backoff
+- no overlapping runs for the same source unless explicitly allowed
 
-### Role Definitions:
+Near-expiry promotions may be rechecked more frequently.
 
-| Role | Description | Permissions |
-|------|-------------|-------------|
-| **Admin** | Full system administrator | Full CRUD on all master data; manage users; configure sources; view all promotions; manage permissions |
-| **Editor** | Promotions and data management | CRUD on products, retailers, categories; add/edit promotions manually; cannot delete master data records |
-| **Viewer** | Read-only access | View all data (promotions, master data); cannot make any changes |
-| **Crawler** | Source configuration only | Configure and monitor data sources; cannot view or edit promotion/data records |
+Scheduler times must be stored in UTC and displayed in the user's configured/local timezone.
 
-### Authentication Notes:
+## 32. Source Health
 
-- Authentication mechanism to be implemented (e.g., JWT, OAuth, session-based)
-- Passwords never committed to Git; stored securely via .env or secret manager
-- Application role (`competitor_intel_app`) must only have access to `competitor_intel` database
-- Never provide `dwh_prod` credentials to the application
-- API endpoints should implement rate limiting and request validation
+Expose:
 
-## 56.5 Search Functionality
+```text
+source
+last_success_at
+last_error_at
+last_http_status
+success_rate
+consecutive_failures
+last_document_count
+last_promotion_count
+```
 
-### Product/Promotion Search Interface:
+A crawler failure must not be interpreted as zero promotions.
 
-- **Global search bar** accessible from left panel
-- **Searchable fields:**
-  - Product name
-  - Brand name
-  - Competitor name
-  - Retailer name
-  - Promotion type (DISCOUNT, BUY_X_GET_Y, MULTIBUY, etc.)
-  - Discount percentage range
-  - Date range (start/end)
-  - Category (biscuit, cracker, cookie, wafer, snack)
-  - Geography
-- **Filter panels** (collapsible):
-  - Competitor/brand filters
-  - Retailer filters
-  - Promotion type filters
-  - Price range filters
-  - Date range filters
-  - Category filters
-- **Results display:**
-  - Table view with key promotion fields (rank, competitor, brand, product, promotion type, regular price, promo price, discount, retailer, validity, confidence, source)
-  - Pagination support (default 20-50 items per page)
-  - Export capabilities (CSV, Excel)
-  - Quick view modal for detailed promotion info
+## 33. Review Queue
 
-### API Search Endpoints (to be implemented):
+Create review items for:
 
-- `GET /api/v1/promotions/top10` - with filters: category, retailer, brand, competitor, promotion_type, days, status
-- `GET /api/v1/promotions` - full search with all filter parameters
-- `GET /api/v1/promotions/{promotion_id}` - detailed view
+- low confidence
+- unknown competitor
+- ambiguous product
+- price conflict
+- date conflict
+- geography ambiguity
+- source parsing failure
+- suspected material duplicate
+- unsupported promotion mechanic
 
-### Integration with Backend:
+The UI must allow a reviewer to see source evidence before approving.
 
-- Search queries translate to PostgreSQL queries with appropriate indexes
-- `pg_trgm` extension supports fuzzy text matching on product names, brand names
-- Results include confidence scores and evidence summaries
-- Manual and automated promotions searchable together with appropriate differentiation
+## 34. Security
 
----
+- secrets only in environment/secret manager
+- least-privilege DB roles
+- no credentials in logs
+- sanitize user-supplied URLs
+- respect robots.txt and source terms/limits
+- do not bypass authentication or anti-bot controls
+- audit administrative changes
+
+## 35. Observability
+
+Log structured events for:
+
+```text
+crawl_started
+crawl_completed
+crawl_failed
+extraction_started
+extraction_failed
+validation_failed
+entity_resolved
+promotion_created
+promotion_updated
+promotion_rejected
+review_created
+```
+
+Each event should carry source/job/document/promotion identifiers when available.
+
+## 36. Testing Strategy
+
+### Unit tests
+
+- price calculations
+- promotion taxonomy normalization
+- geography parsing
+- validity rules
+- ranking
+- deduplication
+
+### Fixture tests
+
+- Hemat.id HTML/page examples
+- OCR examples where required
+
+### Integration tests
+
+- empty database migration
+- ingestion into PostgreSQL
+- API reads canonical data
+- geography joins
+- evidence retrieval
+
+### End-to-end acceptance test
+
+```text
+Hemat.id fixture/live page
+ -> crawl document
+ -> AI extraction fixture
+ -> validation
+ -> geography normalization
+ -> entity resolution
+ -> deduplication
+ -> canonical promotion
+ -> PostgreSQL
+ -> API
+ -> Top 10 response
+ -> UI detail drawer
+```
+
+## 37. Operational Invariants
+
+The implementation is considered broken if any of these occur:
+
+- UI shows a promotion that is not present in PostgreSQL
+- promotion appears verified without evidence
+- unknown geography becomes Indonesia automatically
+- regional promotions are merged incorrectly
+- expired promotion appears in default Top 10
+- source failure is shown as zero activity
+- monetary values use floating-point storage
+- application accesses `dwh_prod`
+- production UI falls back to demo data
+- a model response can bypass deterministic validation
+
+## 38. Definition of Done
+
+Before further feature expansion:
+
+1. Documentation matches code behavior.
+2. Database migrations build from empty `competitor_intel`.
+3. Real Hemat.id ingestion is reproducible.
+4. Geography is stored relationally.
+5. Source evidence is auditable.
+6. PostgreSQL is the UI source of truth.
+7. Top 10 passes all quality gates.
+8. Source health is observable.
+9. Tests cover regional deduplication and stale/expired records.
+10. No mock production data remains in the dashboard.
