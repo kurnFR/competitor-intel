@@ -2034,7 +2034,14 @@ Microsoft Teams
 Dashboard
 Webhook
 ```
-
+# 45 New Section : Web Application & User Interface - to be inserted after section 44 (Alerting, line ~2000+). The additions cover:
+- Left panel: Home + Settings (with child views for Master Data, Source Management, User Permissions)
+- Master Data CRUD: Competitors, Brands, Products, Retailers, Source Registry with role-based permissions (Admin/Editor/Viewer/Crawler)
+- Manual source addition: Form to add new data sources to the registry
+- Manual promotion entry: Form to manually add promotions with evidence tracking
+- Search functionality: Global search with filters for product/brand/competitor/retailer/promotion type/date/category
+- User roles: Admin (full CRUD), Editor (add/edit), Viewer (read-only), Crawler (source config only)
+The existing PRD.md is a comprehensive technical design for the data collection/analysis engine. The new Section #45 bridges the gap by defining the web interface, user workflows, and administrative features requested.
 ---
 
 # 45. Example Alert

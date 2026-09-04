@@ -152,6 +152,89 @@ Returns counts of active promotions, competitors tracked, brands monitored, reta
 `GET /health`
 
 ---
+## 45. Web Application & User Interface
+
+The system provides a web-based interface accessible from the left panel with the following navigation:
+
+### 45.1 Left Panel Navigation
+
+**Home**
+- Dashboard with KPI cards showing active promotions count, competitors tracked, brands, retailers
+- Quick links to Top 10 active promotions
+- Summary of recent additions and promotions expiring soon
+
+**Settings** (expandable/collapsible)
+- **Master Data** - View and manage all reference tables (competitors, brands, products, retailers, sources)
+  - CRUD operations supported with role-based permissions
+  - Filterable and searchable data grids
+  - Product categories: biscuits, crackers, cookies, wafers, sandwich biscuits, cream biscuits, sweet biscuits, savory crackers, related snack products
+- **Source Management** - Configure and add new data sources manually
+  - Add new sources with name, domain, type, reliability score, crawl frequency
+  - Toggle source active/inactive status
+  - Configure crawl frequency per source tier
+- **User Permissions** - Manage role-based access control
+  - Role definitions: Admin (full CRUD), Editor (add/edit promotions/products), Viewer (read-only), Crawler (source config only)
+  - Permission matrix controlling access to master data operations
+
+### 45.2 Master Data Management
+
+Data tables with CRUD support:
+- **Competitors** - Manage competitor brands/entities (Admin/Editor can create/edit, Viewer can read)
+- **Brands** - Manage product brands under competitors
+- **Products** - Manage product catalog (biscuits, crackers, wafers, cookies, etc.) with category validation
+- **Retailers** - Manage retailer/channels (Indomaret, Alfamart, Shopee, Tokopedia, Lazada, etc.)
+- **Source Registry** - Manage data source configuration for crawlers
+- **Promotions** - View and manage promotion records
+
+CRUD Operations by Role:
+
+| Operation | Competitors | Brands | Products | Retailers | Sources | Promotions |
+|-----------|-------------|--------|----------|-----------|---------|------------|
+| **Create** | Admin, Editor | Admin, Editor | Admin, Editor | Admin, Editor | Admin | Admin, Editor |
+| **Read** | All users | All users | All users | All users | All users | All users |
+| **Update** | Admin, Editor | Admin, Editor | Admin, Editor | Admin, Editor | Admin | Admin, Editor |
+| **Delete** | Admin only | Admin only | Admin only | Admin only | Admin only | Admin only |
+
+### 45.3 Manual Source Addition
+
+Workflow for users discovering new source websites:
+1. Navigate to Settings → Source Management → Add New Source
+2. Fill in source details: name, domain, source type (retailer, marketplace, aggregator, social, news), reliability score (0.0000-1.0000), country (e.g., Indonesia), crawl frequency (minutes), robots.txt compliance
+3. Save source - added to registry and available for crawling
+4. Optional: Add initial test URL to verify crawling works
+
+### 45.4 Manual Promotion Entry
+
+1. Navigate to Settings → Master Data → Add Promotion Manually
+2. Fill in promotion details: competitor brand, product name/variant, pack size, promotion type (DISCOUNT, BUY_X_GET_Y, MULTIBUY, CASHBACK, VOUCHER, GIFT_WITH_PURCHASE, MEMBER_PRICE, BUNDLE), regular price (IDR), promo price (IDR), discount percentage, buy quantity, free quantity, minimum purchase, start date, end date, retailer, channel, geography, source URL, evidence text, AI confidence
+3. Save promotion - record added with status DISCOVERED, lower default AI confidence (e.g., 0.70)
+4. Manual entries maintain evidence trail and can be flagged for admin review
+
+### 45.5 User Roles & Permissions
+
+| Role | Competitors | Brands | Products | Retailers | Sources | Promotions | Settings |
+|------|-------------|--------|----------|-----------|---------|------------|----------|
+| **Admin** | ✓ (CRUD) | ✓ (CRUD) | ✓ (CRUD) | ✓ (CRUD) | ✓ (CRUD) | ✓ (CRUD) | ✓ (Full access) |
+| **Editor** | ✓ (CRUD) | ✓ (CRUD) | ✓ (CRUD) | ✓ (CRUD) | ✓ (CRUD) | ✓ (CRUD add/edit) | ✓ (Add/edit only) |
+| **Viewer** | ✓ (Read) | ✓ (Read) | ✓ (Read) | ✓ (Read) | ✗ | ✓ (Read) | ✗ |
+| **Crawler** | ✗ | ✗ | ✗ | ✗ | ✓ (Config) | ✗ | ✗ |
+
+### 45.6 Search Functionality
+
+- **Global search bar** accessible from left panel
+- **Searchable fields**: product name, brand, competitor, retailer, promotion type, discount percentage, date range, category, geography
+- **Filter panels** (collapsible): competitor/brand, retailer, promotion type, price range, date range, category
+- **Results display**: table view with key promotion fields, pagination, export (CSV, Excel), quick view modal
+
+### 45.7 Integration with Data Collection
+
+- Manual entries follow same validation as automated crawls
+- Manually added promotions get lower default AI confidence (0.70 vs typical 0.85-0.98)
+- Manual sources can be added to source registry for future automated crawling
+- All manual entries maintain evidence trail and audit history
+- Manual entries can be promoted to verified status by admin review
+
+---
 
 ## Automated Background Jobs
 * **Crawl & Extraction Pipeline**: Runs automatically every 30 minutes via APScheduler.

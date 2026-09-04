@@ -2401,3 +2401,191 @@ Independent schema
 This provides the lowest implementation risk while avoiding unnecessary duplication of PostgreSQL infrastructure.
 
 `dwh_prod` remains untouched and is not a dependency of the Competitor Promotion Intelligence Platform.
+
+# 56. Web Application & User Interface
+
+This section defines the web-based interface and user workflows for the Competitor Promotion Intelligence Platform.
+
+## 56.1 Left Panel Navigation
+
+The application features a fixed left panel with the following navigation items:
+
+### Home
+- Dashboard section displaying KPI cards:
+  - Active Promotions count
+  - Competitors Tracked
+  - Brands Tracked
+  - Retailers Tracked
+  - Promotions Today
+  - Promotions Expiring < 7 Days
+- Quick links to Top 10 Active Promotions
+- Summary of recent additions and promotions recently validated
+
+### Settings (expandable/collapsible)
+- **Master Data** (child view)
+  - View and manage all reference tables
+  - CRUD operations supported with role-based permissions
+  - Filterable and searchable data grids
+  - Product categories validated: biscuits, crackers, cookies, wafers, sandwich biscuits, cream biscuits, sweet biscuits, savory crackers, related snack products
+  - Tables: Competitors, Brands, Products, Retailers, Source Registry, Promotions
+
+- **Source Management**
+  - Configure and add new data sources manually
+  - Add sources with: name, domain, source type, reliability score, country, crawl frequency, robots.txt compliance
+  - Toggle source active/inactive status
+  - Configure crawl frequency per source tier (15-60 min for high-priority, 1-3h for marketplace, 3-6h for catalog, 6-24h for social)
+
+- **User Permissions**
+  - Manage role-based access control
+  - Role definitions: Admin (full CRUD), Editor (add/edit promotions/products), Viewer (read-only), Crawler (source config only)
+  - Permission matrix controlling access to master data operations
+
+## 56.2 Master Data CRUD Operations
+
+### Data Tables with Create/Read/Update/Delete Support:
+
+1. **Competitors** - Manage competitor brands/entities
+   - Fields: id, name, normalized_name, website, importance_score, is_active, created_at, updated_at
+   - `importance_score` used by ranking engine to prioritize strategically important competitors
+
+2. **Brands** - Manage product brands under competitors
+   - Fields: id, competitor_id, name, normalized_name, manufacturer, created_at, updated_at
+
+3. **Products** - Manage product catalog
+   - Fields: id, brand_id, name, normalized_name, sku, barcode, variant, pack_size, unit, category, subcategory, created_at, updated_at
+   - System must support products without known SKU or barcode
+   - Unknown values remain NULL; AI must never invent SKU, barcode, price, or promotion date
+
+4. **Retailers** - Manage retailer/channels
+   - Fields: id, name, normalized_name, website, channel, country, created_at, updated_at
+   - Example channels: SUPERMARKET, MINIMARKET, E_COMMERCE, MARKETPLACE, OFFICIAL_STORE, OTHER
+
+5. **Source Registry** - Manage data source configuration
+   - Fields: id, source_name, domain, source_type, reliability_score, country, active, crawl_frequency_minutes, robots_allowed, created_at, updated_at
+   - Source types: RETAILER, BRAND, MARKETPLACE, PROMOTION_AGGREGATOR, NEWS, SOCIAL, OTHER
+   - Reliability tiers: TIER_1 (1.00), TIER_2 (0.85), TIER_3 (0.70), TIER_4 (0.55), TIER_5 (0.40)
+
+6. **Promotions** - View and manage promotion records
+   - Fields: id, competitor_id, brand_id, product_id, retailer_id, promotion_type, promotion_title, regular_price, promo_price, currency, discount_percentage, buy_quantity, free_quantity, bundle_quantity, cashback_amount, voucher_amount, minimum_purchase_amount, minimum_purchase_quantity, gift_description, promotion_start, promotion_end, channel, geography, source_id, source_url, evidence_text, evidence_json, ai_confidence, source_reliability, status, first_seen_at, last_seen_at, created_at, updated_at
+
+### CRUD Operations by Role:
+
+| Operation | Competitors | Brands | Products | Retailers | Sources | Promotions |
+|-----------|-------------|--------|----------|-----------|---------|------------|
+| **Create** | Admin, Editor | Admin, Editor | Admin, Editor | Admin, Editor | Admin | Admin, Editor |
+| **Read** | All authenticated users | All authenticated users | All authenticated users | All authenticated users | All authenticated users | All authenticated users |
+| **Update** | Admin, Editor | Admin, Editor | Admin, Editor | Admin, Editor | Admin | Admin, Editor |
+| **Delete** | Admin only | Admin only | Admin only | Admin only | Admin only | Admin only |
+
+### Permission Matrix:
+
+```
+                    | Competitors | Brands | Products | Retailers | Sources | Promotions | Settings
+---------------------------------------------------------------------------
+Admin               | ✓ CRUD      | ✓ CRUD | ✓ CRUD   | ✓ CRUD    | ✓ CRUD  | ✓ CRUD     | ✓ Full
+Editor              | ✓ CRUD      | ✓ CRUD | ✓ CRUD   | ✓ CRUD    | ✓ CRUD  | ✓ Add/Edit | ✓ Add/Edit
+Viewer              | ✓ Read      | ✓ Read | ✓ Read   | ✓ Read    | ✗       | ✓ Read     | ✗
+Crawler             | ✗           | ✗      | ✗        | ✗         | ✓ Config| ✗          | ✗
+```
+
+## 56.3 Manual Source Addition
+
+### Workflow for Users Discovering New Source Websites:
+
+1. **Navigate to Settings → Source Management → Add New Source**
+2. **Fill in source details:**
+   - Source name (e.g., "Promo Situs X")
+   - Domain (e.g., "promositusx.com")
+   - Source type (retailer, marketplace, aggregator, social media, news)
+   - Reliability score (0.0000 - 1.0000; Tier 1 = 1.00, Tier 2 = 0.85, etc.)
+   - Country (e.g., Indonesia)
+   - Crawl frequency (minutes; 15-60 for high-priority, 1-3h for marketplace, etc.)
+   - Robots.txt compliance status
+3. **Save source** - added to source_registry and available for crawling
+4. **Optional: Add initial test URL** to verify crawling works
+
+### Manual Promotion Entry:
+
+1. **Navigate to Settings → Master Data → Add Promotion Manually**
+2. **Fill in promotion details:**
+   - Competitor brand selection
+   - Product name and variant
+   - Pack size
+   - Promotion type (DISCOUNT, BUY_X_GET_Y, MULTIBUY, CASHBACK, VOUCHER, GIFT_WITH_PURCHASE, MEMBER_PRICE, BUNDLE)
+   - Regular price (IDR)
+   - Promo price (IDR)
+   - Discount percentage
+   - Buy quantity and free quantity
+   - Minimum purchase quantity and value
+   - Promotion start date
+   - Promotion end date
+   - Retailer
+   - Channel type (modern_trade, minimarket, supermarket, hypermarket, ecommerce, marketplace, official_brand_store, offline_retail)
+   - Geography (e.g., Indonesia)
+   - Source URL
+   - Evidence text (original promotion wording)
+   - AI confidence score (lower default for manual entries, e.g., 0.70)
+3. **Save promotion** - record added to promotions table with status DISCOVERED
+4. Manual entries maintain evidence trail and can be flagged for admin review
+
+## 56.4 User Authentication & Authorization
+
+### Role Definitions:
+
+| Role | Description | Permissions |
+|------|-------------|-------------|
+| **Admin** | Full system administrator | Full CRUD on all master data; manage users; configure sources; view all promotions; manage permissions |
+| **Editor** | Promotions and data management | CRUD on products, retailers, categories; add/edit promotions manually; cannot delete master data records |
+| **Viewer** | Read-only access | View all data (promotions, master data); cannot make any changes |
+| **Crawler** | Source configuration only | Configure and monitor data sources; cannot view or edit promotion/data records |
+
+### Authentication Notes:
+
+- Authentication mechanism to be implemented (e.g., JWT, OAuth, session-based)
+- Passwords never committed to Git; stored securely via .env or secret manager
+- Application role (`competitor_intel_app`) must only have access to `competitor_intel` database
+- Never provide `dwh_prod` credentials to the application
+- API endpoints should implement rate limiting and request validation
+
+## 56.5 Search Functionality
+
+### Product/Promotion Search Interface:
+
+- **Global search bar** accessible from left panel
+- **Searchable fields:**
+  - Product name
+  - Brand name
+  - Competitor name
+  - Retailer name
+  - Promotion type (DISCOUNT, BUY_X_GET_Y, MULTIBUY, etc.)
+  - Discount percentage range
+  - Date range (start/end)
+  - Category (biscuit, cracker, cookie, wafer, snack)
+  - Geography
+- **Filter panels** (collapsible):
+  - Competitor/brand filters
+  - Retailer filters
+  - Promotion type filters
+  - Price range filters
+  - Date range filters
+  - Category filters
+- **Results display:**
+  - Table view with key promotion fields (rank, competitor, brand, product, promotion type, regular price, promo price, discount, retailer, validity, confidence, source)
+  - Pagination support (default 20-50 items per page)
+  - Export capabilities (CSV, Excel)
+  - Quick view modal for detailed promotion info
+
+### API Search Endpoints (to be implemented):
+
+- `GET /api/v1/promotions/top10` - with filters: category, retailer, brand, competitor, promotion_type, days, status
+- `GET /api/v1/promotions` - full search with all filter parameters
+- `GET /api/v1/promotions/{promotion_id}` - detailed view
+
+### Integration with Backend:
+
+- Search queries translate to PostgreSQL queries with appropriate indexes
+- `pg_trgm` extension supports fuzzy text matching on product names, brand names
+- Results include confidence scores and evidence summaries
+- Manual and automated promotions searchable together with appropriate differentiation
+
+---
