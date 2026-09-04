@@ -4,7 +4,7 @@
 
 The product should feel like a professional enterprise intelligence application: dense enough for commercial users, clear enough for management, and transparent enough for data-quality review.
 
-The interface must prioritize:
+Priorities:
 
 1. trust
 2. fast scanning
@@ -13,6 +13,7 @@ The interface must prioritize:
 5. freshness
 6. regional understanding
 7. explainability
+8. source transparency
 
 ## 2. Information Architecture
 
@@ -26,71 +27,36 @@ Review Queue
 Settings
 ```
 
-Keep operational pages separate from administrative settings.
-
 ## 3. Global Header
 
-Show:
+Show product name, actual data freshness, environment, Refresh and Scan now. If source discovery is available, expose it separately as `Discover Sources` for authorized users.
 
-- product name
-- current data freshness
-- current environment
-- Refresh action
-- Scan now action
-- user/profile area if authentication exists
-
-Example:
-
-```text
-Competitor Promotion Intelligence     ● Data current
-Last successful crawl: 10:44 WIB       [Refresh] [Scan now]
-```
-
-Do not use a generic `Live System` badge without an actual freshness timestamp.
+Do not use a generic `Live System` badge without a real freshness timestamp.
 
 ## 4. Overview Page
 
-### KPI cards
+Show KPI cards for active promotions, competitors, brands, retailers, expiring <=7 days, and source health.
 
-```text
-Active Promotions
-Competitors Tracked
-Brands Monitored
-Retailers Monitored
-Expiring <= 7 Days
-```
+Recommended sections:
 
-Each KPI should have a clear definition and optional click-through.
-
-### Recommended sections
-
-1. Promotion activity trend — last 30 days
-2. Top competitor activity
-3. Regional distribution
+1. promotion activity trend
+2. top competitor activity
+3. regional distribution
 4. Top 10 active promotions
-5. Expiring soon
-6. Source health
+5. expiring soon
+6. source health
 
 ## 5. Promotions Page
 
-### Filter bar
-
-Use compact, multi-select filters:
+Filters:
 
 ```text
 Category | Competitor | Brand | Retailer | Mechanic | Geography | Validity | Source
 ```
 
-Provide:
+Show result count and last refresh time. Use server-side filtering/pagination.
 
-- clear all
-- saved filter state if later implemented
-- result count
-- last refreshed timestamp
-
-### Table
-
-Recommended columns:
+Recommended primary columns:
 
 ```text
 Rank
@@ -105,23 +71,21 @@ Valid Until
 Impact Score
 ```
 
-Do not expose every audit field in the primary table.
+Do not expose every audit field in the main table.
 
 ## 6. Promotion Table UX
 
-- use compact rows
-- highlight promotion mechanic and promo price
-- show `No evidence` or `Unknown` explicitly
-- never use zero to represent missing data
-- show expiry urgency with a non-color-only indicator
-- allow sorting by impact, expiry and latest verification
-- keep pagination/server-side filtering for scale
+- compact rows
+- highlight mechanic and promo price
+- explicitly show `No evidence` / `Unknown`
+- never use zero for missing data
+- expiry urgency must not rely on color alone
+- sort by impact, expiry and latest verification
+- server-side pagination
 
 ## 7. Promotion Detail Drawer
 
-Clicking a row should open a right-side drawer without losing the list context.
-
-Recommended structure:
+Open a right-side drawer without losing list context.
 
 ```text
 PRODUCT
@@ -145,6 +109,7 @@ Source geography wording
 WHEN
 Valid from
 Valid until
+First seen
 Last seen
 Last verified
 
@@ -155,7 +120,7 @@ AI confidence by field
 Validation status
 
 EVIDENCE
-Exact supporting quotes
+Supporting quotes
 Source URL
 Open source
 
@@ -166,9 +131,7 @@ Why this promotion ranks highly
 
 ## 8. Evidence UX
 
-Evidence should be visible without making users read raw HTML.
-
-For example:
+Evidence should be visible without forcing users to read raw HTML.
 
 ```text
 PRICE
@@ -181,28 +144,26 @@ VALIDITY
 "Periode 1–3 September 2026"
 ```
 
-Provide an `Open source` action to the original public page.
+Provide an `Open source` action.
 
 ## 9. Field Confidence
 
-Prefer field-level confidence over one opaque score.
+Show field-level confidence rather than only one opaque score.
 
 ```text
-Product      98%  ✓
-Price        99%  ✓
-Promotion    97%  ✓
-Geography    95%  ✓
-Validity     91%  ⚠
-Competitor   82%  ⚠
+Product      98% ✓
+Price        99% ✓
+Promotion    97% ✓
+Geography    95% ✓
+Validity     91% ⚠
+Competitor   82% ⚠
 ```
 
-Explain that confidence is model/extraction confidence, not factual probability.
+Confidence is extraction/model confidence, not factual probability.
 
 ## 10. Regional Pricing Page
 
-This page is a key differentiator.
-
-User selects a product/SKU and sees comparable observations:
+Select a product/SKU and compare verified observations by geography, retailer and channel.
 
 | Area | Regular | Promo | Discount | Retailer | Verified |
 |---|---:|---:|---:|---|---|
@@ -210,22 +171,15 @@ User selects a product/SKU and sees comparable observations:
 | Sumatera | Rp12,500 | Rp8,500 | 32% | Hypermart | 10:39 |
 | Sulawesi | No evidence | — | — | Hypermart | — |
 
-`No evidence` means the system has no verified observation. It does not mean no promotion exists.
+`No evidence` does not mean no promotion exists.
 
 ## 11. Geography UX
 
-Show geography as a compact badge plus details.
-
-Example:
+Show geography as a compact badge and expose inclusions/exclusions in the detail drawer.
 
 ```text
-Jawa
-+2 areas
-```
+Jawa +2 areas
 
-On expansion:
-
-```text
 Included
 ✓ Jawa
 ✓ Bali
@@ -235,50 +189,72 @@ Excluded
 × Indomaret Point
 ```
 
-Always show source wording in the detail view.
+Always expose source wording. Never display a silently inferred nationwide scope.
 
-## 12. Expiry UX
+## 12. Source Registry / Sources Page
 
-Use clear relative labels:
+This page is both an operational view and a controlled source-management interface.
 
-```text
-Expires today
-Expires tomorrow
-2 days left
-7 days left
-```
-
-Do not rely on color alone. Include text/icon semantics.
-
-## 13. Source Health Page
-
-For each source show:
+Show:
 
 ```text
 Source
+Type
 Status
+Reliability
+Priority
 Last successful crawl
 Last failure
 Success rate
-Consecutive failures
-Documents collected
-Promotions extracted
+Active URLs
+Promotions found
 ```
 
-Example states:
+Example:
 
 ```text
-Healthy
-Warning
-Stale
-Failed
-Blocked
-Not configured
+Hemat.id             Active   0.78   Healthy
+Supermarket A        Active   0.94   Healthy
+Brand X              Candidate  —    Awaiting approval
+Marketplace Y        Blocked   —    Blocked
+```
+
+Separate these actions:
+
+```text
+Scan approved sources
+Discover new sources
+Review candidates
+```
+
+A discovered source must not automatically become trusted.
+
+## 13.1 Source Candidate Detail
+
+Show:
+
+- discovered domain/URL
+- source class
+- discovery method
+- first discovered time
+- public-access status
+- proposed adapter
+- proposed reliability tier
+- evidence of relevance
+- assessment notes
+
+Actions:
+
+```text
+Approve
+Reject
+Disable
+Mark Manual Only
 ```
 
 ## 14. Review Queue UX
 
-Prioritize by commercial risk.
+Prioritize by commercial risk:
 
 ```text
 HIGH  Geography conflict
@@ -289,54 +265,30 @@ MED   Low extraction confidence
 LOW   Non-critical metadata
 ```
 
-Review drawer should show side-by-side:
+Show side-by-side:
 
 ```text
 Source evidence | AI extraction | Current value
 ```
 
-Actions:
-
-```text
-Approve
-Edit
-Reject
-Link entity
-```
+Actions: Approve, Edit, Reject, Link entity.
 
 ## 15. Search
 
-Global search should support:
+Global search should support product, brand, competitor, retailer, geography, source and mechanic.
 
-- product
-- brand
-- competitor
-- retailer
-- geography
-- promotion mechanic
+## 16. Loading / Empty / Error / Stale
 
-Search should return the same canonical data used by the list pages.
+Every page must distinguish loading, empty, error and stale states.
 
-## 16. Loading / Empty / Error / Stale States
-
-Every data page must define all four states.
-
-### Loading
-
-Use skeleton rows/cards.
-
-### Empty
-
-Example:
+Example empty:
 
 ```text
 No active promotions match these filters.
 Try removing Geography or Retailer filters.
 ```
 
-### Error
-
-Example:
+Example error:
 
 ```text
 We couldn't load promotion data.
@@ -344,134 +296,103 @@ PostgreSQL/API is currently unavailable.
 [Retry]
 ```
 
-### Stale
-
-Example:
+Example stale:
 
 ```text
 Data may be stale.
 Last successful source crawl: 6h 18m ago.
 ```
 
-Never insert fake records to avoid an empty screen.
+Never insert fake records.
 
-## 17. Refresh vs Scan
+## 17. Refresh vs Scan vs Discover
 
-`Refresh`:
+`Refresh` reloads canonical PostgreSQL data.
 
-> Reload canonical data already stored in PostgreSQL.
+`Scan now` crawls active approved source targets.
 
-`Scan now`:
-
-> Start source collection and extraction.
-
-After Scan now, show progress and a completion summary.
+`Discover sources` searches for candidate sources/URLs and adds them to the assessment queue; it does not publish them automatically.
 
 ## 18. Scan Progress UX
 
 ```text
 Scan in progress
 
-Hemat.id
-██████████████░░ 82%
-
-Pages fetched        23
-Documents changed    17
-Promotions found      9
-Validated             7
-Review required       2
+Approved sources       12
+URLs scheduled          86
+Pages fetched           73
+Changed documents       31
+Promotions found        19
+Validated               14
+Review required          5
 ```
 
-Do not claim a scan is complete until the backend job reports completion.
+Do not claim completion until the backend job reports completion.
 
 ## 19. Ranking UX
 
-Rename technical `rank_score` to `Impact Score` in the business UI.
+Display technical `rank_score` as `Impact Score`.
 
 Provide an explanation:
 
 ```text
 Why #1?
-• 34% price reduction
-• high competitor relevance
+• strong promotion mechanic
+• relevant competitor
 • reliable source
-• verified recently
-• broad geographic scope
+• recently verified
+• broad verified geographic scope
 • strong evidence
 ```
 
-Never imply that 89 points means 89% accuracy.
+Never imply the score is accuracy.
 
 ## 20. Visual Design Principles
 
-- restrained enterprise color palette
+- restrained enterprise palette
 - strong typography hierarchy
 - high information density without clutter
 - consistent spacing
-- subtle borders and elevation
+- subtle borders/elevation
 - accessible contrast
 - keyboard-friendly controls
 - visible focus states
 - responsive layout
-- color is supplementary, not the only status signal
-
-The existing dark theme can remain, but it should be treated as an enterprise theme rather than a decorative gaming dashboard.
+- color supplementary to text/icons
 
 ## 21. Accessibility
 
-Target WCAG 2.1 AA behavior where practical:
-
-- keyboard navigation
-- semantic buttons/links
-- sufficient contrast
-- visible focus
-- labels for filters
-- non-color status indicators
-- readable number/date formats
+Target WCAG 2.1 AA behavior where practical: keyboard navigation, semantic controls, sufficient contrast, visible focus, labels, non-color status indicators and readable number/date formats.
 
 ## 22. Data Display Rules
 
-- IDR format: `Rp7.900`
-- percentages: `34%`
+- IDR: `Rp7.900`
+- percentage: `34%`
 - unknown: `Unknown`
 - no evidence: `No evidence`
 - not applicable: `N/A`
 - never show `0` for missing commercial facts
-- dates use local display timezone while retaining precise UTC timestamps in audit detail
+- local display timezone with precise timestamp in audit detail
 
 ## 23. Responsive Behavior
 
-Desktop is the primary target for commercial users.
-
-At narrower widths:
-
-- collapse secondary columns
-- preserve Product, Promotion, Promo Price, Area and Validity
-- move audit fields into the drawer
-- keep filters accessible through a filter panel
+Desktop is primary. At narrow widths, preserve Product, Promotion, Promo Price, Area and Validity; move audit fields into the drawer.
 
 ## 24. Security UX
 
-Do not expose:
-
-- database credentials
-- LLM API keys
-- internal stack traces
-- sensitive infrastructure details
-
-Admin actions should show confirmation for destructive changes.
+Do not expose database credentials, API keys or internal stack traces. Destructive source-management actions require confirmation.
 
 ## 25. UI Acceptance Criteria
 
-The UI is ready when:
-
-1. All production promotion data comes from PostgreSQL through the API.
+1. Production data comes from PostgreSQL through the API.
 2. No production mock rows exist.
-3. A promotion can be traced to source evidence in two clicks or fewer.
-4. Geography and exclusions are visible.
+3. Promotion evidence is reachable within two clicks.
+4. Geography inclusions/exclusions are visible.
 5. Last verified time is visible.
 6. Regional price comparison is possible.
-7. Empty/error/stale states are explicit.
-8. Refresh and Scan now are clearly different.
-9. Top 10 ranking is explainable.
-10. The interface remains usable with hundreds/thousands of promotion records.
+7. Source status and freshness are visible.
+8. Discovery is clearly separated from approved crawling.
+9. Empty/error/stale states are explicit.
+10. Refresh, Scan and Discover have distinct meanings.
+11. Top 10 ranking is explainable.
+12. The interface remains usable with thousands of observations.
