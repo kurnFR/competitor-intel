@@ -1,250 +1,289 @@
 # FMCG Competitor Promotion Intelligence Platform
 
-An automated, AI-powered competitor marketing intelligence system for the Indonesian FMCG snack category (biscuits, crackers, cookies, wafers).
+AI-powered competitive promotion intelligence for the Indonesian FMCG snack market, initially focused on biscuits, crackers, cookies and wafers.
 
-The platform continuously monitors retailer websites and promotional feeds, extracts structured commercial promotion data using an LLM gateway (9router), validates dates and prices against business rules, deduplicates multi-source observations, ranks activities by commercial impact, and serves the **Top 10 Active Competitor Promotions** via REST API and a web dashboard.
+> **Documentation freeze:** These documents define the requirements that implementation must follow. Do not add mock promotion data or silently invent missing commercial facts.
 
-The dashboard defaults to Industry `FMCG` and uses `Outlet` terminology. Its free-text search and filters query the stored Top 10 promotion data, including product, pack size, promotion mechanic, outlet, channel, geography, validity, and audit evidence. Channel values outside the verified taxonomy are displayed as `N/A` rather than inferred.
+## Source of Truth
 
----
+The **PostgreSQL database is the source of truth for the UI**. The dashboard must query the API, and the API must query PostgreSQL. The UI must never use hard-coded promotion rows, demo JSON, or generated fallback records.
 
-## Architecture Overview
+The application may reuse the customer's **existing PostgreSQL server**, but the application database must be isolated from unrelated DWH data. The current target database is:
 
-```
-                          PUBLIC SOURCES
-             (Retailer Catalogs, Aggregators, Promo Pages)
-                               │
-                               ▼
-                        Source Crawlers
-              (httpx + BeautifulSoup + Trafilatura)
-                               │
-                               ▼
-                       Raw Evidence Store
-               (Crawl Documents + Content Hash SHA256)
-                               │
-                               ▼
-                     AI Extraction Engine
-             (9router: hermes-auto-fallback / JSON Schema)
-                               │
-                               ▼
-                      Validation Engine
-              (Date validity, 3-month rule, Price logic)
-                               │
-                               ▼
-                      Entity Resolution
-               (pg_trgm fuzzy matching + Canonical DB)
-                               │
-                               ▼
-                        Deduplication
-              (Consolidates identical commercial promotions)
-                               │
-                               ▼
-                       Ranking Engine
-            (Multi-factor score: Strength, Reliability, Freshness)
-                               │
-                               ▼
-                 PostgreSQL: competitor_intel
-                (Isolated database, schema-scoped)
-                               │
-                  ┌────────────┴────────────┐
-                  ▼                         ▼
-              REST API                  Dashboard
-        (GET /api/v1/promotions/top10)   (Web Interface)
+```text
+competitor_intel
 ```
 
----
+with application schema:
 
-## Database Schema (PostgreSQL)
+```text
+competitor_intel
+```
 
-Located in database `competitor_intel` under schema `competitor_intel`:
+The application must not read or modify `dwh_prod` unless a future approved integration explicitly changes this requirement.
 
-* `source_registry`: Monitored sources with tiers (Tier 1-5), reliability scores, and crawl schedules.
-* `crawl_jobs`: Execution tracking and HTTP statuses for each crawl cycle.
-* `crawl_documents`: Raw crawled HTML, extracted text, and SHA-256 content hashes.
-* `competitors`: Parent FMCG companies (Mayora, Khong Guan, Mondelez, Garudafood, Nabati, etc.).
-* `brands`: Competitor brands (Roma, Oreo, Nissin, Beng Beng, Gery, etc.).
-* `products`: Canonical products with pack sizes and category mapping.
-* `retailers`: Monitored channels (Indomaret, Alfamart, Superindo, Hypermart, Transmart, Yogya).
-* `promotion_observations`: Raw AI extraction outputs per document for full auditability.
-* `promotions`: Canonical active promotions with prices, discounts, mechanics, validity, and rank scores.
-* `promotion_evidence`: Audit trail linking each promotion to exact source text quotes and URLs.
-* `entity_mapping`: Fuzzy and exact resolution mapping records.
-* `review_queue`: Flagged low-confidence records requiring human review.
+## What the system answers
 
----
+The primary business question is:
 
-## Getting Started
+> What are the 10 most commercially important competitor promotions that are currently active, recently verified, and supported by reliable source evidence?
+
+Every displayed promotion must be traceable to:
+
+- source URL and domain
+- crawl/retrieval timestamp
+- source evidence
+- extracted fields
+- geographic scope
+- retailer/channel scope
+- validity period
+- validation result
+- AI confidence
+- canonical product/brand/competitor mapping
+
+## Initial Source Strategy
+
+The first production source is **Hemat.id**. Do not confuse it with `hemat.co.id`.
+
+Hemat.id is treated as a secondary promotion/price intelligence source and must preserve the exact geographic wording published by the source. Source reliability is configurable in `source_registry`; it must not be hard-coded into ranking logic.
+
+Additional official retailer, brand, marketplace and other reliable sources may be added later through the source registry and source-specific adapters.
+
+## Critical Business Rules
+
+### 1. Geography is first-class data
+
+A promotion is not fully identified by product + retailer + price. Geographic scope can change the commercial meaning of the promotion.
+
+The system must preserve both:
+
+- `source_geography_text`: exact wording from the source
+- normalized geographic scopes: structured inclusion/exclusion records
+
+Examples:
+
+```text
+Berlaku di Jawa
+Berlaku di Jawa, Bali, Lombok, kecuali Indomaret Point
+Berlaku di Jabodetabek, Palembang
+```
+
+Never default an unknown geography to `Indonesia`. `Indonesia` may only be assigned when the source explicitly states national scope or an approved business rule establishes it.
+
+### 2. Regional prices are separate observations
+
+The same SKU can have different promotion prices in Java, Sumatera, Kalimantan, Sulawesi, Bali, etc. Different geographic observations must not be merged into one promotion merely because product and retailer match.
+
+### 3. Evidence before trust
+
+No evidence = not verified.
+
+The system must not fabricate a manufacturer, competitor, price, date, promotion mechanic or geography. Unknown values remain `NULL`/`UNKNOWN` and may enter the review queue.
+
+### 4. Active is not the same as recently crawled
+
+Track separately:
+
+- `first_seen_at`
+- `last_seen_at`
+- `last_verified_at`
+
+The UI must show actual data freshness.
+
+### 5. Top 10 eligibility
+
+Default Top 10 candidates must:
+
+- belong to the target categories
+- be currently valid
+- satisfy the 90-day freshness rule
+- have usable evidence
+- pass mandatory validation
+- not be rejected
+- not contain unresolved critical contradictions
+
+Ranking occurs **after** the quality gate.
+
+## Architecture
+
+```text
+Public Sources
+     |
+     v
+Source Registry / Scheduler
+     |
+     v
+Crawler / Browser / Parser
+     |
+     v
+Raw Crawl Documents + Content Hash
+     |
+     v
+AI Structured Extraction
+     |
+     v
+Field Validation + Geography Normalization
+     |
+     v
+Entity Resolution
+     |
+     v
+Promotion Matching / Deduplication
+     |
+     v
+Quality Gate
+     |-------------------> Review Queue
+     v
+Canonical PostgreSQL Data
+     |
+     v
+FastAPI
+     |
+     +---- Overview
+     +---- Promotions
+     +---- Regional Pricing
+     +---- Competitors
+     +---- Sources
+     +---- Review Queue
+     +---- Settings
+```
+
+## PostgreSQL Data Model
+
+The principal layers are:
+
+1. **Source layer** — source registry, crawl jobs, crawl documents
+2. **Observation layer** — immutable AI extraction observations
+3. **Canonical layer** — competitors, brands, products, retailers, promotions
+4. **Geography layer** — promotion geographic inclusions/exclusions
+5. **Evidence layer** — field-level or passage-level evidence
+6. **Quality layer** — validation, confidence, review queue
+7. **Analytics layer** — Top 10 and regional price/activity views
+
+See [`DATA_MODEL.md`](DATA_MODEL.md).
+
+## UI / UX
+
+The dashboard is an enterprise intelligence application, not a static report. The recommended navigation is:
+
+```text
+Overview
+Promotions
+Regional Pricing
+Competitors
+Sources
+Review Queue
+Settings
+```
+
+The main promotion workflow uses a filterable table plus a right-side detail drawer. The drawer exposes price, mechanic, retailer, geography, validity, evidence, source, verification timestamp and field-level confidence without forcing the user to leave the list.
+
+See [`UI_UX_DESIGN.md`](UI_UX_DESIGN.md).
+
+## Documentation Set
+
+| Document | Purpose |
+|---|---|
+| `README.md` | Project overview, setup and operating principles |
+| `FMCG Competitor Promotion.md` | Product requirements / PRD |
+| `TECHNICAL_DESIGN.md` | Technical architecture and implementation requirements |
+| `DATA_MODEL.md` | PostgreSQL entities, relationships and integrity rules |
+| `DATA_QUALITY.md` | Validation, provenance, freshness and trust rules |
+| `UI_UX_DESIGN.md` | Professional dashboard UX and interaction requirements |
+| `RUNBOOK.md` | Operational procedures, troubleshooting and production checks |
+
+## Setup
 
 ### Prerequisites
-* **Python 3.12+** (configured via `pyenv` or virtualenv)
-* **PostgreSQL 12+** with extensions `pg_trgm` and `uuid-ossp`
-* **9router LLM Gateway** on `http://localhost:20128/v1`
 
-### Installation
-```bash
-# 1. Clone repository
-git clone https://github.com/kurnFR/competitor-intel.git
-cd competitor-intel
+- Python 3.12+
+- PostgreSQL 12+ on the existing PostgreSQL server
+- `pg_trgm` extension
+- configured LLM gateway for AI extraction
+- optional Playwright/Tesseract/PDF tooling according to source needs
 
-# 2. Set up virtual environment
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+### Environment
 
-# 3. Configure environment
-cp .env.example .env
-# Edit .env with your PostgreSQL credentials and LLM settings
+Copy `.env.example` to `.env` and configure the **competitor_intel** database only.
+
+```env
+DATABASE_URL=postgresql+psycopg://competitor_intel_app:<PASSWORD>@<POSTGRES_HOST>:5432/competitor_intel
+DATABASE_SCHEMA=competitor_intel
 ```
 
-### Running Database Migrations
+Never commit `.env`, passwords or API keys.
+
+### Database migration
+
 ```bash
 alembic upgrade head
 ```
 
-### Seeding Reference Data
+### Seed reference data
+
 ```bash
 PYTHONPATH=. python3 scripts/seed_data.py
 ```
 
-### Running the Extraction Pipeline Manually
+### Run one pipeline cycle
+
 ```bash
 PYTHONPATH=. python3 scripts/run_pipeline.py
 ```
 
-`Refresh` only reloads promotions already stored in PostgreSQL. To collect new promotion data, click `Scan now` in the dashboard or run the command above. The scan needs reachable source websites and, for AI extraction, the configured LLM gateway. Records without usable evidence are not treated as verified.
+### Start API and dashboard
 
-### Starting the Web Server & Dashboard
 ```bash
 ./scripts/start_server.sh
-# Server starts at http://0.0.0.0:8000
 ```
 
----
+The UI must load promotion data from the API/PostgreSQL. If PostgreSQL is empty, the UI should show an explicit empty state rather than synthetic rows.
 
-## API Reference
+## Refresh vs Scan
 
-### 1. Top 10 Active Promotions
-`GET /api/v1/promotions/top10`
+**Refresh** means reload the latest data already stored in PostgreSQL.
 
-Query Parameters:
-* `category`: Filter by category (e.g. `BISCUIT`, `CRACKER`, `WAFER`, `COOKIE`, `SNACK`)
-* `retailer`: Filter by retailer name (e.g. `Indomaret`, `Alfamart`, `Superindo`, `Hypermart`)
-* `brand`: Filter by brand name (e.g. `Roma`, `Oreo`, `Nissin`)
-* `competitor`: Filter by manufacturer (e.g. `Mayora`, `Mondelez`)
-* `days`: Recency cutoff in days (default `90` for the 3-month rule)
+**Scan now** means start a new collection/extraction pipeline against configured sources.
 
-Example Request:
-```bash
-curl "http://localhost:8000/api/v1/promotions/top10?category=WAFER&retailer=Indomaret"
-```
+These actions must never be presented as the same operation.
 
-### 2. Promotion Audit Detail
-`GET /api/v1/promotions/{promotion_id}`
+## API Contract
 
-Returns full metadata, rank score components, and all verified source quotes/evidence.
+The API should provide at minimum:
 
-### 3. System Statistics
-`GET /api/v1/stats/`
+- `GET /api/v1/promotions/top10`
+- `GET /api/v1/promotions/{promotion_id}`
+- `GET /api/v1/stats/`
+- `GET /api/v1/sources/health`
+- `GET /health`
 
-Returns counts of active promotions, competitors tracked, brands monitored, retailers, and promotions expiring within 7 days.
+Filters should support category, competitor, brand, retailer, promotion mechanic, geography, status and validity.
 
-### 4. Health Check
-`GET /health`
+## Testing / Acceptance
 
----
-## 45. Web Application & User Interface
+Before calling the system production-ready, verify at minimum:
 
-The system provides a web-based interface accessible from the left panel with the following navigation:
+1. A fresh database can be migrated with `alembic upgrade head`.
+2. No application query touches `dwh_prod`.
+3. A real Hemat.id crawl creates a raw document and an observation.
+4. A real promotion reaches PostgreSQL only after validation.
+5. Geography from the source is preserved and normalized.
+6. Two identical promotions are deduplicated.
+7. Two regional price/promotion observations are not incorrectly merged.
+8. Expired promotions disappear from the default Top 10.
+9. Promotions without usable evidence do not appear as verified.
+10. The dashboard displays exactly what the API returns from PostgreSQL.
+11. Empty/error/stale states are explicit; no fake data is displayed.
+12. The audit drawer can trace every displayed promotion to source evidence.
 
-### 45.1 Left Panel Navigation
+## Production Principles
 
-**Home**
-- Dashboard with KPI cards showing active promotions count, competitors tracked, brands, retailers
-- Quick links to Top 10 active promotions
-- Summary of recent additions and promotions expiring soon
-
-**Settings** (expandable/collapsible)
-- **Master Data** - View and manage all reference tables (competitors, brands, products, retailers, sources)
-  - CRUD operations supported with role-based permissions
-  - Filterable and searchable data grids
-  - Product categories: biscuits, crackers, cookies, wafers, sandwich biscuits, cream biscuits, sweet biscuits, savory crackers, related snack products
-- **Source Management** - Configure and add new data sources manually
-  - Add new sources with name, domain, type, reliability score, crawl frequency
-  - Toggle source active/inactive status
-  - Configure crawl frequency per source tier
-- **User Permissions** - Manage role-based access control
-  - Role definitions: Admin (full CRUD), Editor (add/edit promotions/products), Viewer (read-only), Crawler (source config only)
-  - Permission matrix controlling access to master data operations
-
-### 45.2 Master Data Management
-
-Data tables with CRUD support:
-- **Competitors** - Manage competitor brands/entities (Admin/Editor can create/edit, Viewer can read)
-- **Brands** - Manage product brands under competitors
-- **Products** - Manage product catalog (biscuits, crackers, wafers, cookies, etc.) with category validation
-- **Retailers** - Manage retailer/channels (Indomaret, Alfamart, Shopee, Tokopedia, Lazada, etc.)
-- **Source Registry** - Manage data source configuration for crawlers
-- **Promotions** - View and manage promotion records
-
-CRUD Operations by Role:
-
-| Operation | Competitors | Brands | Products | Retailers | Sources | Promotions |
-|-----------|-------------|--------|----------|-----------|---------|------------|
-| **Create** | Admin, Editor | Admin, Editor | Admin, Editor | Admin, Editor | Admin | Admin, Editor |
-| **Read** | All users | All users | All users | All users | All users | All users |
-| **Update** | Admin, Editor | Admin, Editor | Admin, Editor | Admin, Editor | Admin | Admin, Editor |
-| **Delete** | Admin only | Admin only | Admin only | Admin only | Admin only | Admin only |
-
-### 45.3 Manual Source Addition
-
-Workflow for users discovering new source websites:
-1. Navigate to Settings → Source Management → Add New Source
-2. Fill in source details: name, domain, source type (retailer, marketplace, aggregator, social, news), reliability score (0.0000-1.0000), country (e.g., Indonesia), crawl frequency (minutes), robots.txt compliance
-3. Save source - added to registry and available for crawling
-4. Optional: Add initial test URL to verify crawling works
-
-### 45.4 Manual Promotion Entry
-
-1. Navigate to Settings → Master Data → Add Promotion Manually
-2. Fill in promotion details: competitor brand, product name/variant, pack size, promotion type (DISCOUNT, BUY_X_GET_Y, MULTIBUY, CASHBACK, VOUCHER, GIFT_WITH_PURCHASE, MEMBER_PRICE, BUNDLE), regular price (IDR), promo price (IDR), discount percentage, buy quantity, free quantity, minimum purchase, start date, end date, retailer, channel, geography, source URL, evidence text, AI confidence
-3. Save promotion - record added with status DISCOVERED, lower default AI confidence (e.g., 0.70)
-4. Manual entries maintain evidence trail and can be flagged for admin review
-
-### 45.5 User Roles & Permissions
-
-| Role | Competitors | Brands | Products | Retailers | Sources | Promotions | Settings |
-|------|-------------|--------|----------|-----------|---------|------------|----------|
-| **Admin** | ✓ (CRUD) | ✓ (CRUD) | ✓ (CRUD) | ✓ (CRUD) | ✓ (CRUD) | ✓ (CRUD) | ✓ (Full access) |
-| **Editor** | ✓ (CRUD) | ✓ (CRUD) | ✓ (CRUD) | ✓ (CRUD) | ✓ (CRUD) | ✓ (CRUD add/edit) | ✓ (Add/edit only) |
-| **Viewer** | ✓ (Read) | ✓ (Read) | ✓ (Read) | ✓ (Read) | ✗ | ✓ (Read) | ✗ |
-| **Crawler** | ✗ | ✗ | ✗ | ✗ | ✓ (Config) | ✗ | ✗ |
-
-### 45.6 Search Functionality
-
-- **Global search bar** accessible from left panel
-- **Searchable fields**: product name, brand, competitor, retailer, promotion type, discount percentage, date range, category, geography
-- **Filter panels** (collapsible): competitor/brand, retailer, promotion type, price range, date range, category
-- **Results display**: table view with key promotion fields, pagination, export (CSV, Excel), quick view modal
-
-### 45.7 Integration with Data Collection
-
-- Manual entries follow same validation as automated crawls
-- Manually added promotions get lower default AI confidence (0.70 vs typical 0.85-0.98)
-- Manual sources can be added to source registry for future automated crawling
-- All manual entries maintain evidence trail and audit history
-- Manual entries can be promoted to verified status by admin review
-
----
-
-## Automated Background Jobs
-* **Crawl & Extraction Pipeline**: Runs automatically every 30 minutes via APScheduler.
-* **Expiration Worker**: Runs every 15 minutes to transition promotions past their end date from `ACTIVE` to `EXPIRED`, and stale records (>7 days without end date) to `UNKNOWN`.
-
-To run the crawler once per day, set `CRAWL_INTERVAL_MINUTES=1440` in `.env` and restart the server. The scheduler uses UTC and requires the application process to remain running. `Scan now` starts an immediate one-off scan and does not change the daily schedule.
-
----
-
-## Testing
-```bash
-PYTHONPATH=. ./venv/bin/pytest tests/test_api.py -v
-```
+- Evidence over assumptions.
+- PostgreSQL over UI mock data.
+- Source geography over inferred geography.
+- Immutable observations over destructive updates.
+- Quality gate before ranking.
+- Explainable scores over opaque scores.
+- Least-privilege database access.
+- Source-specific parsers with tests.
+- Every production change must be represented in the documentation and migrations.
