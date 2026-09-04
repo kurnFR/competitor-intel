@@ -4,13 +4,14 @@
 
 This document defines the logical data model for `competitor_intel`.
 
-The model separates raw source observations from canonical commercial entities. This is required for auditability, historical changes, regional pricing and safe deduplication.
+The model separates source discovery, raw source observations and canonical commercial entities. This is required for multi-source monitoring, auditability, historical changes, regional pricing and safe deduplication.
 
 ## 2. Data Layers
 
 ```text
-SOURCE
+SOURCE CONTROL
   source_registry
+  source_urls
   crawl_jobs
   crawl_documents
 
@@ -43,11 +44,15 @@ QUALITY
 
 ```text
 source_registry
+   1 ─── N source_urls
    1 ─── N crawl_jobs
+source_urls
+   1 ─── N crawl_jobs
+crawl_jobs
    1 ─── N crawl_documents
-
 crawl_documents
    1 ─── N extraction_runs
+crawl_documents
    1 ─── N promotion_observations
 
 competitors
@@ -71,75 +76,239 @@ promotions
    1 ─── N promotion_evidence
 ```
 
-## 4. Important Modeling Rule
+## 4. Source Registry
 
-Do not use `promotions.geography` as the sole canonical geography representation.
+A source is a domain/site family; a source URL is an individual crawl target.
 
-A promotion may apply to multiple areas and may have exclusions.
-
-Use:
+### source_registry
 
 ```text
-promotions.source_geography_text
-promotion_geographies.scope_role
-promotion_geographies.scope_type
-promotion_geographies.scope_name
-promotion_geographies.source_text
+id UUID PK
+name TEXT NOT NULL
+base_url TEXT NOT NULL
+domain TEXT NOT NULL
+source_type TEXT NOT NULL
+owner_name TEXT NULL
+tier INTEGER
+reliability_score NUMERIC(5,4)
+priority INTEGER
+crawl_frequency_minutes INTEGER
+adapter_key TEXT
+access_status TEXT
+is_active BOOLEAN
+last_discovery_at TIMESTAMPTZ
+last_crawled_at TIMESTAMPTZ
+last_success_at TIMESTAMPTZ
+last_error_at TIMESTAMPTZ
+created_at TIMESTAMPTZ
+updated_at TIMESTAMPTZ
 ```
 
-## 5. Geography Examples
-
-### Simple region
+### source_urls
 
 ```text
-source_geography_text:
-Berlaku di Jawa
-
-promotion_geographies:
-INCLUDE | REGION | Jawa
+id UUID PK
+source_id UUID FK
+url TEXT NOT NULL
+canonical_url TEXT NULL
+page_type TEXT
+category_hint TEXT
+crawl_priority INTEGER
+crawl_frequency_minutes INTEGER NULL
+is_active BOOLEAN
+last_crawled_at TIMESTAMPTZ
+last_success_at TIMESTAMPTZ
+last_http_status INTEGER
+last_content_hash TEXT
+failure_count INTEGER
+next_crawl_at TIMESTAMPTZ
+created_at TIMESTAMPTZ
+updated_at TIMESTAMPTZ
 ```
 
-### Multiple regions
+This table is important: the next scheduled run should primarily use approved URLs already known to the system. New URLs can enter through periodic discovery.
+
+## 5. Data Source Examples
+
+The registry must be able to represent:
+
+- official company/brand websites
+- official retailer and modern-trade websites
+- local/regional retail websites
+- verified marketplace stores
+- public e-commerce pages where permitted
+- promotion aggregators
+- established news/media
+- public social/content sources where permitted
+
+Hemat.id is an initial source, not the only source.
+
+## 6. Crawl Jobs
 
 ```text
-INCLUDE | REGION | Jawa
-INCLUDE | REGION | Bali
-INCLUDE | REGION | Lombok
+id UUID PK
+source_id UUID FK
+source_url_id UUID NULL FK
+url TEXT
+job_type TEXT
+status TEXT
+started_at TIMESTAMPTZ
+completed_at TIMESTAMPTZ
+http_status INTEGER
+error_code TEXT
+error_message TEXT
+retry_count INTEGER
+content_hash TEXT
+created_at TIMESTAMPTZ
 ```
 
-### Inclusion + retailer/store exclusion
+Statuses:
 
 ```text
-INCLUDE | REGION | Jawa
-INCLUDE | REGION | Bali
-INCLUDE | REGION | Lombok
+QUEUED
+RUNNING
+SUCCESS
+FAILED
+BLOCKED
+SKIPPED
+```
+
+A successful crawl with zero promotions is still `SUCCESS`.
+
+## 7. Crawl Documents
+
+```text
+id UUID PK
+crawl_job_id UUID FK
+source_id UUID FK
+url TEXT NOT NULL
+canonical_url TEXT
+content_type TEXT
+title TEXT
+raw_content_uri TEXT
+text_content TEXT
+content_hash TEXT
+published_at TIMESTAMPTZ
+retrieved_at TIMESTAMPTZ
+language_code TEXT
+http_status INTEGER
+metadata JSONB
+created_at TIMESTAMPTZ
+```
+
+Use SHA-256 for content hashing.
+
+## 8. Extraction Runs
+
+```text
+id UUID PK
+document_id UUID FK
+model_name TEXT
+prompt_version TEXT
+schema_version TEXT
+started_at TIMESTAMPTZ
+completed_at TIMESTAMPTZ
+status TEXT
+raw_response JSONB
+error_message TEXT
+created_at TIMESTAMPTZ
+```
+
+## 9. Promotion Observations
+
+This is the immutable observation layer.
+
+```text
+id UUID PK
+document_id UUID FK
+extraction_run_id UUID FK
+source_promotion_key TEXT
+raw_extracted JSONB
+normalized_extracted JSONB
+observed_at TIMESTAMPTZ
+created_at TIMESTAMPTZ
+```
+
+An observation answers:
+
+> What did source X show at time T?
+
+Never overwrite historical observations merely because the same promotion is seen again.
+
+## 10. Master Data
+
+Competitors, brands, products and retailers are canonical reference entities. Unknown entities remain unresolved until sufficient evidence exists.
+
+Unknown manufacturer/competitor must not be replaced with placeholders such as `FMCG Manufacturer`.
+
+## 11. Geography Model
+
+Do not use `promotions.geography` as the sole canonical representation.
+
+### geography_reference
+
+```text
+id UUID PK
+parent_id UUID NULL FK
+scope_type TEXT
+name TEXT
+normalized_name TEXT
+country_code TEXT
+is_active BOOLEAN
+mapping_version TEXT
+created_at TIMESTAMPTZ
+updated_at TIMESTAMPTZ
+```
+
+Scope types:
+
+```text
+NATIONAL
+ISLAND_GROUP
+REGION
+PROVINCE
+METRO
+CITY
+DISTRICT
+STORE
+STORE_GROUP
+ONLINE
+OTHER
+UNKNOWN
+```
+
+### promotion_geographies
+
+```text
+id UUID PK
+promotion_id UUID FK
+geography_id UUID NULL FK
+scope_type TEXT NOT NULL
+scope_name TEXT NOT NULL
+source_text TEXT NOT NULL
+scope_role TEXT NOT NULL
+confidence NUMERIC(5,4)
+created_at TIMESTAMPTZ
+```
+
+`scope_role` is `INCLUDE` or `EXCLUDE`.
+
+Example:
+
+```text
+INCLUDE | REGION      | Jawa
+INCLUDE | REGION      | Bali
+INCLUDE | REGION      | Lombok
 EXCLUDE | STORE_GROUP | Indomaret Point
 ```
 
-### Metro/city scope
+Never silently expand a commercial area into administrative areas.
 
-```text
-INCLUDE | METRO | Jabodetabek
-INCLUDE | CITY | Palembang
-```
+## 12. Canonical Promotions
 
-Do not expand these scopes automatically unless a versioned mapping is explicitly configured.
+Use `NUMERIC(18,2)` for money.
 
-## 6. Money
-
-All IDR monetary fields must use:
-
-```sql
-NUMERIC(18,2)
-```
-
-Never use `FLOAT` for money.
-
-## 7. Promotion Identity
-
-A canonical promotion represents a commercially coherent activity, not simply a product.
-
-Material dimensions include:
+Material identity dimensions are:
 
 ```text
 product
@@ -153,41 +322,48 @@ geographic scope
 conditions
 ```
 
-If two observations differ materially by region, price or condition, they must not be merged merely because product and retailer match.
+Regional or channel differences that materially affect commercial applicability must not be merged.
 
-## 8. Observation vs Canonical Promotion
+## 13. Promotion Conditions
 
-### Observation
+```text
+id
+promotion_id
+condition_type
+condition_value_text
+condition_value_numeric
+source_text
+created_at
+```
 
-Immutable statement:
+Examples: `MEMBER_ONLY`, `MINIMUM_PURCHASE`, `MAXIMUM_QUANTITY`, `PAYMENT_METHOD`, `APP_ONLY`, `STORE_EXCLUSION`, `GEOGRAPHY_EXCLUSION`, `VOUCHER_CODE`.
 
-> What did source X show at time T?
+## 14. Evidence
 
-### Canonical promotion
+Every verified canonical promotion must have evidence.
 
-Current normalized commercial representation:
+```text
+promotion_evidence
+------------------
+id UUID PK
+promotion_id UUID FK
+document_id UUID FK
+field_name TEXT
+evidence_text TEXT
+source_url TEXT
+page_number INTEGER NULL
+locator JSONB NULL
+confidence NUMERIC(5,4)
+created_at TIMESTAMPTZ
+```
 
-> What promotion does the system currently believe is active?
+Evidence should support price, mechanic, validity and geography separately where practical.
 
-Multiple observations may support one canonical promotion.
+## 15. Validation and Review
 
-One source may also produce different observations over time as a promotion changes.
+Validation results should record rule, result, severity and timestamp. Review queue records unresolved material issues.
 
-## 9. Evidence
-
-Evidence must be attached at the field or passage level when practical.
-
-Minimum evidence coverage for a verified promotion:
-
-- product identity
-- promotion mechanic
-- promotional price or benefit
-- validity or source recency
-- geography when geography is claimed
-
-## 10. Status
-
-Canonical status values:
+## 16. Status
 
 ```text
 UPCOMING
@@ -198,7 +374,23 @@ REVIEW_REQUIRED
 REJECTED
 ```
 
-## 11. Recommended Indexes
+## 17. Freshness
+
+Default Top 10 freshness:
+
+```sql
+last_verified_at >= NOW() - INTERVAL '90 days'
+```
+
+For open-ended promotions, use a stricter configured verification window, recommended 7 days for MVP.
+
+## 18. Deduplication
+
+Candidate matching must consider product, retailer, channel, promotion type, mechanic parameters, price, validity, geography inclusions/exclusions and material conditions.
+
+Two sources can support the same canonical promotion. Two regional observations can remain separate canonical promotions when commercially material.
+
+## 19. Recommended Indexes
 
 ```sql
 CREATE INDEX idx_promotions_status_end
@@ -219,22 +411,25 @@ ON competitor_intel.promotions(product_id);
 CREATE INDEX idx_promotions_brand
 ON competitor_intel.promotions(brand_id);
 
+CREATE INDEX idx_source_urls_due
+ON competitor_intel.source_urls(is_active, next_crawl_at);
+
+CREATE INDEX idx_source_urls_hash
+ON competitor_intel.source_urls(last_content_hash);
+
 CREATE INDEX idx_geo_scope_name_trgm
 ON competitor_intel.promotion_geographies
 USING gin (scope_name gin_trgm_ops);
 ```
 
-Add indexes based on actual query plans rather than indexing every column.
+Add indexes based on actual query plans.
 
-## 12. Constraints
+## 20. Constraints
 
-Recommended constraints include:
+Recommended database invariants:
 
 ```text
-regular_price >= 0
-promo_price >= 0
-cashback_amount >= 0
-voucher_amount >= 0
+money >= 0
 confidence between 0 and 1
 reliability between 0 and 1
 end_date >= start_date when both are known
@@ -242,29 +437,10 @@ buy_quantity > 0 when supplied
 free_quantity >= 0 when supplied
 ```
 
-Use database constraints for invariants that should never be violated.
+## 21. Historical Integrity
 
-## 13. Referential Integrity
+Never delete raw observations because a promotion expired or a source was disabled. Source registry status and canonical promotion status are independent.
 
-Use foreign keys within `competitor_intel`.
+## 22. Analytics
 
-Do not create cross-database foreign keys to `dwh_prod`.
-
-## 14. Historical Integrity
-
-Never delete raw observations merely because a promotion expired.
-
-Canonical promotion status may change from `ACTIVE` to `EXPIRED`, while historical evidence remains available.
-
-## 15. Analytics Views
-
-Prefer database views or API queries for derived metrics such as:
-
-- active promotion count
-- promotions expiring in 7 days
-- promotion count by competitor
-- promotion count by geography
-- regional price comparison
-- source freshness
-
-Do not persist redundant aggregates until query volume demonstrates the need.
+Prefer views/API queries for active counts, expiring promotions, competitor activity, geography distribution, regional price comparison, source freshness and Top 10 ranking until query volume requires materialized aggregates.
