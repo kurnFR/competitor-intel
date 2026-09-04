@@ -2,16 +2,18 @@
 
 ## 1. Objective
 
-The platform is a decision-support system. A visually complete dashboard is less valuable than a smaller set of correct, traceable promotions.
-
-The governing principle is:
+The platform is a decision-support system. A smaller set of correct, traceable promotions is more valuable than a visually complete dashboard.
 
 > **Never invent a commercial fact. Preserve uncertainty and route material ambiguity to review.**
 
 ## 2. Quality Pipeline
 
 ```text
-Raw document
+Source discovery
+   -> source assessment
+   -> approved source/URL
+   -> crawl
+   -> raw document
    -> extraction
    -> field validation
    -> geography normalization
@@ -22,11 +24,45 @@ Raw document
    -> ranking
 ```
 
-## 3. Required Evidence
+## 3. Source Quality
 
-A verified promotion must have usable source evidence for the important facts it displays.
+A source has two separate dimensions:
 
-At minimum:
+1. **Authority/reliability** — how trustworthy the source is for a commercial fact.
+2. **Operational health** — whether the source was successfully crawled recently.
+
+A high-authority source can be operationally stale. A successfully crawled low-authority source is not automatically trustworthy.
+
+Track:
+
+```text
+source_tier
+reliability_score
+crawl_success_rate
+blocked_rate
+last_success_at
+consecutive_failures
+```
+
+## 4. Source Discovery Quality
+
+Discovered sources are candidates, not trusted data.
+
+Required before approval:
+
+- public relevance to target categories
+- identifiable source/domain
+- access permitted
+- source type classified
+- reliability tier proposed
+- crawl method understood
+- test extraction/evidence available where practical
+
+Discovery must never directly publish canonical promotions.
+
+## 5. Required Evidence
+
+A verified promotion must have usable evidence for:
 
 ```text
 product
@@ -36,27 +72,9 @@ validity or reliable recency
 geography when claimed
 ```
 
-Evidence should include source URL and retrieval timestamp.
+Evidence includes source URL and retrieval timestamp.
 
-## 4. Source Reliability
-
-Source reliability is stored in `source_registry` and may be revised based on observed source quality.
-
-Starting guidance:
-
-| Tier | Source | Starting reliability |
-|---|---|---:|
-| 1 | Official retailer/brand | 1.00 |
-| 2 | Verified official marketplace | 0.85–0.95 |
-| 3 | Established promotion intelligence | 0.70–0.85 |
-| 4 | Established media | 0.60–0.80 |
-| 5 | Public social/other | 0.40–0.70 |
-
-These are configuration defaults, not facts about every website.
-
-## 5. Field Confidence
-
-AI confidence must not be treated as truth probability.
+## 6. Field Confidence
 
 Store separate confidence where practical:
 
@@ -70,48 +88,38 @@ validity_confidence
 geography_confidence
 ```
 
-Low confidence should trigger review when the field is commercially material.
+Confidence is extraction/model confidence, not factual probability.
 
-## 6. Geography Quality Rules
+## 7. Geography Quality Rules
 
-### Rule 1
-Preserve exact source wording.
-
-### Rule 2
-Do not default unknown geography to Indonesia.
-
-### Rule 3
-Do not silently expand commercial areas into administrative regions.
-
-### Rule 4
-Store inclusions and exclusions separately.
-
-### Rule 5
-A geography contradiction that changes whether the promotion applies to a target market must trigger review.
+1. Preserve exact source wording.
+2. Never default unknown geography to Indonesia.
+3. Never silently expand commercial areas into administrative regions.
+4. Store inclusions and exclusions separately.
+5. Geography contradictions that change applicability trigger review.
+6. Geography is part of promotion matching/deduplication.
 
 Example:
 
 ```text
-Observation A: Berlaku di Jawa
-Observation B: Berlaku di Sumatera
+Observation A: Jawa / Rp7,900
+Observation B: Sumatera / Rp8,500
 ```
 
-Do not merge these as one nationwide promotion.
+Do not merge them into one nationwide promotion.
 
-## 7. Price Quality Rules
+## 8. Price Quality Rules
 
 - monetary values use `NUMERIC(18,2)`
 - negative prices are invalid
-- promo price below regular price is expected for ordinary discount mechanics
-- promo price above regular price requires an explanation or different mechanic
-- source-stated discount and calculated discount are stored separately
-- cashback/voucher is not automatically treated as shelf-price reduction
+- promo price above regular price requires explanation/mechanic
+- stated and calculated discounts are separate
+- cashback/voucher is not automatically shelf-price reduction
+- conflicting prices from different regions/sources remain observations until resolved
 
-## 8. Promotion Mechanic Quality
+## 9. Promotion Mechanic Quality
 
-Normalize language but retain original wording.
-
-Examples:
+Normalize equivalent language while retaining source wording.
 
 ```text
 Beli 1 Gratis 1 -> BUY_X_GET_Y (1,1)
@@ -120,38 +128,50 @@ Diskon 30%      -> DISCOUNT
 2 pcs Rp20.000  -> MULTIBUY
 ```
 
-If the wording is ambiguous, use `OTHER` and review rather than guessing.
+Ambiguous wording becomes `OTHER`/review rather than a guessed mechanic.
 
-## 9. Date Quality
+## 10. Date Quality
 
-- `end_date < start_date` is invalid
-- an explicit expired date always beats a recent crawl for active-status calculation
-- missing end date requires a strict recent-verification rule
-- source timezone/local context must be respected where known
-- all stored timestamps use `TIMESTAMPTZ`
+- end date before start date is invalid
+- explicit expiry beats recent crawl for active status
+- missing end date requires strict recent verification
+- source timezone/local context must be respected
+- timestamps use `TIMESTAMPTZ`
 
-## 10. Freshness
+## 11. Freshness
 
-The default Top 10 uses:
+Default Top 10:
 
 ```text
 last_verified_at >= now - 90 days
 ```
 
-But freshness alone does not mean active.
+Freshness does not equal active validity.
 
-Active requires current validity plus freshness/quality eligibility.
+Open-ended promotions should use a stricter verification window, recommended 7 days for MVP.
 
-For open-ended promotions, a recommended MVP verification window is 7 days.
+## 12. Multi-Source Conflict Rules
 
-## 11. Duplicate Quality
+When sources disagree:
 
-Potential duplicate matching should consider:
+1. retain all useful observations
+2. compare timestamps
+3. compare source reliability
+4. compare geography
+5. compare retailer/channel
+6. determine whether activities are actually different
+7. create review when unresolved and material
+
+Do not overwrite lower-tier observations; preserve them for audit.
+
+## 13. Duplicate Quality
+
+Candidate matching considers:
 
 - product
 - retailer
 - channel
-- promotion type
+- mechanic
 - mechanic parameters
 - price
 - validity
@@ -159,33 +179,15 @@ Potential duplicate matching should consider:
 - geography exclusion
 - material conditions
 
-Two regional promotions are not duplicates merely because the product and retailer match.
+Two sources may support one canonical promotion. Material regional/channel/price differences must not be merged away.
 
-## 12. Unknown Values
+## 14. Unknown Values
 
-Use explicit unknowns:
+Use `NULL`, `UNKNOWN` or `N/A` according to semantics.
 
-```text
-NULL
-UNKNOWN
-N/A
-```
+Never create fake competitors such as `FMCG Manufacturer` merely to fill a UI field.
 
-according to field semantics.
-
-Never create placeholder competitors such as:
-
-```text
-FMCG Manufacturer
-Competitor Brand
-Unknown Company Ltd
-```
-
-unless that is literally the source text and is explicitly marked as unresolved.
-
-## 13. Quality Gate
-
-A record passes the production gate when:
+## 15. Quality Gate
 
 ```text
 category eligible
@@ -193,34 +195,23 @@ AND current validity passes
 AND freshness passes
 AND evidence exists
 AND no material validation error
-AND identity is sufficiently resolved
-AND geography is sufficiently understood
+AND identity sufficiently resolved
+AND geography sufficiently understood
+AND source is approved
 AND status != REJECTED
 ```
 
-Anything else may remain stored for audit but must not appear as a verified Top 10 record.
+Anything else may remain stored for audit but must not appear as verified Top 10.
 
-## 14. Review Queue Thresholds
+## 16. Review Queue
 
-Create a review item for:
+Create review items for low confidence, geography ambiguity/conflict, price conflict, date conflict, unresolved identity, material duplicate uncertainty, parser anomalies and missing evidence.
 
-- overall confidence below configured threshold
-- geography confidence below threshold
-- price conflict
-- validity conflict
-- unresolved product
-- unresolved competitor
-- material duplicate uncertainty
-- source parser anomaly
-- missing evidence
+Thresholds are configuration, not scattered constants.
 
-Thresholds must be configuration, not scattered constants.
-
-## 15. Source Failure Semantics
+## 17. Source Failure Semantics
 
 A failed crawl is not equivalent to zero promotions.
-
-The source health model must distinguish:
 
 ```text
 SUCCESS
@@ -230,13 +221,14 @@ STALE
 NOT_RUN
 ```
 
-The dashboard must show the source health state.
+The dashboard must show source health.
 
-## 16. Data Quality Metrics
+## 18. Data Quality Metrics
 
-Track at least:
+Track:
 
 ```text
+source_discovery_acceptance_rate
 crawl_success_rate
 extraction_success_rate
 evidence_coverage_rate
@@ -244,30 +236,30 @@ geography_resolution_rate
 entity_resolution_rate
 duplicate_rate
 review_rate
+source_conflict_rate
 active_promotion_count
 stale_promotion_count
 ```
 
-These metrics should be visible to operators.
+## 19. Auditability
 
-## 17. Auditability
+For every Top 10 record, answer:
 
-For every Top 10 record, an auditor should be able to answer:
+1. Where did it come from?
+2. Which source and URL?
+3. When crawled?
+4. When last verified?
+5. What supports price?
+6. What supports mechanic?
+7. What supports geography?
+8. What model/prompt extracted it?
+9. Which validation rules passed/failed?
+10. How was identity resolved?
+11. Why did it rank where it did?
 
-1. Where did this promotion come from?
-2. When was it crawled?
-3. When was it last verified?
-4. What text supports the price?
-5. What text supports the promotion mechanic?
-6. What text supports the geography?
-7. What model/prompt extracted it?
-8. Which validation rules passed/failed?
-9. How was the product resolved?
-10. Why did it rank where it did?
+## 20. Acceptance Tests
 
-## 18. Data Quality Acceptance Tests
-
-The following must be automated where practical:
+Automate where practical:
 
 - no verified promotion without evidence
 - no negative monetary values
@@ -278,4 +270,5 @@ The following must be automated where practical:
 - no record older than 90 days in default Top 10
 - no fake competitor placeholders
 - source failures visible as failures
+- candidate sources cannot become trusted without approval
 - UI values trace back to API/PostgreSQL
