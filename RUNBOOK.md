@@ -12,6 +12,8 @@ Operational guide for running the competitor intelligence platform against the e
 - Never interpret crawler failure as zero promotions.
 - Never manually edit canonical records without preserving audit history.
 - Never bypass evidence and validation to make the dashboard look complete.
+- Never treat a newly discovered source as trusted until assessed and approved.
+- Never bypass source access controls.
 
 ## 3. Startup Checklist
 
@@ -21,18 +23,14 @@ Operational guide for running the competitor intelligence platform against the e
 4. `alembic upgrade head` succeeds.
 5. Required environment variables are present.
 6. LLM gateway is reachable if extraction is enabled.
-7. Source registry contains active sources.
-8. No unexpected access to `dwh_prod` is configured.
+7. Source registry contains intended active sources.
+8. Approved URL targets exist or discovery is ready.
+9. No unexpected access to `dwh_prod` is configured.
 
 ## 4. Migration
 
 ```bash
 alembic upgrade head
-```
-
-Verify migration status:
-
-```bash
 alembic current
 ```
 
@@ -44,89 +42,172 @@ PYTHONPATH=. python3 scripts/seed_data.py
 
 Seed scripts must be idempotent.
 
-## 6. Run Pipeline
+## 6. Source Registry Operations
+
+The source registry is the control plane for crawling.
+
+For each source verify:
+
+```text
+name
+domain
+source_type
+reliability
+priority
+adapter
+access_status
+is_active
+crawl frequency
+```
+
+For each URL target verify:
+
+```text
+url
+page type
+priority
+is_active
+next_crawl_at
+last success
+failure/backoff state
+```
+
+Disabling a source or URL must not delete historical observations.
+
+## 7. Discover Sources
+
+Source discovery is separate from scheduled crawling.
+
+Discovery may use permitted public search, sitemaps, feeds and source navigation to find candidate domains and URLs.
+
+A candidate must be assessed before activation.
+
+Recommended workflow:
+
+```text
+Discover
+  -> Candidate
+  -> Assess relevance/access
+  -> Configure adapter
+  -> Test extraction/evidence
+  -> Approve
+  -> Activate
+```
+
+Never automatically promote every search result to an active source.
+
+## 8. Run Pipeline
 
 ```bash
 PYTHONPATH=. python3 scripts/run_pipeline.py
 ```
 
-A successful run should produce:
+A successful cycle should produce, as applicable:
 
 ```text
-crawl job
+source/url target
+  -> crawl job
   -> document
+  -> change detection
   -> extraction run
   -> observation
   -> validation
+  -> geography normalization
+  -> entity resolution
   -> canonical promotion/review
 ```
 
-## 7. Dashboard Data Check
+An unchanged document may skip expensive AI extraction when the source adapter determines that the content is safely unchanged.
+
+## 9. Scan vs Discover
+
+`Scan now` means crawl active approved targets.
+
+`Discover sources` means find candidate sources/URLs for assessment.
+
+Do not confuse discovery with production collection.
+
+## 10. Dashboard Data Check
 
 If the dashboard shows a promotion, verify:
 
 1. it exists in PostgreSQL
-2. the API returns it
+2. API returns it
 3. it has evidence
-4. its status is eligible
-5. its `last_verified_at` is appropriate
-6. its geography is present and correct
+4. status is eligible
+5. `last_verified_at` is appropriate
+6. geography is present and correct
+7. source is approved/active
 
 The UI must never be the only place where a promotion exists.
 
-## 8. Empty Database Behavior
+## 11. Empty Database Behavior
 
 An empty database is valid.
-
-The UI must show:
 
 ```text
 No active promotions found.
 Run Scan now to collect source data.
 ```
 
-It must not display demo rows.
+Never display demo rows.
 
-## 9. Source Failure
+## 12. Source Failure
 
 If a source fails:
 
-- record a failed crawl job
-- retain the previous successful data
-- expose source health as failed/stale
-- retry according to policy
+- record the failed crawl job
+- retain previous successful data
+- expose health as failed/stale
+- retry with bounded backoff
 - do not delete existing promotions merely because the source is temporarily unavailable
 
-## 10. Hemat.id Troubleshooting
+A successful crawl returning zero promotions is still a successful crawl.
+
+## 13. Source Health
+
+```text
+HEALTHY = recent successful crawl
+WARNING  = recent failures but usable successful data exists
+STALE    = no recent successful crawl
+FAILED   = current crawl failed
+BLOCKED  = source access blocked/restricted
+NOT_RUN  = no crawl completed yet
+```
+
+Exact thresholds are configuration.
+
+## 14. Crawler Troubleshooting
 
 Check:
 
 - HTTP status
-- response content type
+- response type
+- robots/terms/access compliance
 - page structure
-- robots/terms compliance
 - source URL changes
-- HTML selector/fixture tests
-- parser extraction counts
-- geographic text extraction
+- parser/selector fixtures
+- extraction counts
+- content hash/change detection
+- geography text extraction
+- retailer/channel extraction
 
-A parser update must include a fixture regression test.
+Every source adapter should have regression fixtures for representative pages.
 
-## 11. LLM Troubleshooting
+## 15. LLM Troubleshooting
 
 Check:
 
 - gateway availability
-- model name
-- API credentials
+- model
+- credentials
 - structured output validity
 - prompt/schema version
-- timeout
-- token/response limits
+- timeout/token limits
 
-If AI extraction fails, preserve the source document and mark the extraction as failed. Do not invent a fallback promotion.
+If extraction fails, preserve the source document and mark extraction failed. Do not create a fallback promotion from imagination.
 
-## 12. PostgreSQL Troubleshooting
+## 16. PostgreSQL Troubleshooting
 
 Check:
 
@@ -140,140 +221,146 @@ connection pool
 migration version
 ```
 
-The application should fail clearly if the configured database is unavailable.
+The application should fail clearly if PostgreSQL is unavailable.
 
-## 13. Stale Data
+## 17. Stale Data
 
-If the UI reports stale data:
+If data is stale:
 
 1. check source health
 2. check latest successful crawl
 3. inspect crawl jobs
 4. inspect extraction failures
-5. inspect scheduler process
-6. run a controlled `Scan now`
+5. inspect scheduler
+6. inspect URL target `next_crawl_at`
+7. run controlled Scan now
 
-Do not manually change timestamps to make records appear fresh.
+Never manually alter timestamps to fake freshness.
 
-## 14. Incorrect Geography
+## 18. Incorrect Geography
 
-If a promotion is shown as nationwide but the source says a regional scope:
+If a promotion is shown as nationwide but the source says regional:
 
-1. inspect the original crawl document
-2. inspect promotion observation
-3. inspect geography normalization
-4. inspect canonical promotion
-5. correct the normalization/mapping
-6. preserve the original evidence
-7. add a regression test
+1. inspect original crawl document
+2. inspect observation
+3. inspect geography extraction
+4. inspect normalization mapping
+5. inspect canonical promotion
+6. correct pipeline/mapping
+7. preserve original evidence
+8. add regression test
 
-The correct fix is in the ingestion/model pipeline, not a frontend display patch.
+Do not solve this only in frontend code.
 
-## 15. Duplicate Promotions
+## 19. Duplicate / Regional Merge Bug
 
-If two regional activities were incorrectly merged:
+If two activities were incorrectly merged:
 
-1. identify the source observations
-2. compare product, retailer, price, mechanic and geography
+1. identify observations
+2. compare product, retailer, channel, price, mechanic, validity and geography
 3. split canonical records if commercially material
 4. preserve historical observations
 5. fix matching rules
-6. add a regression test
+6. add regression test
 
-## 16. Expired Promotion Appears Active
+## 20. Multi-Source Conflict
 
-Check:
-
-- source end date
-- timezone conversion
-- `end_date`
-- status calculation
-- last verification
-- API active filter
-- frontend cache
-
-Never solve this by deleting the record; historical evidence should remain available.
-
-## 17. Source Health Semantics
+When sources disagree:
 
 ```text
-HEALTHY  = recent successful crawl
-WARNING  = recent failures but successful data exists
-STALE    = no recent successful crawl
-FAILED   = current crawl failed
-BLOCKED  = source blocked collection
+retain observations
+    ↓
+compare timestamp
+    ↓
+compare source reliability
+    ↓
+compare retailer/channel
+    ↓
+compare geography
+    ↓
+determine same vs different activity
+    ↓
+review if material conflict remains
 ```
 
-Exact thresholds are configuration.
+Never silently overwrite one source with another.
 
-## 18. Backup
+## 21. Expired Promotion Appears Active
 
-PostgreSQL backups are an infrastructure responsibility. At minimum back up:
+Check source end date, timezone conversion, `end_date`, status calculation, freshness, API filter and frontend cache.
+
+An explicit expired end date always wins over a recent crawl.
+
+## 22. Backoff and Blocking
+
+Repeated failures must increase retry delay. A blocked source must not trigger infinite retries or access-control bypass attempts.
+
+After configured failure thresholds, mark the source/URL `BLOCKED` or `STALE` and create an operational review item.
+
+## 23. Backup
+
+Back up at minimum:
 
 - canonical promotions
 - observations
 - evidence metadata
 - source registry
+- source URL registry
 - review queue
 - master data
 
-Raw large documents should have their own durable storage backup policy.
+Large raw documents require their own durable storage backup policy.
 
-## 19. Deployment Safety
+## 24. Deployment Safety
 
 Before deployment:
 
-1. review migration
+1. review migrations
 2. back up database
 3. run tests
-4. deploy application
-5. run health check
+4. deploy
+5. health check
 6. verify API
-7. verify one real source crawl
+7. verify one approved source crawl
 8. verify dashboard data
+9. verify source health
 
-## 20. Security Incident
+## 25. Security Incident
 
 If a credential is committed:
 
 1. revoke/rotate immediately
-2. remove it from active configuration
-3. clean Git history if required by security policy
+2. remove from active configuration
+3. clean history if required
 4. inspect access logs
-5. issue a new secret through secure configuration
+5. issue new secret through secure configuration
 
-Do not rely on deleting the file alone.
+Deleting the file alone is insufficient.
 
-## 21. Production Verification Commands
-
-Health:
+## 26. Production Verification
 
 ```bash
 curl http://localhost:8000/health
-```
-
-Top 10:
-
-```bash
 curl http://localhost:8000/api/v1/promotions/top10
-```
-
-Stats:
-
-```bash
 curl http://localhost:8000/api/v1/stats/
 ```
 
-## 22. Definition of Healthy System
+Also verify the database directly for a sample promotion and its evidence/source rows.
+
+## 27. Definition of Healthy System
 
 A healthy system means:
 
 - PostgreSQL reachable
 - scheduler running
-- configured sources producing successful crawls
-- extraction succeeding within expected threshold
+- approved sources configured
+- URL registry populated
+- source discovery observable
+- crawls succeeding within expected thresholds
+- extraction succeeding within expected thresholds
 - evidence coverage high
+- geography resolution healthy
 - review queue observable
 - active data fresh
-- Top 10 query returns only eligible records
-- dashboard and API agree with PostgreSQL
+- Top 10 contains only eligible records
+- dashboard/API/PostgreSQL agree
