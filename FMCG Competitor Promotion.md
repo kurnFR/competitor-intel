@@ -1,2577 +1,595 @@
-# PRD.md — FMCG Competitor Promotion Intelligence System
+# PRD.md — FMCG Competitor Promotion Intelligence
 
-## 1. Product Overview
+## 1. Product Vision
 
-### Product Name
+Build an AI-powered competitive promotion intelligence platform for the Indonesian FMCG snack market, initially focused on biscuits, crackers, cookies and wafers.
 
-**Competitor Promotion Intelligence Platform**
+The product continuously collects publicly available promotion information, converts it into structured commercial observations, validates the facts against source evidence, resolves products/brands/competitors, preserves geographic scope, and presents the most important currently active activities to marketing, trade marketing, sales and management.
 
-### Objective
+The system is a **decision-support product**. It must prefer an explicit unknown value over an invented value.
 
-Build an AI-powered system that continuously monitors publicly available web sources to identify, extract, validate, normalize, and rank competitor marketing activities in the **FMCG biscuit, cracker, wafer, cookies, and related snack categories**.
+## 2. Primary Business Question
 
-The primary output is a PostgreSQL database containing structured competitor intelligence such as:
+> What are the 10 most commercially important competitor promotions that are active now, recently verified, geographically understood, and supported by reliable evidence?
 
-* Competitor / brand
-* Product
-* SKU / pack size
-* Category
-* Regular price
-* Promotional price
-* Discount percentage
-* Promotion mechanism
-* Buy 1 Get 1
-* Buy 2 Get 1
-* Buy X Get Y
-* Multi-buy pricing
-* Cashback
-* Voucher
-* Gift with purchase
-* Member-only pricing
-* Bundle promotion
-* Minimum purchase requirement
-* Promotion start date
-* Promotion end date
-* Retailer / channel
-* Geography
-* Source URL
-* Source type
-* Source reliability
-* Evidence / extracted text
-* AI confidence
-* Last verified timestamp
-* Promotion status
+A promotion is not considered trustworthy unless the user can trace it to source evidence.
 
-The system must identify the **Top 10 currently active competitor promotions**, prioritizing promotions that:
+## 3. Business Outcomes
 
-1. Are still valid.
-2. Are highly relevant to biscuits/crackers.
-3. Come from reliable sources.
-4. Have strong evidence.
-5. Have meaningful commercial impact.
-6. Are recent.
-7. Are not duplicates.
+The platform should reduce manual competitor monitoring and enable users to understand:
 
----
+- which competitor/brand is promoting
+- which exact product/SKU/pack size is involved
+- what promotion mechanic is being used
+- regular vs promotional price
+- effective discount where calculable
+- retailer/channel
+- geographic validity
+- start/end validity
+- source reliability
+- when the observation was last verified
+- why the activity is ranked highly
 
-# 2. Business Problem
+## 4. Scope
 
-The marketing and commercial teams currently have limited visibility into competitor promotional activity.
+### 4.1 Initial Market
 
-Competitor promotions can appear across:
+Indonesia.
 
-* Retailer websites
-* E-commerce marketplaces
-* Brand official stores
-* Brand websites
-* Digital catalogs
-* Retailer catalogs
-* Promotional landing pages
-* Public social media
-* News/media articles
-* Promotional aggregators
+### 4.2 Initial Categories
 
-The information is often:
+- Biscuit
+- Cracker
+- Cookie
+- Wafer
+- Sandwich biscuit
+- Cream biscuit
+- Sweet biscuit
+- Savory cracker
+- Closely related snack products only when explicitly relevant
 
-* Unstructured
-* Inconsistent
-* Short-lived
-* Duplicated
-* Presented as images/PDFs
-* Missing structured dates
-* Missing regular prices
-* Different across channels
+### 4.3 Initial Source
 
-A human team cannot efficiently monitor all of these sources continuously.
+The first production source is **Hemat.id**.
 
-The proposed system automates this process.
+Do not confuse this with `hemat.co.id`.
 
----
+The source adapter must preserve the source URL, retrieval time, exact evidence and source geography wording.
 
-# 3. Target Users
+The architecture must allow additional sources later without changing the canonical data model.
 
-## Primary Users
+### 4.4 Future Source Classes
 
-### Marketing Team
+- official retailer websites/catalogs
+- official brand websites/stores
+- verified marketplace stores
+- promotion aggregators
+- established media
+- public social sources
 
-Needs to understand:
+Source priority is configurable. A source must not become trusted merely because an AI model extracted it successfully.
 
-* Who is promoting?
-* Which brand/product?
-* What promotion?
-* How aggressive is the discount?
-* Which retailer?
-* When does it expire?
+## 5. Target Users
+
+### Marketing
+
+Needs competitor activity, promotion intensity, pricing and regional differences.
 
 ### Trade Marketing
 
-Needs:
-
-* Retailer-specific activity
-* Promotion mechanics
-* Price comparisons
-* Competitor activity by channel
-* Promotion intensity
+Needs retailer, channel, mechanic and geographic detail.
 
 ### Brand / Category Manager
 
-Needs:
+Needs competitive landscape, price positioning and activity trends.
 
-* Competitive landscape
-* Price positioning
-* Promotion frequency
-* Competitor strategy
-* Category trends
+### Sales
 
-### Sales Team
-
-Needs:
-
-* Current retailer promotions
-* Competitor pricing
-* Active trade promotions
+Needs current retailer and regional promotions.
 
 ### Management
 
-Needs:
+Needs a concise executive view of significant competitive activity.
 
-* Executive summary
-* Top competitor activities
-* Promotion intensity
-* Competitor price movements
+### Data/Operations User
 
----
+Needs source health, extraction quality, evidence and review queues.
 
-# 4. Product Scope
+## 6. Core Product Requirements
 
-## Phase 1 — Indonesia
+### PR-001 — Active Promotion Discovery
 
-Focus on the Indonesian market.
+Discover promotions relevant to the target categories from configured sources.
 
-Priority categories:
+### PR-002 — Structured Extraction
 
-1. Biscuits
-2. Crackers
-3. Cookies
-4. Wafer
-5. Sandwich biscuits
-6. Cream biscuits
-7. Sweet biscuits
-8. Savory crackers
-9. Related snack products
+Extract product, brand, competitor, price, mechanic, retailer, geography, validity and conditions into structured fields.
 
-Priority channels:
+### PR-003 — Evidence
 
-1. Indomaret
-2. Alfamart
-3. Superindo
-4. Hypermart
-5. Lotte Mart / Lotte Grosir
-6. Yogya
-7. TIP TOP
-8. Transmart
-9. Shopee
-10. Tokopedia
-11. Lazada
-12. Brand official stores
-13. Other reliable retailers
+Every extracted commercial fact must be traceable to source evidence.
 
-The architecture must allow additional countries, retailers and categories later.
+### PR-004 — Geographic Scope
 
----
+Geography is a first-class requirement, not a free-text afterthought.
 
-# 5. Core Requirement
+The system must preserve:
 
-The system should answer:
+1. exact source geography wording
+2. normalized inclusion scopes
+3. normalized exclusion scopes
+4. geography confidence
 
-> "What are the 10 most important biscuit/cracker competitor promotions that are active right now?"
-
-Example output:
-
-| Rank | Competitor   | Product      | Promotion   | Regular Price | Promo Price |         Saving | Retailer   | Valid Until |
-| ---- | ------------ | ------------ | ----------- | ------------: | ----------: | -------------: | ---------- | ----------- |
-| 1    | Competitor A | Cracker 200g | Buy 2 Get 1 |      Rp15,000 |    Rp15,000 |  33% effective | Retailer A | 10 Sep      |
-| 2    | Competitor B | Biscuit 120g | 30% OFF     |      Rp10,000 |     Rp7,000 |            30% | Retailer B | 8 Sep       |
-| 3    | Competitor C | Cookies 150g | Buy 1 Get 1 |      Rp20,000 |    Rp20,000 | ~50% effective | Online     | 15 Sep      |
-
-The actual values must always come from source evidence rather than generated assumptions.
-
----
-
-# 6. System Architecture
+Examples:
 
 ```text
-                    WEB / PUBLIC SOURCES
-                            |
-                            v
-                 +----------------------+
-                 | Source Discovery     |
-                 | Engine               |
-                 +----------+-----------+
-                            |
-                            v
-                 +----------------------+
-                 | Web Crawlers /       |
-                 | Search Collectors    |
-                 +----------+-----------+
-                            |
-                            v
-                 +----------------------+
-                 | Raw Evidence Store   |
-                 | HTML / PDF / Image   |
-                 +----------+-----------+
-                            |
-                            v
-                 +----------------------+
-                 | Content Extraction   |
-                 | OCR + Parser         |
-                 +----------+-----------+
-                            |
-                            v
-                 +----------------------+
-                 | AI Promotion         |
-                 | Extraction           |
-                 +----------+-----------+
-                            |
-                            v
-                 +----------------------+
-                 | Validation Engine    |
-                 | Date / Price /       |
-                 | Promotion Validation |
-                 +----------+-----------+
-                            |
-                            v
-                 +----------------------+
-                 | Entity Resolution    |
-                 | Brand / Product / SKU|
-                 +----------+-----------+
-                            |
-                            v
-                 +----------------------+
-                 | Deduplication Engine |
-                 +----------+-----------+
-                            |
-                            v
-                 +----------------------+
-                 | Promotion Scoring    |
-                 +----------+-----------+
-                            |
-                            v
-                    POSTGRESQL
-                            |
-                +-----------+-----------+
-                |                       |
-                v                       v
-        Top 10 API             Analytics / Dashboard
+Berlaku di Jawa
+Berlaku di Jawa, Bali, Lombok
+Berlaku di Jawa, Bali, Lombok, kecuali Indomaret Point
+Berlaku di Jabodetabek, Palembang
 ```
 
----
+Never default an unknown geography to `Indonesia`.
 
-# 7. Data Collection Strategy
+`Indonesia` can only be used when the source explicitly establishes national validity or an approved deterministic rule does so.
 
-## 7.1 Do NOT rely on one scraping method
+### PR-005 — Regional Price Intelligence
 
-The system should use multiple collection methods.
-
-### Method A — Search Engine Discovery
-
-Use search engines to discover recent promotion pages.
-
-Example queries:
-
-```text
-biskuit promo Indonesia
-cracker promo Indonesia
-biskuit diskon September 2026
-cracker beli 1 gratis 1
-biskuit beli 2 gratis 1
-biskuit promo Indomaret
-cracker promo Superindo
-biskuit promo Alfamart
-wafer promo Indonesia
-```
-
-Search queries should be dynamically generated.
+The same product can have different prices or mechanics by region. These must remain separate commercial observations.
 
 Example:
 
 ```text
-{category} + {promotion_keyword} + Indonesia
-{brand} + promo
-{retailer} + {category} + promo
+Roma Sari Gandum 108g
+
+Jawa        Rp7,900   34% OFF
+Sumatera   Rp8,500   29% OFF
+Sulawesi   Rp9,900   23% OFF
 ```
 
----
+Do not merge these into one promotion solely because product and retailer match.
 
-# 8. Source Priority
+### PR-006 — Promotion Taxonomy
 
-The system must maintain a source reliability hierarchy.
+Normalize equivalent language into controlled mechanics:
 
-## Tier 1 — Official Retailer / Brand Sources
+- `DISCOUNT`
+- `BUY_X_GET_Y`
+- `MULTIBUY`
+- `CASHBACK`
+- `VOUCHER`
+- `MEMBER_PRICE`
+- `GIFT_WITH_PURCHASE`
+- `BUNDLE`
+- `MINIMUM_SPEND`
+- `OTHER`
 
-Highest reliability.
+Preserve the original promotion wording as evidence.
 
-Examples:
+### PR-007 — Validity
 
-* Official retailer promotion pages
-* Official retailer catalogs
-* Official retailer e-commerce
-* Official brand website
-* Official brand store
+The system must distinguish:
 
-Reliability score:
+- `start_date`
+- `end_date`
+- `first_seen_at`
+- `last_seen_at`
+- `last_verified_at`
 
-```text
-1.00
-```
+An active promotion must be currently valid according to its source evidence.
 
----
+If an end date is absent, the promotion may only remain active while recent verification satisfies the configured freshness rule.
 
-## Tier 2 — Major E-commerce / Marketplace
+### PR-008 — 90-Day Default Freshness
 
-Examples:
+The default Top 10 must use a maximum observation age of 90 days.
 
-* Official brand stores
-* Verified retailer stores
-* Marketplace supermarket stores
+This is a business freshness rule, not a replacement for promotion validity.
 
-Reliability:
+A promotion observed within 90 days but already expired must not appear in the active Top 10.
 
-```text
-0.85 - 0.95
-```
+### PR-009 — Quality Gate
 
-Important:
+Ranking must happen after eligibility validation.
 
-A marketplace product page is more reliable when the seller is clearly an official brand/retailer store.
+A candidate is eligible for the default Top 10 only when:
 
----
+- target category is confirmed
+- current validity is confirmed
+- observation is within 90 days
+- source is allowed
+- required evidence exists
+- critical price/date/geography contradictions are absent
+- product/brand/retailer identity is sufficiently resolved
+- record is not rejected
 
-## Tier 3 — Established Promotion / Retail Intelligence Sites
+### PR-010 — Top 10 Ranking
 
-Examples:
+Rank eligible promotions using an explainable composite score incorporating configurable factors such as:
 
-* Promotion aggregators
-* Retail catalog websites
-* Established consumer media
+- promotion strength
+- source reliability
+- freshness
+- category relevance
+- AI extraction confidence
+- evidence quality
+- commercial impact
 
-Reliability:
+The score must not be described as probability or accuracy.
 
-```text
-0.70 - 0.85
-```
+Display it as `Impact Score` or equivalent.
 
----
+### PR-011 — Auditability
 
-## Tier 4 — News / Media
+A user must be able to open a promotion and see:
 
-Useful for discovery and confirmation.
-
-Reliability:
-
-```text
-0.60 - 0.80
-```
-
----
-
-## Tier 5 — Social Media
-
-Useful but potentially noisy.
-
-Reliability:
-
-```text
-0.40 - 0.70
-```
-
-Social media should not automatically be treated as false, but should require stronger validation.
-
----
-
-# 9. Source Registry
-
-Create a configurable source table.
-
-```sql
-CREATE TABLE source_registry (
-    id UUID PRIMARY KEY,
-    source_name TEXT NOT NULL,
-    domain TEXT NOT NULL,
-    source_type TEXT,
-    reliability_score NUMERIC(5,4),
-    country TEXT,
-    active BOOLEAN DEFAULT TRUE,
-    crawl_frequency_minutes INTEGER,
-    robots_allowed BOOLEAN,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-```
-
-Example:
-
-```text
-Indomaret
-Superindo
-Lotte Grosir
-Yogya
-Official brand stores
-Promotion aggregators
-```
-
-The crawler must never hard-code source behavior into the core application.
-
----
-
-# 10. Crawling Frequency
-
-Promotion intelligence is time-sensitive.
-
-Recommended frequencies:
-
-### High-priority retailer pages
-
-Every:
-
-```text
-15–60 minutes
-```
-
-### Marketplace pages
-
-Every:
-
-```text
-1–3 hours
-```
-
-### Promotion/catalog pages
-
-Every:
-
-```text
-3–6 hours
-```
-
-### News/media
-
-Every:
-
-```text
-6–12 hours
-```
-
-### Social sources
-
-Every:
-
-```text
-6–24 hours
-```
-
-The system should support adaptive crawling.
-
-If a promotion is near expiration:
-
-```text
-Increase crawl frequency
-```
-
-Example:
-
-```text
-Promotion expires in >7 days
-    -> normal frequency
-
-Promotion expires in 1–7 days
-    -> increase frequency
-
-Promotion expires in <24 hours
-    -> high frequency
-```
-
----
-
-# 11. Raw Evidence Layer
-
-Never directly write scraped information into the final promotion table.
-
-First save the raw evidence.
-
-```sql
-CREATE TABLE crawl_documents (
-    id UUID PRIMARY KEY,
-    source_id UUID REFERENCES source_registry(id),
-    url TEXT NOT NULL,
-    canonical_url TEXT,
-    title TEXT,
-    content_type TEXT,
-    raw_html TEXT,
-    extracted_text TEXT,
-    content_hash TEXT,
-    published_at TIMESTAMPTZ,
-    crawled_at TIMESTAMPTZ DEFAULT NOW(),
-    http_status INTEGER,
-    language TEXT,
-    metadata JSONB
-);
-```
-
-For images/PDFs:
-
-```text
-store:
+- source
 - source URL
-- file hash
-- OCR text
-- extraction metadata
-```
+- crawl timestamp
+- verification timestamp
+- exact evidence text
+- product/brand/competitor
+- prices
+- mechanic
+- retailer/channel
+- geographic scope and exclusions
+- validity
+- confidence by field
+- ranking factors
 
-Do not rely only on the current webpage because promotions may disappear after expiry.
+### PR-012 — PostgreSQL as UI Source of Truth
 
----
+The UI must never contain hard-coded production promotion data.
 
-# 12. AI Extraction
-
-The AI should transform unstructured evidence into structured promotion data.
-
-Input:
-
-```text
-URL
-page title
-page text
-OCR text
-publication date
-crawl date
-source metadata
-```
-
-Output:
-
-```json
-{
-  "brand": "Roma",
-  "manufacturer": "Mayora",
-  "product_name": "Roma Malkist Crackers",
-  "category": "cracker",
-  "variant": "Abon",
-  "pack_size": "105g",
-  "regular_price": 7500,
-  "promo_price": null,
-  "currency": "IDR",
-  "promotion_type": "BUY_X_GET_Y",
-  "buy_quantity": 2,
-  "free_quantity": 1,
-  "discount_percentage": 33.33,
-  "minimum_purchase": null,
-  "promotion_start": "2026-06-25",
-  "promotion_end": "2026-07-08",
-  "retailer": "Indomaret",
-  "channel": "offline_retail",
-  "geography": "Indonesia",
-  "confidence": 0.96,
-  "evidence": "Beli 2 Gratis 1"
-}
-```
-
----
-
-# 13. Promotion Taxonomy
-
-The AI must normalize promotion language.
-
-## Price Discount
-
-Examples:
+The data path must be:
 
 ```text
-20% OFF
-Diskon 20%
-Hemat 20%
-Rp10.000 dari Rp12.500
+PostgreSQL -> API -> UI
 ```
 
-Normalize to:
+The crawler writes through the ingestion pipeline into PostgreSQL.
+
+If the database is empty, the UI must display an empty state, not demo data.
+
+## 7. Geography Requirements
+
+### 7.1 Supported Geography Concepts
+
+The system must support commercial scopes including, but not limited to:
 
 ```text
-DISCOUNT
-```
-
----
-
-## Buy One Get One
-
-```text
-Beli 1 Gratis 1
-Buy 1 Get 1
-B1G1
-```
-
-Normalize:
-
-```text
-BUY_X_GET_Y
-
-buy_quantity = 1
-free_quantity = 1
-```
-
----
-
-## Buy Two Get One
-
-```text
-Beli 2 Gratis 1
-Buy 2 Get 1
-B2G1
-```
-
-Normalize:
-
-```text
-BUY_X_GET_Y
-
-buy_quantity = 2
-free_quantity = 1
-```
-
----
-
-## Multi-buy
-
-Examples:
-
-```text
-2 pcs Rp20.000
-3 pcs Rp25.000
-2 lebih hemat
-```
-
-Normalize:
-
-```text
-MULTIBUY
-```
-
----
-
-## Cashback
-
-```text
-Cashback Rp10.000
-Cashback 20%
-```
-
-Normalize:
-
-```text
-CASHBACK
-```
-
----
-
-## Voucher
-
-```text
-Voucher Rp20.000
-Diskon Rp10.000 dengan voucher
-```
-
-Normalize:
-
-```text
-VOUCHER
-```
-
----
-
-## Gift
-
-```text
-Gratis hadiah
-Free gift
-Hadiah langsung
-```
-
-Normalize:
-
-```text
-GIFT_WITH_PURCHASE
-```
-
----
-
-## Member Price
-
-```text
-Harga khusus member
-Member discount
-```
-
-Normalize:
-
-```text
-MEMBER_PRICE
-```
-
----
-
-## Bundle
-
-```text
-Paket hemat
-Bundle
-Buy 3 products
-```
-
-Normalize:
-
-```text
-BUNDLE
-```
-
----
-
-# 14. PostgreSQL Data Model
-
-Use a normalized relational model.
-
-## Competitor
-
-```sql
-CREATE TABLE competitors (
-    id UUID PRIMARY KEY,
-    name TEXT NOT NULL,
-    parent_company TEXT,
-    country TEXT,
-    active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-```
-
----
-
-## Brands
-
-```sql
-CREATE TABLE brands (
-    id UUID PRIMARY KEY,
-    competitor_id UUID REFERENCES competitors(id),
-    name TEXT NOT NULL,
-    normalized_name TEXT NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-```
-
----
-
-## Products
-
-```sql
-CREATE TABLE products (
-    id UUID PRIMARY KEY,
-    brand_id UUID REFERENCES brands(id),
-    product_name TEXT NOT NULL,
-    normalized_product_name TEXT,
-    category TEXT,
-    subcategory TEXT,
-    variant TEXT,
-    pack_size_value NUMERIC,
-    pack_size_unit TEXT,
-    sku TEXT,
-    barcode TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-```
-
----
-
-# 15. Retailers
-
-```sql
-CREATE TABLE retailers (
-    id UUID PRIMARY KEY,
-    name TEXT NOT NULL,
-    normalized_name TEXT,
-    channel_type TEXT,
-    website TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-```
-
-Example channel types:
-
-```text
-MODERN_TRADE
-MINIMARKET
-SUPERMARKET
-HYPERMARKET
-ECOMMERCE
-MARKETPLACE
-ONLINE_BRAND_STORE
-```
-
----
-
-# 16. Promotion Table
-
-This is the primary business table.
-
-```sql
-CREATE TABLE promotions (
-    id UUID PRIMARY KEY,
-
-    competitor_id UUID REFERENCES competitors(id),
-    brand_id UUID REFERENCES brands(id),
-    product_id UUID REFERENCES products(id),
-    retailer_id UUID REFERENCES retailers(id),
-
-    promotion_type TEXT NOT NULL,
-
-    promotion_title TEXT,
-
-    regular_price NUMERIC(14,2),
-    promo_price NUMERIC(14,2),
-    currency TEXT DEFAULT 'IDR',
-
-    discount_percentage NUMERIC(7,2),
-
-    buy_quantity INTEGER,
-    free_quantity INTEGER,
-
-    minimum_purchase_quantity INTEGER,
-    minimum_purchase_value NUMERIC(14,2),
-
-    promotion_start TIMESTAMPTZ,
-    promotion_end TIMESTAMPTZ,
-
-    geography TEXT,
-    channel TEXT,
-
-    source_id UUID REFERENCES source_registry(id),
-    source_document_id UUID REFERENCES crawl_documents(id),
-
-    source_url TEXT NOT NULL,
-
-    evidence_text TEXT,
-    evidence_json JSONB,
-
-    ai_confidence NUMERIC(5,4),
-    source_reliability NUMERIC(5,4),
-
-    status TEXT NOT NULL,
-
-    first_seen_at TIMESTAMPTZ,
-    last_seen_at TIMESTAMPTZ,
-
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-```
-
----
-
-# 17. Promotion Status
-
-Allowed values:
-
-```text
-DISCOVERED
-VALIDATING
-ACTIVE
-EXPIRED
-SUSPENDED
-INVALID
+NATIONAL
+ISLAND_GROUP
+REGION
+PROVINCE
+METRO
+CITY
+DISTRICT
+STORE
+STORE_GROUP
+ONLINE
 UNKNOWN
 ```
 
-The system must never classify a promotion as ACTIVE simply because it was found on a webpage.
+Examples include:
 
----
+- Indonesia
+- Jawa
+- Sumatera
+- Kalimantan
+- Sulawesi
+- Bali
+- Lombok
+- Jabodetabek
+- Palembang
+- individual cities
+- individual store/outlet groups
 
-# 18. Active Promotion Definition
+### 7.2 Source vs Normalized Geography
 
-A promotion is considered active when:
+Always retain both.
 
 ```text
-promotion_start <= NOW()
-AND
-promotion_end >= NOW()
-```
-
-OR when the source explicitly states that it is currently active but no end date exists.
-
-In that case:
-
-```text
-status = ACTIVE
-end_date_confidence = LOW
-```
-
-The system must continue checking it.
-
----
-
-# 19. Three-Month Rule
-
-The user requirement is:
-
-> Only show activities that are still valid and not more than 3 months old.
-
-Implement two separate conditions.
-
-### Condition A — Fresh Discovery
-
-```sql
-last_seen_at >= NOW() - INTERVAL '3 months'
-```
-
-### Condition B — Promotion Validity
-
-```sql
-promotion_end >= NOW()
-```
-
-For promotions without an explicit end date:
-
-```text
-last_seen_at >= NOW() - 7 days
-```
-
-should be required before considering them active.
-
-This prevents an old evergreen product page from being incorrectly treated as an active promotion.
-
----
-
-# 20. Promotion Validation Engine
-
-Every extracted promotion goes through validation.
-
-### Validation checks
-
-#### Check 1 — Date
-
-Does the source contain:
-
-* Start date?
-* End date?
-* "Until..."
-* "Berlaku..."
-* "Period..."
-
-#### Check 2 — Product
-
-Does the source clearly identify the product?
-
-#### Check 3 — Promotion
-
-Is there explicit evidence of a promotion?
-
-#### Check 4 — Price
-
-If price exists:
-
-```text
-regular price
-promo price
-```
-
-must be logically consistent.
-
-Example:
-
-```text
-Regular = 10,000
-Promo = 8,000
-```
-
-Expected:
-
-```text
-20% discount
-```
-
-#### Check 5 — Source
-
-Is the source trusted?
-
-#### Check 6 — Freshness
-
-Was the page recently crawled?
-
----
-
-# 21. Evidence Requirement
-
-Every promotion must have evidence.
-
-Example:
-
-```json
-{
-  "evidence": [
-    {
-      "type": "TEXT",
-      "content": "Beli 2 Gratis 1",
-      "source_location": "promotion_description"
-    },
-    {
-      "type": "PRICE",
-      "content": "Rp10.500",
-      "source_location": "product_card"
-    },
-    {
-      "type": "DATE",
-      "content": "6-19 August 2026",
-      "source_location": "promotion_period"
-    }
-  ]
-}
-```
-
-AI must not invent missing fields.
-
-If the regular price is unavailable:
-
-```text
-regular_price = NULL
-```
-
-not an estimated value.
-
----
-
-# 22. AI Confidence
-
-AI must return confidence per extracted field.
-
-Example:
-
-```json
-{
-  "product_confidence": 0.98,
-  "promotion_confidence": 0.99,
-  "price_confidence": 0.96,
-  "date_confidence": 0.91
-}
-```
-
-Overall confidence:
-
-```text
-weighted average
-```
-
-Suggested weights:
-
-```text
-promotion = 30%
-date = 25%
-product = 20%
-price = 15%
-retailer = 10%
-```
-
----
-
-# 23. Entity Resolution
-
-Different sources may write the same product differently.
-
-Example:
-
-```text
-Roma Malkist Crackers 105g
-Roma Malkist 105 gr
-Roma Malkist Abon Gurih 105GR
-ROMA MALKIST CRACKERS ABON 105G
-```
-
-AI/entity matching should map them to:
-
-```text
-product_id = XXXXX
-```
-
-Use a combination of:
-
-1. Brand
-2. Product name
-3. Variant
-4. Pack size
-5. Barcode
-6. Manufacturer
-7. Semantic similarity
-
----
-
-# 24. Deduplication
-
-The same promotion may appear on:
-
-* Retailer website
-* News website
-* Promotion aggregator
-* Social media
-
-These must not become four separate competitor promotions.
-
-Create:
-
-```sql
-CREATE TABLE promotion_occurrences (
-    id UUID PRIMARY KEY,
-    promotion_id UUID REFERENCES promotions(id),
-    source_document_id UUID REFERENCES crawl_documents(id),
-    source_url TEXT,
-    evidence_text TEXT,
-    discovered_at TIMESTAMPTZ DEFAULT NOW()
-);
-```
-
-One promotion:
-
-```text
-PROMOTION_ID = ABC
-```
-
-can have:
-
-```text
-Occurrence 1 -> Indomaret
-Occurrence 2 -> Media article
-Occurrence 3 -> Promotion aggregator
-```
-
----
-
-# 25. Deduplication Key
-
-Initial deterministic key:
-
-```text
-brand
-+
-product
-+
-retailer
-+
-promotion_type
-+
-promotion_start
-+
-promotion_end
-```
-
-Then apply semantic matching.
-
-Example:
-
-```text
-Roma Malkist
-Beli 2 Gratis 1
-Indomaret
-25 Jun - 8 Jul
-```
-
-and:
-
-```text
-ROMA MALKIST CRACKERS
-Buy 2 Get 1
-Indomaret
-25 June - 8 July
-```
-
-should become one promotion.
-
----
-
-# 26. Promotion Impact Score
-
-The system should rank promotions.
-
-Create:
-
-```text
-promotion_score
-```
-
-Suggested formula:
-
-```text
-score =
-    30% promotion_strength
-  + 20% source_reliability
-  + 15% freshness
-  + 15% category_relevance
-  + 10% competitor_importance
-  + 10% evidence_confidence
-```
-
----
-
-# 27. Promotion Strength
-
-Example scoring:
-
-```text
-BUY 1 GET 1       = 100
-BUY 2 GET 1       = 90
-BUY 3 GET 1       = 75
-50% discount      = 95
-40% discount      = 85
-30% discount      = 75
-20% discount      = 60
-10% discount      = 40
-Member-only       = 50
-Cashback          = 40
-Gift              = 40
-Bundle            = 45
-```
-
-These values should be configurable.
-
----
-
-# 28. Effective Discount Calculation
-
-For:
-
-```text
-Buy 1 Get 1
-```
-
-effective discount:
-
-```text
-50%
-```
-
-For:
-
-```text
-Buy 2 Get 1
-```
-
-effective discount:
-
-```text
-33.33%
-```
-
-For:
-
-```text
-Buy 3 Get 1
-```
-
-effective discount:
-
-```text
-25%
-```
-
-Formula:
-
-```text
-effective_discount =
-free_quantity
-/
-(buy_quantity + free_quantity)
-* 100
-```
-
-However, only calculate this when the free item is equivalent or explicitly specified.
-
----
-
-# 29. Top 10 Query
-
-The application should expose a database view.
-
-```sql
-CREATE VIEW active_top_promotions AS
-
-SELECT
-    p.*,
-    (
-        p.ai_confidence
-        * p.source_reliability
-    ) AS confidence_score
-
-FROM promotions p
-
-WHERE
-    p.status = 'ACTIVE'
-    AND p.last_seen_at >= NOW() - INTERVAL '3 months'
-    AND (
-        p.promotion_end IS NULL
-        OR p.promotion_end >= NOW()
-    )
-
-ORDER BY
-    promotion_score DESC,
-    last_seen_at DESC
-
-LIMIT 10;
-```
-
-For production, use a materialized view or API-level ranking if ranking becomes computationally expensive.
-
----
-
-# 30. Recommended API
-
-Create:
-
-```text
-GET /api/v1/promotions/top10
-```
-
-Parameters:
-
-```text
-category
-retailer
-brand
-competitor
-channel
-geography
-promotion_type
-days
-```
-
-Example:
-
-```text
-GET /api/v1/promotions/top10?category=cracker&days=90
-```
-
-Response:
-
-```json
-{
-  "generated_at": "2026-09-02T10:00:00Z",
-  "count": 10,
-  "promotions": [
-    {
-      "rank": 1,
-      "competitor": "Competitor A",
-      "brand": "Brand A",
-      "product": "Cracker 200g",
-      "promotion_type": "BUY_X_GET_Y",
-      "buy_quantity": 2,
-      "free_quantity": 1,
-      "regular_price": 15000,
-      "promo_price": null,
-      "effective_discount": 33.33,
-      "retailer": "Retailer A",
-      "valid_until": "2026-09-10",
-      "confidence": 0.96,
-      "source_url": "..."
-    }
-  ]
-}
-```
-
----
-
-# 31. AI Agent Architecture
-
-Use multiple specialized AI agents rather than one giant prompt.
-
-## Agent 1 — Discovery Agent
-
-Responsibilities:
-
-* Generate search queries
-* Discover URLs
-* Find new sources
-* Detect new promotion pages
-* Expand source coverage
-
----
-
-## Agent 2 — Extraction Agent
-
-Responsibilities:
-
-* Read HTML
-* Read PDF
-* Read OCR
-* Extract products
-* Extract prices
-* Extract promotions
-* Extract dates
-
----
-
-## Agent 3 — Validation Agent
-
-Responsibilities:
-
-* Check promotion validity
-* Check dates
-* Check price consistency
-* Check product relevance
-* Reject hallucinated fields
-
----
-
-## Agent 4 — Entity Resolution Agent
-
-Responsibilities:
-
-* Match competitor
-* Match brand
-* Match product
-* Match SKU
-* Normalize retailer
-
----
-
-## Agent 5 — Deduplication Agent
-
-Responsibilities:
-
-* Identify same promotion across sources
-* Merge evidence
-* Select strongest source
-
----
-
-## Agent 6 — Ranking Agent
-
-Responsibilities:
-
-* Calculate promotion strength
-* Calculate commercial relevance
-* Rank Top 10
-
----
-
-# 32. AI Extraction Prompt Contract
-
-The AI should be forced to return structured JSON.
+source_text = "Berlaku di Jawa, Bali, Lombok, kecuali Indomaret Point"
 
-Example schema:
-
-```json
-{
-  "is_relevant": true,
-  "competitor": {
-    "name": "",
-    "confidence": 0.0
-  },
-  "brand": {
-    "name": "",
-    "confidence": 0.0
-  },
-  "product": {
-    "name": "",
-    "variant": "",
-    "pack_size": "",
-    "category": "",
-    "confidence": 0.0
-  },
-  "promotion": {
-    "type": "",
-    "title": "",
-    "buy_quantity": null,
-    "free_quantity": null,
-    "discount_percentage": null,
-    "regular_price": null,
-    "promo_price": null,
-    "confidence": 0.0
-  },
-  "validity": {
-    "start": null,
-    "end": null,
-    "confidence": 0.0
-  },
-  "retailer": {
-    "name": "",
-    "confidence": 0.0
-  },
-  "evidence": [],
-  "overall_confidence": 0.0
-}
-```
-
-Rules:
-
-```text
-1. Never invent missing values.
-2. Return null when information is unavailable.
-3. Preserve original currency.
-4. Preserve original promotion wording in evidence.
-5. Normalize promotion_type.
-6. Only classify as relevant when the product belongs to target categories.
-7. Dates must be ISO-8601.
-8. Prices must be numeric.
-9. Every important extracted field must have evidence.
-10. Distinguish promotion date from article publication date.
-```
-
----
-
-# 33. Web Scraping Strategy
-
-Use a hybrid architecture.
-
-### Static HTML
-
-Use:
-
-```text
-HTTP client
-HTML parser
-```
-
-### JavaScript websites
-
-Use:
-
-```text
-Headless browser
-```
-
-### PDF catalogs
-
-Use:
-
-```text
-PDF parser
-OCR if required
-```
-
-### Image promotions
-
-Use:
-
-```text
-OCR
-Vision AI
-```
-
-### Search
-
-Use:
-
-```text
-Search API
-```
-
-Do not build a crawler that attempts to crawl the entire internet.
-
-Start with a controlled source registry and use search discovery to expand coverage.
-
----
-
-# 34. Robots.txt and Compliance
-
-The system must:
-
-* Respect robots.txt where applicable.
-* Respect website terms.
-* Use reasonable crawl rates.
-* Avoid bypassing authentication.
-* Avoid CAPTCHA bypass.
-* Avoid scraping private/non-public data.
-* Only collect publicly available information.
-* Store source URLs.
-* Identify crawl timestamps.
-
-The system should favor official APIs or permitted feeds when available.
-
----
-
-# 35. Data Freshness
-
-Each promotion must contain:
-
-```text
-first_seen_at
-last_seen_at
-last_validated_at
-promotion_start
-promotion_end
-```
-
-Example:
-
-```text
-First seen:
-2026-08-20
-
-Last validated:
-2026-09-02 16:30
-
-Promotion ends:
-2026-09-10
-```
-
-This allows the system to know that the promotion is still being observed.
-
----
-
-# 36. Expiration Worker
-
-Run a scheduled worker:
-
-```text
-every 15 minutes
-```
-
-Logic:
-
-```python
-if promotion_end < now:
-    status = "EXPIRED"
-```
-
-For promotions without an explicit end date:
-
-```text
-if last_seen_at > threshold:
-    status = "UNKNOWN"
-```
-
-Never leave stale promotions permanently ACTIVE.
-
----
-
-# 37. Source Reliability Updating
-
-Source reliability should improve or decrease based on historical accuracy.
-
-Example:
-
-```text
-Initial source reliability = 0.80
-```
-
-If source consistently publishes accurate active promotions:
-
-```text
-0.80 -> 0.90
-```
-
-If source frequently has expired information:
-
-```text
-0.80 -> 0.65
-```
-
-Create:
-
-```sql
-CREATE TABLE source_quality_metrics (
-    id UUID PRIMARY KEY,
-    source_id UUID REFERENCES source_registry(id),
-    total_promotions INTEGER,
-    verified_promotions INTEGER,
-    expired_false_positive_count INTEGER,
-    accuracy_score NUMERIC(5,4),
-    calculated_at TIMESTAMPTZ DEFAULT NOW()
-);
-```
-
----
-
-# 38. Observability
-
-The system must monitor:
-
-### Crawl metrics
-
-```text
-pages crawled
-pages failed
-HTTP errors
-crawl duration
-```
-
-### AI metrics
-
-```text
-documents processed
-extractions successful
-extraction failures
-average confidence
-```
-
-### Business metrics
-
-```text
-active promotions
-expired promotions
-new promotions/day
-promotions by competitor
-promotions by retailer
-promotions by type
-```
-
----
-
-# 39. Error Handling
-
-If crawling fails:
-
-```text
-retry with exponential backoff
-```
-
-If AI extraction fails:
-
-```text
-retry
-```
-
-If validation fails:
-
-```text
-status = UNKNOWN
-```
-
-If source disappears:
-
-```text
-do not immediately expire promotion
-```
-
-Instead:
-
-```text
-mark source_unavailable
-```
-
-Then rely on the next validation cycle.
-
----
-
-# 40. Recommended Technology Stack
-
-## Backend
-
-Recommended:
-
-```text
-Python
-FastAPI
-```
-
-## Crawling
-
-```text
-Playwright
-httpx
-BeautifulSoup
-Trafilatura
-```
-
-## PDF
-
-```text
-PyMuPDF
+normalized_includes = [Jawa, Bali, Lombok]
+normalized_excludes = [Indomaret Point]
 ```
-
-## OCR
 
-Use a reliable OCR provider or local OCR depending on cost/quality requirements.
+The source text is immutable evidence. Normalized geography can be corrected through controlled mapping.
 
-## AI
+### 7.3 No Silent Geographic Expansion
 
-Use an LLM capable of:
+Do not infer every province/city inside a commercial region unless an explicit approved mapping is configured.
 
-* Structured JSON output
-* Long-context extraction
-* Vision/OCR interpretation
-* Entity matching
+### 7.4 Geography Conflict
 
-## Database
+If different source observations disagree on geography, keep both observations and flag the canonical promotion for review if the difference changes commercial applicability.
 
-```text
-PostgreSQL
-```
-
-Recommended extensions:
-
-```text
-pgvector
-pg_trgm
-```
-
-`pgvector` can support semantic product matching.
+## 8. Retailer and Channel Requirements
 
-`pg_trgm` can support fuzzy text matching.
+Retailer, channel and geography are separate dimensions.
 
-## Queue
+For example:
 
 ```text
-Redis
-Celery
+Retailer = Hypermart
+Channel  = Offline Retail
+Geography = Jawa
 ```
 
-or:
-
-```text
-RabbitMQ
-```
-
-## Scheduler
-
-```text
-Celery Beat
-```
+must not be represented as one free-text value.
 
-or:
+Channel must use a controlled taxonomy, for example:
 
-```text
-APScheduler
-```
+- `OFFLINE_RETAIL`
+- `ONLINE_RETAILER`
+- `MARKETPLACE`
+- `OFFICIAL_BRAND_STORE`
+- `OTHER`
+- `UNKNOWN`
 
-## Deployment
+Unknown channel must remain `UNKNOWN`/`N/A`; never infer it from the retailer name alone unless an approved deterministic mapping exists.
 
-Initial:
+## 9. Promotion Mechanics and Commercial Calculations
 
-```text
-Docker
-```
+### Discount
 
-Production:
+If both regular and promo prices are known, calculated discount is:
 
 ```text
-Kubernetes
+(regular_price - promo_price) / regular_price * 100
 ```
-
-if scale requires it.
-
----
-
-# 41. Recommended Database Indexes
 
-```sql
-CREATE INDEX idx_promotions_status
-ON promotions(status);
+Preserve both the source-stated discount and calculated discount when both exist.
 
-CREATE INDEX idx_promotions_end
-ON promotions(promotion_end);
-
-CREATE INDEX idx_promotions_last_seen
-ON promotions(last_seen_at);
-
-CREATE INDEX idx_promotions_brand
-ON promotions(brand_id);
-
-CREATE INDEX idx_promotions_product
-ON promotions(product_id);
-
-CREATE INDEX idx_promotions_retailer
-ON promotions(retailer_id);
-
-CREATE INDEX idx_promotions_type
-ON promotions(promotion_type);
-
-CREATE INDEX idx_promotions_active
-ON promotions(status, promotion_end, last_seen_at);
-```
+### Buy X Get Y
 
-For fuzzy product matching:
+Store `buy_quantity` and `free_quantity` separately.
 
-```sql
-CREATE INDEX idx_products_name_trgm
-ON products
-USING gin(normalized_product_name gin_trgm_ops);
-```
+An effective discount may be calculated for comparable unit economics, but must be labeled as calculated rather than source-stated.
 
----
+### Multi-buy
 
-# 42. Dashboard Requirements
+Store qualifying quantity and promotional price/total where available.
 
-The first dashboard should contain:
+### Cashback / Voucher
 
-## KPI Cards
+Do not automatically subtract cashback or voucher from shelf price. Store the benefit separately and calculate an effective price only when eligibility conditions are explicit.
 
-```text
-Active Promotions
-Competitors Tracked
-Brands Tracked
-Retailers Tracked
-Promotions Today
-Promotions Expiring < 7 Days
-```
+### Conditions
 
-## Top 10 Promotion Table
+Capture:
 
-Columns:
+- member-only
+- minimum purchase amount
+- minimum purchase quantity
+- maximum quantity
+- payment method
+- app-only
+- voucher code
+- store exclusion
+- geography exclusion
+- other conditions
 
-```text
-Rank
-Competitor
-Brand
-Product
-Category
-Promotion
-Regular Price
-Promo Price
-Effective Discount
-Retailer
-Start
-End
-Confidence
-Source
-```
+## 10. Source Reliability
 
-## Filters
+Reliability is configurable per source and versioned where necessary.
 
-```text
-Date
-Competitor
-Brand
-Retailer
-Category
-Promotion Type
-Channel
-Discount Range
-```
+Suggested starting tiers:
 
----
+| Tier | Source class | Default range |
+|---|---|---:|
+| 1 | Official retailer/brand | 1.00 |
+| 2 | Verified official marketplace | 0.85–0.95 |
+| 3 | Established promotion intelligence | 0.70–0.85 |
+| 4 | Established media | 0.60–0.80 |
+| 5 | Public social/other | 0.40–0.70 |
 
-# 43. Additional Analytics
+These are starting values only. Actual reliability must be configurable in the database.
 
-After MVP, support:
+## 11. AI Requirements
 
-### Competitor Promotion Frequency
+AI extraction must use structured output and deterministic post-validation.
 
-```text
-Competitor A -> 32 promotions
-Competitor B -> 21 promotions
-Competitor C -> 17 promotions
-```
+AI must never invent missing fields.
 
-### Promotion Type Distribution
+For every important field, the extraction result should be able to provide:
 
 ```text
-Discount       45%
-Buy X Get Y    25%
-Bundle         12%
-Member Price   10%
-Gift            5%
-Other           3%
+value
+confidence
+source evidence reference
 ```
-
-### Price Index
 
-Compare competitor product prices.
+At minimum, confidence should be available for:
 
-```text
-Our product
-vs
-Competitor A
-vs
-Competitor B
-```
+- product
+- brand
+- competitor
+- price
+- promotion mechanic
+- validity
+- geography
 
-### Promotion Intensity
+Low-confidence or contradictory records go to `review_queue`.
 
-Calculate:
+## 12. Data Lifecycle
 
 ```text
-promotion_count
-+
-average_discount
-+
-promotion_frequency
+DISCOVERED
+   |
+   v
+EXTRACTED
+   |
+   v
+VALIDATED
+   |
+   +----> REVIEW_REQUIRED
+   |
+   v
+RESOLVED
+   |
+   v
+DEDUPLICATED
+   |
+   v
+ELIGIBLE
+   |
+   v
+ACTIVE / EXPIRED / UPCOMING
 ```
-
-per competitor.
-
----
 
-# 44. Alerting
+Observations remain immutable. Canonical promotions may be updated as new observations arrive.
 
-The system should eventually support alerts.
+## 13. Review Queue
 
-Examples:
+The system must create review items for conditions such as:
 
-```text
-Competitor launches >30% discount
-```
-
-```text
-Competitor launches B1G1
-```
-
-```text
-Competitor promotion detected in key retailer
-```
+- unknown competitor
+- ambiguous product
+- price conflict
+- date conflict
+- geography ambiguity
+- source parsing failure
+- missing evidence
+- low AI confidence
+- suspected duplicate with material differences
 
-```text
-Competitor price drops >15%
-```
+Review actions:
 
-```text
-New promotion from top competitor
-```
+- approve
+- edit
+- reject
+- link to canonical entity
+- mark source/parser issue
 
-```text
-Promotion expires within 24 hours
-```
+## 14. User Experience Requirements
 
-Delivery:
+The product should look and behave like a professional enterprise intelligence application.
 
-```text
-Email
-Slack
-Microsoft Teams
-Dashboard
-Webhook
-```
-# 45 New Section : Web Application & User Interface - to be inserted after section 44 (Alerting, line ~2000+). The additions cover:
-- Left panel: Home + Settings (with child views for Master Data, Source Management, User Permissions)
-- Master Data CRUD: Competitors, Brands, Products, Retailers, Source Registry with role-based permissions (Admin/Editor/Viewer/Crawler)
-- Manual source addition: Form to add new data sources to the registry
-- Manual promotion entry: Form to manually add promotions with evidence tracking
-- Search functionality: Global search with filters for product/brand/competitor/retailer/promotion type/date/category
-- User roles: Admin (full CRUD), Editor (add/edit), Viewer (read-only), Crawler (source config only)
-The existing PRD.md is a comprehensive technical design for the data collection/analysis engine. The new Section #45 bridges the gap by defining the web interface, user workflows, and administrative features requested.
----
-
-# 45. Example Alert
+### Navigation
 
 ```text
-🚨 COMPETITOR PROMOTION ALERT
-
-Competitor:
-Competitor A
-
-Brand:
-Brand A
-
-Product:
-Cracker Original 200g
-
-Retailer:
-Indomaret
-
-Promotion:
-BUY 2 GET 1
-
-Effective Discount:
-33.3%
-
-Valid:
-2 Sep – 15 Sep 2026
-
-Source Reliability:
-0.98
-
-AI Confidence:
-0.96
-
-Promotion Score:
-91.4
-
-Source:
-[URL]
+Overview
+Promotions
+Regional Pricing
+Competitors
+Sources
+Review Queue
+Settings
 ```
-
----
 
-# 46. MVP Scope
+### Overview
 
-Do NOT build everything initially.
+Show:
 
-## MVP Phase 1
+- active promotions
+- competitors tracked
+- brands monitored
+- retailers monitored
+- expiring soon
+- promotion activity trend
+- competitor activity intensity
+- regional distribution
+- source health
 
-Track:
+### Promotions
 
-```text
-5–8 major Indonesian retailers
-```
-
-Categories:
+Provide a filterable table and right-side detail drawer.
 
-```text
-Biscuit
-Cracker
-Wafer
-Cookies
-```
+Primary filters:
 
-Promotion types:
-
-```text
-Discount
-Buy X Get Y
-Multibuy
-Member Price
-Bundle
-Gift
-Cashback
-Voucher
-```
+- category
+- competitor
+- brand
+- retailer
+- mechanic
+- geography
+- validity
+- source
 
-Sources:
+### Regional Pricing
 
-```text
-Official retailer websites
-Official retailer catalogs
-Reliable promotion aggregators
-Official marketplace stores
-```
+Compare product price/promotion by geographic scope. Missing evidence must display as `No evidence`, not zero.
 
-Output:
+### Detail Drawer
 
-```text
-PostgreSQL
-Top 10 API
-Basic dashboard
-```
+Must show source, evidence, geography, validity, conditions, confidence and `Open source` action.
 
----
+### Source Health
 
-# 47. MVP Success Criteria
+Show last successful crawl, failure rate, current status and freshness.
 
-The MVP is successful if:
+### Empty / Error / Stale States
 
-### Coverage
+Every page must distinguish:
 
-At least:
+- no matching data
+- database unavailable
+- source unavailable
+- crawler failed
+- stale data
 
-```text
-100+ relevant promotion observations/week
-```
+Never use fake rows to fill the screen.
 
-from the selected sources.
+## 15. Non-Functional Requirements
 
 ### Accuracy
 
-Target:
+No unsupported commercial facts.
 
-```text
->90% promotion classification accuracy
-```
+### Freshness
 
-### Date accuracy
+Default active intelligence is no older than 90 days and must respect actual promotion validity.
 
-Target:
+### Traceability
 
-```text
->95%
-```
+Every canonical promotion must be traceable to one or more source observations.
 
-### Product relevance
+### Reliability
 
-Target:
+Crawl failures must be observable and retryable.
 
-```text
->95%
-```
+### Security
 
-### False active promotions
+Secrets must never be committed. Database credentials must be least privilege.
 
-Target:
+### Performance
 
-```text
-<5%
-```
+Top 10 and common filter queries should be indexed and return quickly on expected production volumes.
 
-### Deduplication
+### Extensibility
 
-Target:
+New sources, retailers, promotion mechanics and geography mappings must be configurable without rewriting the core model.
 
-```text
->90% duplicate reduction
-```
+## 16. Acceptance Criteria
 
----
+The MVP is accepted only when all are true:
 
-# 48. Development Roadmap
+1. A real Hemat.id page can be crawled.
+2. Raw source evidence is persisted.
+3. AI extraction produces structured fields.
+4. Price/date/mechanic/geography validation runs.
+5. Exact source geography is preserved.
+6. Regional observations are not incorrectly merged.
+7. Promotion evidence can be opened from the UI.
+8. Expired promotions do not appear in the default Top 10.
+9. Promotions older than 90 days do not appear in the default Top 10.
+10. Records without usable evidence cannot be presented as verified.
+11. The UI reads from PostgreSQL through the API and contains no production mock rows.
+12. A PostgreSQL outage produces a visible error state.
+13. A crawler outage is visible in source health.
+14. A promotion with ambiguous geography enters review rather than silently becoming nationwide.
+15. Top 10 ranking is explainable.
 
-## Sprint 1 — Foundation
+## 17. Explicit Non-Goals for MVP
 
-Build:
-
-```text
-PostgreSQL schema
-Source registry
-Crawler framework
-Raw document storage
-```
-
-Deliverable:
-
-```text
-Raw web evidence stored in database/object storage
-```
-
----
-
-## Sprint 2 — Extraction
-
-Build:
-
-```text
-HTML extraction
-PDF extraction
-OCR pipeline
-AI extraction
-Structured JSON
-```
-
-Deliverable:
-
-```text
-Raw page -> structured promotion
-```
-
----
-
-## Sprint 3 — Validation
-
-Build:
-
-```text
-Date validator
-Price validator
-Promotion validator
-Confidence scoring
-```
-
-Deliverable:
-
-```text
-Structured promotion -> validated promotion
-```
-
----
-
-## Sprint 4 — Entity Resolution
-
-Build:
-
-```text
-Brand matching
-Product matching
-Retailer matching
-Competitor matching
-Deduplication
-```
-
-Deliverable:
-
-```text
-Clean promotion database
-```
-
----
-
-## Sprint 5 — Ranking
-
-Build:
-
-```text
-Promotion score
-Source score
-Freshness score
-Commercial impact score
-Top 10 algorithm
-```
-
-Deliverable:
-
-```text
-Top 10 active competitor promotions
-```
-
----
-
-## Sprint 6 — API + Dashboard
-
-Build:
-
-```text
-REST API
-Dashboard
-Filters
-Top 10 view
-Promotion detail
-Source evidence
-```
-
----
-
-## Sprint 7 — Alerting
-
-Build:
-
-```text
-New promotion alerts
-Large discount alerts
-B1G1 alerts
-Expiring promotion alerts
-```
-
----
-
-# 49. Production Architecture
-
-Recommended final architecture:
-
-```text
-                         +----------------+
-                         | Search Engine  |
-                         +-------+--------+
-                                 |
-                         +-------v--------+
-                         | Discovery      |
-                         | Agent          |
-                         +-------+--------+
-                                 |
-                +----------------v----------------+
-                |         Crawl Queue            |
-                +----------------+----------------+
-                                 |
-             +-------------------+-------------------+
-             |                   |                   |
-       +-----v-----+       +-----v-----+       +-----v-----+
-       | HTML      |       | PDF       |       | Browser   |
-       | Crawler   |       | Crawler   |       | Crawler   |
-       +-----+-----+       +-----+-----+       +-----+-----+
-             |                   |                   |
-             +-------------------+-------------------+
-                                 |
-                         +-------v--------+
-                         | Raw Evidence   |
-                         +-------+--------+
-                                 |
-                         +-------v--------+
-                         | OCR / Parser   |
-                         +-------+--------+
-                                 |
-                         +-------v--------+
-                         | AI Extraction  |
-                         +-------+--------+
-                                 |
-                         +-------v--------+
-                         | Validation     |
-                         +-------+--------+
-                                 |
-                         +-------v--------+
-                         | Entity         |
-                         | Resolution     |
-                         +-------+--------+
-                                 |
-                         +-------v--------+
-                         | Deduplication  |
-                         +-------+--------+
-                                 |
-                         +-------v--------+
-                         | Scoring        |
-                         +-------+--------+
-                                 |
-                         +-------v--------+
-                         | PostgreSQL     |
-                         +-------+--------+
-                                 |
-                 +---------------+---------------+
-                 |               |               |
-          +------v------+ +------v------+ +------v------+
-          | REST API    | | Dashboard   | | Alerting    |
-          +-------------+ +-------------+ +-------------+
-```
-
----
-
-# 50. Important Design Principle
-
-The most important architectural principle is:
-
-```text
-SOURCE
-  ↓
-RAW EVIDENCE
-  ↓
-AI EXTRACTION
-  ↓
-VALIDATION
-  ↓
-ENTITY RESOLUTION
-  ↓
-DEDUPLICATION
-  ↓
-SCORING
-  ↓
-ACTIVE PROMOTION
-```
-
-Do not build:
-
-```text
-SOURCE
-  ↓
-LLM
-  ↓
-DATABASE
-```
-
-because this will create:
-
-* Hallucinated prices
-* Incorrect dates
-* Duplicate promotions
-* Expired promotions
-* Incorrect product matching
-* Poor auditability
-
----
-
-# 51. Auditability Requirement
-
-Every database promotion must be explainable.
-
-For any promotion, a user should be able to answer:
-
-```text
-Where did this information come from?
-When was it found?
-When was it last checked?
-What exactly did the source say?
-Why does the AI believe it is a promotion?
-Why is it still active?
-Why is it ranked Top 10?
-```
-
-Therefore the database must retain:
-
-```text
-source URL
-crawl timestamp
-raw evidence
-extracted evidence
-AI confidence
-validation result
-ranking score
-```
-
----
-
-# 52. Future Features
-
-After the MVP:
-
-### Competitive Price Intelligence
-
-Track:
-
-```text
-price history
-price changes
-price per 100g
-price index
-```
-
-### Promotion History
-
-Example:
-
-```text
-Brand A
-
-Jan: 20% OFF
-Feb: B2G1
-Mar: 30% OFF
-Apr: Member Price
-May: B1G1
-```
-
-This allows detection of promotional strategy.
-
-### Competitor Strategy Detection
-
-AI can classify:
-
-```text
-Aggressive discounting
-Frequent multibuy
-Premium positioning
-Retailer-specific strategy
-Seasonal strategy
-```
-
-### Predictive Intelligence
-
-Eventually:
-
-```text
-"What promotion is competitor likely to launch next?"
-```
-
-based on historical patterns.
-
----
-
-# 53. Final Definition of Done
-
-The project is considered production-ready when:
-
-* [ ] Source registry exists.
-* [ ] Crawlers operate automatically.
-* [ ] Raw evidence is retained.
-* [ ] PDF/image promotions can be processed.
-* [ ] AI extracts structured promotion data.
-* [ ] AI never invents missing values.
-* [ ] Promotion dates are validated.
-* [ ] Expired promotions are automatically removed from active results.
-* [ ] Products are mapped to normalized entities.
-* [ ] Duplicate promotions are merged.
-* [ ] Source reliability is scored.
-* [ ] AI confidence is stored.
-* [ ] Promotion strength is calculated.
-* [ ] Top 10 ranking is available.
-* [ ] PostgreSQL contains the canonical data.
-* [ ] API exposes active promotions.
-* [ ] Dashboard displays the Top 10.
-* [ ] Source evidence is accessible.
-* [ ] Alerts can be generated.
-* [ ] Crawl and AI failures are observable.
-* [ ] System respects website access policies.
-* [ ] Historical promotion data is retained.
-
----
-
-# 54. Recommended First Deliverable
-
-The engineering team should build the following first:
-
-```text
-1. PostgreSQL schema
-2. Source registry
-3. 5 initial retailer sources
-4. Search discovery service
-5. Web crawler
-6. Raw evidence store
-7. AI extraction service
-8. Promotion validation service
-9. Product/brand entity matching
-10. Deduplication
-11. Promotion scoring
-12. Top 10 API
-13. Simple dashboard
-14. Scheduled crawling
-15. Expiration worker
-```
-
-The first production question the system must answer reliably is:
-
-> "Show me the 10 strongest active biscuit/cracker competitor promotions in Indonesia right now, with product, retailer, price, promotion mechanic, validity, confidence, and source evidence."
-
-That should be the **MVP acceptance criterion**.
+- automatic purchase or coupon redemption
+- consumer checkout
+- competitor sentiment analysis
+- private/login-only data collection without approved access
+- bypassing anti-bot controls
+- modifying source websites
+- writing into `dwh_prod`
+- treating AI output as authoritative without validation
