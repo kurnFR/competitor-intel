@@ -4,7 +4,7 @@
 
 Build an AI-powered competitive promotion intelligence platform for the Indonesian FMCG snack market, initially focused on biscuits, crackers, cookies and wafers.
 
-The product continuously collects publicly available promotion information, converts it into structured commercial observations, validates the facts against source evidence, resolves products/brands/competitors, preserves geographic scope, and presents the most important currently active activities to marketing, trade marketing, sales and management.
+The platform continuously discovers and monitors relevant public sources, converts source content into structured commercial observations, validates facts against evidence, resolves products/brands/competitors, preserves geographic scope, and presents important active activities to marketing, trade marketing, sales and management.
 
 The system is a **decision-support product**. It must prefer an explicit unknown value over an invented value.
 
@@ -12,31 +12,32 @@ The system is a **decision-support product**. It must prefer an explicit unknown
 
 > What are the 10 most commercially important competitor promotions that are active now, recently verified, geographically understood, and supported by reliable evidence?
 
-A promotion is not considered trustworthy unless the user can trace it to source evidence.
+A promotion is not trustworthy unless the user can trace it to source evidence.
 
 ## 3. Business Outcomes
 
 The platform should reduce manual competitor monitoring and enable users to understand:
 
-- which competitor/brand is promoting
-- which exact product/SKU/pack size is involved
-- what promotion mechanic is being used
+- competitor/brand activity
+- exact product/SKU/pack size
+- promotion mechanic
 - regular vs promotional price
-- effective discount where calculable
+- effective discount when calculable
 - retailer/channel
 - geographic validity
 - start/end validity
 - source reliability
-- when the observation was last verified
-- why the activity is ranked highly
+- last verification
+- why an activity ranks highly
+- regional price and promotion differences
 
 ## 4. Scope
 
-### 4.1 Initial Market
+### 4.1 Market
 
 Indonesia.
 
-### 4.2 Initial Categories
+### 4.2 Categories
 
 - Biscuit
 - Cracker
@@ -46,216 +47,157 @@ Indonesia.
 - Cream biscuit
 - Sweet biscuit
 - Savory cracker
-- Closely related snack products only when explicitly relevant
+- closely related snack products only when relevant
 
-### 4.3 Initial Source
+### 4.3 Multi-Source Strategy
 
-The first production source is **Hemat.id**.
+The system must **not depend on one source**. Hemat.id is an initial source only.
 
-Do not confuse this with `hemat.co.id`.
+Candidate source classes include:
 
-The source adapter must preserve the source URL, retrieval time, exact evidence and source geography wording.
-
-The architecture must allow additional sources later without changing the canonical data model.
-
-### 4.4 Future Source Classes
-
+- official manufacturer/company websites
+- official brand websites and campaign pages
 - official retailer websites/catalogs
-- official brand websites/stores
+- modern trade such as Superindo, Alfamart, Indomaret, Hypermart and local modern trade
+- convenience retail pages/apps where public access is permitted
 - verified marketplace stores
-- promotion aggregators
-- established media
-- public social sources
+- public e-commerce pages such as Tokopedia, Shopee and TikTok Shop where collection is permitted
+- established news/media
+- promotion/price aggregation sites
+- public social/content sources where permitted
+- regional/local retail sources
 
-Source priority is configurable. A source must not become trusted merely because an AI model extracted it successfully.
+These are candidate source classes, not a promise that every platform is technically or legally crawlable.
 
-## 5. Target Users
+The source registry is the control plane. New sources must be discovered, assessed and approved before becoming production-trusted.
 
-### Marketing
+See `SOURCE_STRATEGY.md`.
 
-Needs competitor activity, promotion intensity, pricing and regional differences.
+### 4.4 Public Access and Compliance
 
-### Trade Marketing
+Only collect publicly accessible information in accordance with source terms, robots directives, applicable law and technical restrictions.
 
-Needs retailer, channel, mechanic and geographic detail.
+Do not bypass login controls, CAPTCHAs, paywalls or anti-bot controls. A blocked source is recorded as blocked/manual-only rather than circumvented.
 
-### Brand / Category Manager
+## 5. Source Discovery and Reuse
 
-Needs competitive landscape, price positioning and activity trends.
+The platform has two related activities:
 
-### Sales
+### Source discovery
 
-Needs current retailer and regional promotions.
+Periodically discover new candidate domains, pages and promotion URLs using search engines, sitemaps, feeds, navigation and other permitted public discovery methods.
 
-### Management
+### Scheduled crawling
 
-Needs a concise executive view of significant competitive activity.
+Normal runs primarily crawl already-approved sources and URL targets stored in the database.
 
-### Data/Operations User
+This means the system learns its source universe instead of searching the entire web from scratch on every run.
 
-Needs source health, extraction quality, evidence and review queues.
+A discovered source is **not automatically trusted**.
 
-## 6. Core Product Requirements
+Lifecycle:
 
-### PR-001 — Active Promotion Discovery
+```text
+DISCOVERED -> CANDIDATE -> ASSESSED -> APPROVED -> ACTIVE
+                                      |             |
+                                      |             +-> HEALTHY/WARNING/STALE/BLOCKED
+                                      +-> DISABLED
+```
 
-Discover promotions relevant to the target categories from configured sources.
+## 6. Target Users
 
-### PR-002 — Structured Extraction
+Marketing, Trade Marketing, Brand/Category Managers, Sales, Management and Data/Operations users.
 
-Extract product, brand, competitor, price, mechanic, retailer, geography, validity and conditions into structured fields.
+## 7. Core Product Requirements
 
-### PR-003 — Evidence
+### PR-001 — Multi-Source Discovery
+
+Discover candidate sources and relevant URLs, place them in a source/URL registry, and require assessment before production use.
+
+### PR-002 — Source Registry
+
+Store source type, domain, reliability, priority, crawl frequency, access status, adapter, health and history.
+
+### PR-003 — Scheduled Source Crawling
+
+Normal scheduled runs load active approved sources and due URL targets from PostgreSQL and crawl them according to source policy.
+
+### PR-004 — Adaptive Crawling
+
+Prioritize URLs using source priority, historical promotion yield, freshness requirement, recent content change, validity periods and failure/backoff state.
+
+### PR-005 — Structured Extraction
+
+Extract product, brand, competitor, price, mechanic, retailer, channel, geography, validity and conditions.
+
+### PR-006 — Evidence
 
 Every extracted commercial fact must be traceable to source evidence.
 
-### PR-004 — Geographic Scope
+### PR-007 — Geographic Scope
 
-Geography is a first-class requirement, not a free-text afterthought.
+Geography is first-class data. Preserve exact source wording, normalized inclusions and exclusions, and geography confidence.
 
-The system must preserve:
+Never default unknown geography to `Indonesia`.
 
-1. exact source geography wording
-2. normalized inclusion scopes
-3. normalized exclusion scopes
-4. geography confidence
+### PR-008 — Regional Price Intelligence
 
-Examples:
+The same SKU may have different prices/mechanics by geography, retailer or channel. Materially different observations must remain separate.
 
-```text
-Berlaku di Jawa
-Berlaku di Jawa, Bali, Lombok
-Berlaku di Jawa, Bali, Lombok, kecuali Indomaret Point
-Berlaku di Jabodetabek, Palembang
-```
+### PR-009 — Promotion Taxonomy
 
-Never default an unknown geography to `Indonesia`.
+Normalize:
 
-`Indonesia` can only be used when the source explicitly establishes national validity or an approved deterministic rule does so.
+- DISCOUNT
+- BUY_X_GET_Y
+- MULTIBUY
+- CASHBACK
+- VOUCHER
+- MEMBER_PRICE
+- GIFT_WITH_PURCHASE
+- BUNDLE
+- MINIMUM_SPEND
+- OTHER
 
-### PR-005 — Regional Price Intelligence
+Preserve original wording.
 
-The same product can have different prices or mechanics by region. These must remain separate commercial observations.
+### PR-010 — Validity and Freshness
 
-Example:
+Track:
 
-```text
-Roma Sari Gandum 108g
+- start_date
+- end_date
+- first_seen_at
+- last_seen_at
+- last_verified_at
 
-Jawa        Rp7,900   34% OFF
-Sumatera   Rp8,500   29% OFF
-Sulawesi   Rp9,900   23% OFF
-```
+Default Top 10 freshness is 90 days, but an expired promotion must never be active merely because it was recently crawled.
 
-Do not merge these into one promotion solely because product and retailer match.
+### PR-011 — Quality Gate
 
-### PR-006 — Promotion Taxonomy
+A Top 10 candidate must have target-category relevance, current validity, <=90-day freshness, usable evidence, passed validation, sufficiently resolved identity/geography, and no unresolved material contradiction.
 
-Normalize equivalent language into controlled mechanics:
+### PR-012 — Ranking
 
-- `DISCOUNT`
-- `BUY_X_GET_Y`
-- `MULTIBUY`
-- `CASHBACK`
-- `VOUCHER`
-- `MEMBER_PRICE`
-- `GIFT_WITH_PURCHASE`
-- `BUNDLE`
-- `MINIMUM_SPEND`
-- `OTHER`
+Rank only after the quality gate. Ranking uses explainable factors such as promotion strength, source reliability, freshness, relevance, evidence quality, confidence and commercial impact.
 
-Preserve the original promotion wording as evidence.
+Display as `Impact Score`, never as accuracy/probability.
 
-### PR-007 — Validity
+### PR-013 — Auditability
 
-The system must distinguish:
+Users must be able to see source URL, source, crawl time, verification time, evidence, prices, mechanic, retailer/channel, geography, validity, conditions, confidence and ranking explanation.
 
-- `start_date`
-- `end_date`
-- `first_seen_at`
-- `last_seen_at`
-- `last_verified_at`
-
-An active promotion must be currently valid according to its source evidence.
-
-If an end date is absent, the promotion may only remain active while recent verification satisfies the configured freshness rule.
-
-### PR-008 — 90-Day Default Freshness
-
-The default Top 10 must use a maximum observation age of 90 days.
-
-This is a business freshness rule, not a replacement for promotion validity.
-
-A promotion observed within 90 days but already expired must not appear in the active Top 10.
-
-### PR-009 — Quality Gate
-
-Ranking must happen after eligibility validation.
-
-A candidate is eligible for the default Top 10 only when:
-
-- target category is confirmed
-- current validity is confirmed
-- observation is within 90 days
-- source is allowed
-- required evidence exists
-- critical price/date/geography contradictions are absent
-- product/brand/retailer identity is sufficiently resolved
-- record is not rejected
-
-### PR-010 — Top 10 Ranking
-
-Rank eligible promotions using an explainable composite score incorporating configurable factors such as:
-
-- promotion strength
-- source reliability
-- freshness
-- category relevance
-- AI extraction confidence
-- evidence quality
-- commercial impact
-
-The score must not be described as probability or accuracy.
-
-Display it as `Impact Score` or equivalent.
-
-### PR-011 — Auditability
-
-A user must be able to open a promotion and see:
-
-- source
-- source URL
-- crawl timestamp
-- verification timestamp
-- exact evidence text
-- product/brand/competitor
-- prices
-- mechanic
-- retailer/channel
-- geographic scope and exclusions
-- validity
-- confidence by field
-- ranking factors
-
-### PR-012 — PostgreSQL as UI Source of Truth
-
-The UI must never contain hard-coded production promotion data.
-
-The data path must be:
+### PR-014 — PostgreSQL Source of Truth
 
 ```text
-PostgreSQL -> API -> UI
+Crawler -> PostgreSQL -> API -> UI
 ```
 
-The crawler writes through the ingestion pipeline into PostgreSQL.
+The UI must never contain production mock rows or generated fallback records.
 
-If the database is empty, the UI must display an empty state, not demo data.
+## 8. Geography Requirements
 
-## 7. Geography Requirements
-
-### 7.1 Supported Geography Concepts
-
-The system must support commercial scopes including, but not limited to:
+Support commercial scopes including:
 
 ```text
 NATIONAL
@@ -268,117 +210,72 @@ DISTRICT
 STORE
 STORE_GROUP
 ONLINE
+OTHER
 UNKNOWN
 ```
 
-Examples include:
+Preserve both source geography and normalized scope. Do not silently expand `Jawa` into provinces or `Jabodetabek` into cities without an approved mapping.
 
-- Indonesia
-- Jawa
-- Sumatera
-- Kalimantan
-- Sulawesi
-- Bali
-- Lombok
-- Jabodetabek
-- Palembang
-- individual cities
-- individual store/outlet groups
+Retailer/store exclusions must remain explicit.
 
-### 7.2 Source vs Normalized Geography
+## 9. Retailer and Channel
 
-Always retain both.
+Retailer, channel and geography are independent dimensions.
 
-```text
-source_text = "Berlaku di Jawa, Bali, Lombok, kecuali Indomaret Point"
-
-normalized_includes = [Jawa, Bali, Lombok]
-normalized_excludes = [Indomaret Point]
-```
-
-The source text is immutable evidence. Normalized geography can be corrected through controlled mapping.
-
-### 7.3 No Silent Geographic Expansion
-
-Do not infer every province/city inside a commercial region unless an explicit approved mapping is configured.
-
-### 7.4 Geography Conflict
-
-If different source observations disagree on geography, keep both observations and flag the canonical promotion for review if the difference changes commercial applicability.
-
-## 8. Retailer and Channel Requirements
-
-Retailer, channel and geography are separate dimensions.
-
-For example:
+Example:
 
 ```text
 Retailer = Hypermart
-Channel  = Offline Retail
+Channel = OFFLINE_RETAIL
 Geography = Jawa
 ```
 
-must not be represented as one free-text value.
+Unknown values remain `UNKNOWN`/`NULL` rather than being guessed.
 
-Channel must use a controlled taxonomy, for example:
+## 10. Commercial Calculations
 
-- `OFFLINE_RETAIL`
-- `ONLINE_RETAILER`
-- `MARKETPLACE`
-- `OFFICIAL_BRAND_STORE`
-- `OTHER`
-- `UNKNOWN`
+Use source-stated and calculated discount separately. Use `NUMERIC(18,2)` for money. Do not automatically subtract cashback/vouchers from shelf price unless conditions support an effective-price calculation.
 
-Unknown channel must remain `UNKNOWN`/`N/A`; never infer it from the retailer name alone unless an approved deterministic mapping exists.
+Capture conditions such as member-only, minimum spend/quantity, maximum quantity, payment method, app-only, voucher code, store exclusion and geography exclusion.
 
-## 9. Promotion Mechanics and Commercial Calculations
+## 11. AI Requirements
 
-### Discount
+AI must use structured output and must never invent missing facts.
 
-If both regular and promo prices are known, calculated discount is:
+At minimum, field confidence is required for product, brand, competitor, price, promotion, validity and geography.
+
+AI/model/prompt/schema versions must be auditable.
+
+## 12. Data Lifecycle
 
 ```text
-(regular_price - promo_price) / regular_price * 100
+DISCOVERED
+  -> EXTRACTED
+  -> VALIDATED
+  -> RESOLVED
+  -> DEDUPLICATED
+  -> QUALITY_GATE
+  -> ELIGIBLE
+  -> ACTIVE / EXPIRED / UPCOMING
+
+Any material ambiguity -> REVIEW_REQUIRED
 ```
 
-Preserve both the source-stated discount and calculated discount when both exist.
+Raw source documents and observations remain immutable.
 
-### Buy X Get Y
+## 13. Review Queue
 
-Store `buy_quantity` and `free_quantity` separately.
+Review triggers include unknown competitor, ambiguous product, price conflict, date conflict, geography ambiguity, missing evidence, low confidence, parser anomaly and suspected material duplicate.
 
-An effective discount may be calculated for comparable unit economics, but must be labeled as calculated rather than source-stated.
+Actions: approve, edit, reject, link entity, or mark source/parser issue.
 
-### Multi-buy
+## 14. Source Reliability
 
-Store qualifying quantity and promotional price/total where available.
+Reliability is configurable in `source_registry` and should be informed by source authority and observed quality.
 
-### Cashback / Voucher
+Suggested starting classes:
 
-Do not automatically subtract cashback or voucher from shelf price. Store the benefit separately and calculate an effective price only when eligibility conditions are explicit.
-
-### Conditions
-
-Capture:
-
-- member-only
-- minimum purchase amount
-- minimum purchase quantity
-- maximum quantity
-- payment method
-- app-only
-- voucher code
-- store exclusion
-- geography exclusion
-- other conditions
-
-## 10. Source Reliability
-
-Reliability is configurable per source and versioned where necessary.
-
-Suggested starting tiers:
-
-| Tier | Source class | Default range |
+| Tier | Source class | Starting range |
 |---|---|---:|
 | 1 | Official retailer/brand | 1.00 |
 | 2 | Verified official marketplace | 0.85–0.95 |
@@ -386,210 +283,61 @@ Suggested starting tiers:
 | 4 | Established media | 0.60–0.80 |
 | 5 | Public social/other | 0.40–0.70 |
 
-These are starting values only. Actual reliability must be configurable in the database.
+These are defaults, not immutable truth.
 
-## 11. AI Requirements
+## 15. Multi-Source Conflict Rules
 
-AI extraction must use structured output and deterministic post-validation.
+If sources disagree:
 
-AI must never invent missing fields.
+1. retain both observations
+2. compare timestamps
+3. compare source reliability
+4. compare geography
+5. compare retailer/channel
+6. determine whether they are actually different activities
+7. send unresolved material conflicts to review
 
-For every important field, the extraction result should be able to provide:
+Never overwrite a source observation merely because another source is newer.
 
-```text
-value
-confidence
-source evidence reference
-```
+## 16. Non-Functional Requirements
 
-At minimum, confidence should be available for:
+- evidence over assumptions
+- source failures visible
+- no secret leakage
+- configurable source adapters
+- scalable server-side filtering
+- PostgreSQL-backed API/UI
+- auditable model/prompt versions
+- compliant public collection only
 
-- product
-- brand
-- competitor
-- price
-- promotion mechanic
-- validity
-- geography
+## 17. Acceptance Criteria
 
-Low-confidence or contradictory records go to `review_queue`.
+1. Multiple source classes can be registered without changing canonical promotion tables.
+2. A source can be disabled without deleting historical observations.
+3. A URL target can be scheduled independently from its domain.
+4. A successful crawl producing zero promotions is recorded as success, not failure.
+5. A failed crawl is not interpreted as zero promotions.
+6. Unchanged content can skip expensive AI extraction where safe.
+7. Changed content produces a new observation after extraction/validation.
+8. Multiple sources can support one canonical promotion.
+9. Conflicting regional prices remain separate when commercially material.
+10. Unknown geography never silently becomes nationwide.
+11. Source reliability is configurable and auditable.
+12. Discovery can find candidate new sources without automatically trusting them.
+13. Normal scheduled runs primarily use the approved source/URL registry.
+14. Expired promotions do not appear in the active Top 10.
+15. Promotions older than 90 days do not appear in the default Top 10.
+16. No verified promotion without usable evidence.
+17. UI reads production data only from PostgreSQL through the API.
+18. Source health and crawler failures are visible.
+19. Ranking is explainable.
 
-## 12. Data Lifecycle
+## 18. Explicit Non-Goals for MVP
 
-```text
-DISCOVERED
-   |
-   v
-EXTRACTED
-   |
-   v
-VALIDATED
-   |
-   +----> REVIEW_REQUIRED
-   |
-   v
-RESOLVED
-   |
-   v
-DEDUPLICATED
-   |
-   v
-ELIGIBLE
-   |
-   v
-ACTIVE / EXPIRED / UPCOMING
-```
-
-Observations remain immutable. Canonical promotions may be updated as new observations arrive.
-
-## 13. Review Queue
-
-The system must create review items for conditions such as:
-
-- unknown competitor
-- ambiguous product
-- price conflict
-- date conflict
-- geography ambiguity
-- source parsing failure
-- missing evidence
-- low AI confidence
-- suspected duplicate with material differences
-
-Review actions:
-
-- approve
-- edit
-- reject
-- link to canonical entity
-- mark source/parser issue
-
-## 14. User Experience Requirements
-
-The product should look and behave like a professional enterprise intelligence application.
-
-### Navigation
-
-```text
-Overview
-Promotions
-Regional Pricing
-Competitors
-Sources
-Review Queue
-Settings
-```
-
-### Overview
-
-Show:
-
-- active promotions
-- competitors tracked
-- brands monitored
-- retailers monitored
-- expiring soon
-- promotion activity trend
-- competitor activity intensity
-- regional distribution
-- source health
-
-### Promotions
-
-Provide a filterable table and right-side detail drawer.
-
-Primary filters:
-
-- category
-- competitor
-- brand
-- retailer
-- mechanic
-- geography
-- validity
-- source
-
-### Regional Pricing
-
-Compare product price/promotion by geographic scope. Missing evidence must display as `No evidence`, not zero.
-
-### Detail Drawer
-
-Must show source, evidence, geography, validity, conditions, confidence and `Open source` action.
-
-### Source Health
-
-Show last successful crawl, failure rate, current status and freshness.
-
-### Empty / Error / Stale States
-
-Every page must distinguish:
-
-- no matching data
-- database unavailable
-- source unavailable
-- crawler failed
-- stale data
-
-Never use fake rows to fill the screen.
-
-## 15. Non-Functional Requirements
-
-### Accuracy
-
-No unsupported commercial facts.
-
-### Freshness
-
-Default active intelligence is no older than 90 days and must respect actual promotion validity.
-
-### Traceability
-
-Every canonical promotion must be traceable to one or more source observations.
-
-### Reliability
-
-Crawl failures must be observable and retryable.
-
-### Security
-
-Secrets must never be committed. Database credentials must be least privilege.
-
-### Performance
-
-Top 10 and common filter queries should be indexed and return quickly on expected production volumes.
-
-### Extensibility
-
-New sources, retailers, promotion mechanics and geography mappings must be configurable without rewriting the core model.
-
-## 16. Acceptance Criteria
-
-The MVP is accepted only when all are true:
-
-1. A real Hemat.id page can be crawled.
-2. Raw source evidence is persisted.
-3. AI extraction produces structured fields.
-4. Price/date/mechanic/geography validation runs.
-5. Exact source geography is preserved.
-6. Regional observations are not incorrectly merged.
-7. Promotion evidence can be opened from the UI.
-8. Expired promotions do not appear in the default Top 10.
-9. Promotions older than 90 days do not appear in the default Top 10.
-10. Records without usable evidence cannot be presented as verified.
-11. The UI reads from PostgreSQL through the API and contains no production mock rows.
-12. A PostgreSQL outage produces a visible error state.
-13. A crawler outage is visible in source health.
-14. A promotion with ambiguous geography enters review rather than silently becoming nationwide.
-15. Top 10 ranking is explainable.
-
-## 17. Explicit Non-Goals for MVP
-
-- automatic purchase or coupon redemption
 - consumer checkout
-- competitor sentiment analysis
-- private/login-only data collection without approved access
-- bypassing anti-bot controls
+- automatic coupon redemption
+- private/login-only collection without approved access
+- bypassing access controls
 - modifying source websites
-- writing into `dwh_prod`
+- writing to `dwh_prod`
 - treating AI output as authoritative without validation
