@@ -1,8 +1,10 @@
 import logging
+from datetime import datetime, timezone
 from typing import List
 from sqlalchemy.orm import Session
 from app.models.source import SourceRegistry, CrawlDocument
 from app.services.crawler.aggregator import AggregatorCrawler
+from app.services.crawler.retailer import RetailerPromotionCrawler
 from app.services.crawler.superindo import SuperindoCrawler
 from app.services.crawler.base import BaseCrawler
 
@@ -13,10 +15,13 @@ def get_crawler_for_source(db: Session, source: SourceRegistry) -> BaseCrawler:
     domain = (source.domain or "").lower()
     if "superindo" in domain:
         return SuperindoCrawler(db, source)
-    elif "hemat.id" in domain or source.source_type == "PROMOTION_AGGREGATOR":
+    if "indomaret" in domain:
+        return RetailerPromotionCrawler(db, source, "indomaret")
+    if "alfamart" in domain:
+        return RetailerPromotionCrawler(db, source, "alfamart")
+    if "hemat.id" in domain or source.source_type == "PROMOTION_AGGREGATOR":
         return AggregatorCrawler(db, source)
-    else:
-        return AggregatorCrawler(db, source)
+    return AggregatorCrawler(db, source)
 
 
 def run_all_crawlers(db: Session) -> List[CrawlDocument]:
@@ -35,7 +40,7 @@ def run_all_crawlers(db: Session) -> List[CrawlDocument]:
             # One broken source must not prevent the remaining sources from running.
             logger.exception("Failed crawling source %s: %s", src.name, exc)
             db.rollback()
-            src.last_error_at = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+            src.last_error_at = datetime.now(timezone.utc)
             db.commit()
         finally:
             if crawler is not None:
