@@ -104,9 +104,9 @@ class BaseCrawler(ABC):
         )
         return query.order_by(CrawlDocument.retrieved_at.desc()).first()
 
-    def record_crawl(
+    def record_crawl_job(
         self,
-        url: str,
+        job: CrawlJob,
         http_status: int,
         raw_html: str,
         text_content: str,
@@ -114,35 +114,25 @@ class BaseCrawler(ABC):
         error_message: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> Optional[CrawlDocument]:
-        """Record a crawl job and persist only new document content."""
+        """Persist a result against an existing CrawlJob without creating another job."""
         now = datetime.now(timezone.utc)
-        canonical_url = canonicalize_url(url)
+        canonical_url = canonicalize_url(job.url)
         content_hash = compute_hash(text_content or raw_html) if (text_content or raw_html) else None
-        job_status = "SUCCESS" if (200 <= http_status < 400 and not error_message) else "FAILED"
+        successful = 200 <= http_status < 400 and not error_message
 
-        job = CrawlJob(
-            source_id=self.source.id,
-            url=url,
-            job_type="CATALOG",
-            status=job_status,
-            started_at=now,
-            completed_at=now,
-            http_status=http_status,
-            error_message=error_message,
-            content_hash=content_hash,
-            created_at=now,
-        )
-        self.db.add(job)
-        self.db.flush()
+        job.http_status = http_status
+        job.content_hash = content_hash
+        job.error_message = error_message
+        job.completed_at = now if successful else None
 
         doc = None
-        if job_status == "SUCCESS" and text_content:
-            doc = self._existing_document(url, content_hash)
+        if successful and text_content:
+            doc = self._existing_document(job.url, content_hash)
             if doc is None:
                 doc = CrawlDocument(
                     crawl_job_id=job.id,
                     source_id=self.source.id,
-                    url=url,
+                    url=job.url,
                     canonical_url=canonical_url,
                     document_type="HTML",
                     title=title,
@@ -160,11 +150,47 @@ class BaseCrawler(ABC):
 
             self.source.last_crawled_at = now
             self.source.last_success_at = now
-        else:
-            self.source.last_crawled_at = now
-            self.source.last_error_at = now
+            return doc
 
+        self.source.last_crawled_at = now
+        self.source.last_error_at = now
+        return None
+
+    def record_crawl(
+        self,
+        url: str,
+        http_status: int,
+        raw_html: str,
+        text_content: str,
+        title: Optional[str] = None,
+        error_message: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Optional[CrawlDocument]:
+        """Record a new crawl job and persist only new document content."""
+        now = datetime.now(timezone.utc)
+        job = CrawlJob(
+            source_id=self.source.id,
+            url=url,
+            job_type="CATALOG",
+            status="SUCCESS" if (200 <= http_status < 400 and not error_message) else "FAILED",
+            started_at=now,
+            completed_at=now if (200 <= http_status < 400 and not error_message) else None,
+            http_status=http_status,
+            error_message=error_message,
+            created_at=now,
+        )
+        self.db.add(job)
         self.db.flush()
+
+        doc = self.record_crawl_job(
+            job=job,
+            http_status=http_status,
+            raw_html=raw_html,
+            text_content=text_content,
+            title=title,
+            error_message=error_message,
+            metadata=metadata,
+        )
         self.db.commit()
         return doc
 
