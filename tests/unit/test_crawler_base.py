@@ -1,6 +1,7 @@
 import unittest
-from types import SimpleNamespace
 from unittest.mock import patch
+
+import httpx
 
 from app.services.crawler.base import BaseCrawler, canonicalize_url, compute_hash
 
@@ -43,7 +44,7 @@ class CrawlerBaseTests(unittest.TestCase):
     def test_fetch_url_retries_transient_status_then_succeeds(self):
         crawler = object.__new__(DummyCrawler)
         crawler.max_retries = 2
-        crawler.retry_backoff_seconds = 0
+        crawler.retry_backoff_seconds = 1
         crawler.client = FakeClient([
             FakeResponse(503),
             FakeResponse(200, "ok"),
@@ -54,25 +55,30 @@ class CrawlerBaseTests(unittest.TestCase):
 
         self.assertEqual((status, text, error), (200, "ok", None))
         self.assertEqual(crawler.client.calls, 2)
-        sleep.assert_called_once_with(0)
+        sleep.assert_called_once_with(1)
 
     def test_fetch_url_retries_http_error_then_returns_error(self):
         crawler = object.__new__(DummyCrawler)
         crawler.max_retries = 1
-        crawler.retry_backoff_seconds = 0
+        crawler.retry_backoff_seconds = 1
         crawler.client = FakeClient([
-            RuntimeError("not-httpx"),
+            httpx.ConnectError("temporary connection failure"),
+            httpx.ConnectError("temporary connection failure"),
         ])
 
-        # The crawler intentionally catches httpx.HTTPError only; this confirms
-        # unrelated programming errors are not silently swallowed.
-        with self.assertRaises(RuntimeError):
-            crawler.fetch_url("https://example.test/promo")
+        with patch("app.services.crawler.base.time.sleep") as sleep:
+            status, text, error = crawler.fetch_url("https://example.test/promo")
+
+        self.assertEqual(status, 0)
+        self.assertEqual(text, "")
+        self.assertIn("temporary connection failure", error)
+        self.assertEqual(crawler.client.calls, 2)
+        sleep.assert_called_once_with(1)
 
     def test_fetch_url_does_not_retry_non_transient_status(self):
         crawler = object.__new__(DummyCrawler)
         crawler.max_retries = 3
-        crawler.retry_backoff_seconds = 0
+        crawler.retry_backoff_seconds = 1
         crawler.client = FakeClient([FakeResponse(404, "missing")])
 
         with patch("app.services.crawler.base.time.sleep") as sleep:
