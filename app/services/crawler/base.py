@@ -1,13 +1,16 @@
 import hashlib
 import logging
-import uuid
+import time
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, Tuple, List
+from urllib.parse import urlsplit, urlunsplit
+
 import httpx
 from bs4 import BeautifulSoup
 import trafilatura
 from sqlalchemy.orm import Session
+
 from app.models.source import SourceRegistry, CrawlJob, CrawlDocument
 
 logger = logging.getLogger(__name__)
@@ -18,52 +21,88 @@ DEFAULT_HEADERS = {
     "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
 }
 
+RETRYABLE_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
+
 
 def compute_hash(content: str) -> str:
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
+def canonicalize_url(url: str) -> str:
+    """Normalize a URL enough to make crawl-document identity deterministic."""
+    parts = urlsplit(url.strip())
+    return urlunsplit((parts.scheme.lower(), parts.netloc.lower(), parts.path or "/", parts.query, ""))
+
+
 class BaseCrawler(ABC):
-    def __init__(self, db: Session, source: SourceRegistry):
+    def __init__(
+        self,
+        db: Session,
+        source: SourceRegistry,
+        max_retries: int = 3,
+        retry_backoff_seconds: float = 1.0,
+    ):
         self.db = db
         self.source = source
+        self.max_retries = max(0, max_retries)
+        self.retry_backoff_seconds = max(0.0, retry_backoff_seconds)
         self.client = httpx.Client(
             headers=DEFAULT_HEADERS,
             timeout=30.0,
             follow_redirects=True,
-            verify=False
+            verify=True,
         )
 
     def fetch_url(self, url: str) -> Tuple[int, str, Optional[str]]:
-        """
-        Fetches URL and returns (http_status, html_content, error_message).
-        """
-        try:
-            resp = self.client.get(url)
-            return resp.status_code, resp.text, None
-        except Exception as e:
-            logger.error(f"Error fetching {url}: {e}")
-            return 0, "", str(e)
+        """Fetch URL with bounded exponential backoff for transient failures."""
+        last_status = 0
+        last_error: Optional[str] = None
+
+        for attempt in range(self.max_retries + 1):
+            try:
+                resp = self.client.get(url)
+                last_status = resp.status_code
+
+                if resp.status_code not in RETRYABLE_STATUS_CODES:
+                    return resp.status_code, resp.text, None
+
+                last_error = f"HTTP {resp.status_code}"
+            except httpx.HTTPError as exc:
+                last_error = str(exc)
+                logger.warning("Error fetching %s (attempt %s/%s): %s", url, attempt + 1, self.max_retries + 1, exc)
+
+            if attempt < self.max_retries:
+                delay = self.retry_backoff_seconds * (2 ** attempt)
+                if delay:
+                    time.sleep(delay)
+
+        logger.error("Failed fetching %s after %s attempts: %s", url, self.max_retries + 1, last_error)
+        return last_status, "", last_error
 
     def extract_text(self, html: str) -> Tuple[str, Optional[str]]:
-        """
-        Extracts clean readable text and page title.
-        """
+        """Extract clean readable text and page title."""
         if not html:
             return "", None
 
-        # Trafilatura extracts clean article/catalog content without nav/footer boilerplate
         extracted = trafilatura.extract(html, include_tables=True, include_links=True)
-        
         soup = BeautifulSoup(html, "html.parser")
         title_tag = soup.find("title")
         title = title_tag.get_text().strip() if title_tag else None
 
         if not extracted or len(extracted.strip()) < 50:
-            # Fallback to BeautifulSoup if trafilatura stripped too much
             extracted = soup.get_text(separator="\n", strip=True)
 
         return extracted or "", title
+
+    def _existing_document(self, url: str, content_hash: Optional[str]) -> Optional[CrawlDocument]:
+        """Find an existing successful document with the same source, URL and content hash."""
+        canonical_url = canonicalize_url(url)
+        query = self.db.query(CrawlDocument).filter(
+            CrawlDocument.source_id == self.source.id,
+            CrawlDocument.canonical_url == canonical_url,
+            CrawlDocument.content_hash == content_hash,
+        )
+        return query.order_by(CrawlDocument.retrieved_at.desc()).first()
 
     def record_crawl(
         self,
@@ -73,15 +112,14 @@ class BaseCrawler(ABC):
         text_content: str,
         title: Optional[str] = None,
         error_message: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> Optional[CrawlDocument]:
-        """
-        Creates CrawlJob and CrawlDocument records in database.
-        """
+        """Record a crawl job and persist only new document content."""
         now = datetime.now(timezone.utc)
+        canonical_url = canonicalize_url(url)
         content_hash = compute_hash(text_content or raw_html) if (text_content or raw_html) else None
+        job_status = "SUCCESS" if (200 <= http_status < 400 and not error_message) else "FAILED"
 
-        job_status = "SUCCESS" if (http_status == 200 and not error_message) else "FAILED"
         job = CrawlJob(
             source_id=self.source.id,
             url=url,
@@ -92,37 +130,41 @@ class BaseCrawler(ABC):
             http_status=http_status,
             error_message=error_message,
             content_hash=content_hash,
-            created_at=now
+            created_at=now,
         )
         self.db.add(job)
         self.db.flush()
 
         doc = None
-        if http_status == 200 and text_content:
-            doc = CrawlDocument(
-                crawl_job_id=job.id,
-                source_id=self.source.id,
-                url=url,
-                document_type="HTML",
-                title=title,
-                text_content=text_content,
-                content_hash=content_hash,
-                retrieved_at=now,
-                http_status=http_status,
-                metadata_json=metadata or {},
-                created_at=now
-            )
-            self.db.add(doc)
+        if job_status == "SUCCESS" and text_content:
+            doc = self._existing_document(url, content_hash)
+            if doc is None:
+                doc = CrawlDocument(
+                    crawl_job_id=job.id,
+                    source_id=self.source.id,
+                    url=url,
+                    canonical_url=canonical_url,
+                    document_type="HTML",
+                    title=title,
+                    text_content=text_content,
+                    content_hash=content_hash,
+                    retrieved_at=now,
+                    http_status=http_status,
+                    metadata_json=metadata or {},
+                    created_at=now,
+                )
+                self.db.add(doc)
+                self.db.flush()
+            else:
+                logger.info("Skipping duplicate crawl document for %s (content_hash=%s)", canonical_url, content_hash)
 
-            # Update source stats
             self.source.last_crawled_at = now
             self.source.last_success_at = now
-            self.db.flush()
         else:
             self.source.last_crawled_at = now
             self.source.last_error_at = now
-            self.db.flush()
 
+        self.db.flush()
         self.db.commit()
         return doc
 
