@@ -73,9 +73,9 @@ Migration:
 
 adds uniqueness for `(document_id, promotion_id)`, preventing duplicate observations for the same promotion within one source document.
 
-### P0-E — Structured extraction hardening 🟡
+### P0-E — Structured extraction hardening ✅
 
-The extraction layer has now been hardened in `app/services/extraction/llm_extractor.py`:
+The extraction layer has been hardened in `app/services/extraction/llm_extractor.py`:
 
 - removed the hardcoded 2026 year;
 - supplies an explicit runtime `CURRENT_DATE` to the model;
@@ -86,7 +86,7 @@ The extraction layer has now been hardened in `app/services/extraction/llm_extra
 - distinguishes `SUCCESS`, `PARTIAL_SUCCESS`, `EMPTY_RESPONSE`, `INVALID_JSON`, `INVALID_SCHEMA`, and `ERROR`;
 - invalid individual promotion items are rejected without silently discarding valid items;
 - exact evidence quotes remain required;
-- canonical upsert now persists each accepted item's exact evidence quote into `promotion_evidence`.
+- canonical upsert persists each accepted item's exact evidence quote into `promotion_evidence`.
 
 The extraction schema enforces:
 
@@ -98,22 +98,55 @@ The extraction schema enforces:
 - 0–1 confidence;
 - non-empty product names and evidence quotes.
 
-Regression coverage was added in `tests/unit/test_llm_extractor.py` for runtime date context, partial item rejection, and malformed JSON visibility.
+Regression coverage is in `tests/unit/test_llm_extractor.py`.
 
-**Remaining P0-E work:** ensure the production pipeline passes the richer extraction metadata into `PromotionObservation.extracted_json`, rather than relying only on the backward-compatible list API.
+### P0-F — Pipeline integration and idempotency wiring ✅
 
-## P0-F — Integration and end-to-end verification ⏳
+`scripts/run_pipeline.py` now uses the richer extraction result and passes extraction provenance into the canonical promotion upsert path.
 
-Still required before declaring P0 complete:
+The pipeline now:
 
-- migration chain verification against a clean database;
-- unit tests for canonical upsert and observation idempotency;
-- integration test: crawl document → extraction → validation → resolution → upsert → evidence;
-- duplicate/reprocessing test;
-- ambiguous entity test;
-- lifecycle test around date boundaries;
-- collision analysis before any unique promotion fingerprint constraint;
-- CI execution and failure review.
+1. crawls fresh sources or loads the latest documents;
+2. processes bounded text blocks;
+3. extracts structured promotions with parser metadata;
+4. hashes the raw model response without persisting the full raw response in the observation row;
+5. resolves retailer and brand/competitor conservatively;
+6. validates and canonicalizes promotions through the shared upsert service;
+7. persists promotion evidence;
+8. commits per document.
+
+The main pipeline no longer manually inserts `PromotionObservation` before deduplication and no longer routes the main path through the legacy promotion deduplicator.
+
+A regression test was added in `tests/unit/test_promotion_upsert.py` for same-document reprocessing: one canonical promotion, one observation, and one evidence row are retained while extraction provenance is refreshed.
+
+## P1 work started — crawler reliability foundation 🟡
+
+`app/services/crawler/base.py` has been hardened and committed directly to `master`.
+
+Current improvements:
+
+- TLS certificate verification is enabled;
+- transient HTTP statuses (`408`, `425`, `429`, `500`, `502`, `503`, `504`) are retried;
+- bounded exponential backoff is used;
+- `httpx.HTTPError` failures are retried within the configured limit;
+- URLs are canonicalized by scheme/host/path/query with fragments removed;
+- crawl jobs are retained even when the document content is a duplicate;
+- duplicate successful documents are skipped using source + canonical URL + content hash;
+- source success/error timestamps are updated;
+- crawler regression coverage exists in `tests/unit/test_crawler_base.py` for URL canonicalization, hashing, transient-status retry, connection-error retry, and non-transient status handling.
+
+This is a foundation only. The crawler layer still needs dynamic-page handling, PDF/image acquisition and OCR, deeper pagination/discovery, durable retry/resume/dead-letter behavior, rate limiting, and source-specific adapters.
+
+## Remaining verification before declaring P0 production-ready ⏳
+
+- run the complete unit-test suite in the repository environment;
+- verify the full Alembic migration chain against a clean `competitor_intel` database;
+- run the crawl → extraction → validation → resolution → upsert → evidence integration path;
+- verify duplicate/reprocessing behavior against PostgreSQL constraints;
+- test ambiguous and unresolved entity cases with persisted audit records;
+- test lifecycle boundaries around start/end dates;
+- analyze existing promotion fingerprint collisions before adding a unique fingerprint constraint;
+- review CI execution and failures once CI is available/confirmed.
 
 ## Migration chain
 
@@ -125,6 +158,8 @@ d7bd4ee90139  initial MVP
 b7e41c2d8f90  entity resolution audit
       ↓
 c4a81e6f2b73  observation idempotency
+      ↓
+e5d72a1c9b40  extraction provenance
 ```
 
 ## Database safety rule
@@ -134,6 +169,8 @@ All P0 changes remain inside the `competitor_intel` PostgreSQL schema/database.
 No code or migration may introduce a dependency on `dwh_prod`.
 
 ## Master branch rule
+
+All implementation updates in this workflow are committed directly to `master`.
 
 Before updating an existing GitHub file, fetch the current `master` version and use its current blob SHA. Do not reuse a stale SHA from an earlier tool result.
 
