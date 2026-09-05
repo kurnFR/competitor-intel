@@ -52,12 +52,17 @@ Migration `migrations/versions/2026_09_05_2100-f6a91c3d8e52_crawl_job_retry_stat
 
 `job_processor.py` now uses the binary fetch path, routes HTML/PDF/IMAGE separately, records content type/document type and extraction metadata, and retains the existing durable retry/dead-letter behavior. `requirements.txt` includes the PDF/image Python dependencies. Regression coverage for document detection and dynamic-page heuristics is in `tests/unit/test_content.py`.
 
+### P1 — Bounded deep pagination/discovery 🟢
+
+`app/services/crawler/discovery.py` provides conservative same-origin pagination discovery with a hard page budget, promotion-relevant path filtering, fragment removal, deterministic ordering, and duplicate suppression. `AggregatorCrawler` now expands from configured seed URLs instead of stopping at hardcoded page 1/page 2. Dynamic rendering is also applied before pagination discovery when a seed page is detected as JavaScript-driven.
+
+The discovery budget is currently **10 pages per aggregator crawl** to prevent accidental whole-site crawling. Regression coverage is in `tests/unit/test_discovery.py`.
+
 ## Remaining P1 work
 
 - install/operate Playwright Chromium where dynamic rendering is enabled;
 - install/configure Tesseract language data (`ind` + `eng`) where image OCR is enabled;
 - durable raw PDF/image object storage instead of encoding binary payloads into the legacy text field;
-- deeper pagination/discovery;
 - source-specific adapters for major Indonesian retailers;
 - stronger document provenance for rendered/PDF/image sources;
 - distributed rate limiting if workers are deployed across multiple processes/hosts.
