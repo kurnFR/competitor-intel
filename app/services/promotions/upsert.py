@@ -1,8 +1,8 @@
 """Canonical promotion upsert, observation linkage, and evidence persistence.
 
-This service is deliberately transaction-scoped: callers own the session and
-commit/rollback boundary. Re-processing the same extracted promotion resolves
-to the same canonical promotion and observation.
+This service is transaction-scoped: callers own the session and commit/rollback
+boundary. Re-processing the same extracted promotion resolves to the same
+canonical promotion and observation.
 """
 
 from __future__ import annotations
@@ -14,6 +14,8 @@ from sqlalchemy.orm import Session
 
 from app.models.promotion import Promotion, PromotionEvidence, PromotionObservation
 from app.services.promotions.identity import IDENTITY_VERSION, promotion_identity_fingerprint
+from app.services.validation.validator import PromotionValidator
+from app.services.validation.lifecycle import evaluate_lifecycle
 
 
 def _utc_now() -> datetime:
@@ -58,12 +60,7 @@ def _persist_evidence(
     source_url: Optional[str] = None,
     captured_at: Optional[datetime] = None,
 ) -> Optional[PromotionEvidence]:
-    """Persist the model's exact evidence quote without duplicating it.
-
-    Evidence is only stored when the extractor supplied a non-empty quote. The
-    uniqueness check is scoped to promotion + document + exact evidence text,
-    allowing a document to legitimately contain multiple evidence snippets.
-    """
+    """Persist the model's exact evidence quote without duplicating it."""
     evidence_text = getattr(item, "evidence_quote", None)
     if not evidence_text or not str(evidence_text).strip():
         return None
@@ -104,16 +101,22 @@ def upsert_promotion_observation(
     extracted_json: Optional[dict[str, Any]] = None,
     observed_at: Optional[datetime] = None,
     source_url: Optional[str] = None,
+    extraction_metadata: Optional[dict[str, Any]] = None,
 ) -> tuple[Promotion, PromotionObservation, bool]:
-    """Create/link a canonical promotion and its observation idempotently.
+    """Validate, canonicalize, and upsert a promotion observation.
 
-    Returns (promotion, observation, created_promotion). A repeated extraction
-    for the same document and promotion returns the existing observation and
-    does not create duplicate evidence for the same exact quote.
+    ``extraction_metadata`` may contain model, parser status, extraction time,
+    raw response hash, and rejected count. The raw LLM response itself is not
+    persisted here; only its SHA-256 hash is retained for audit correlation.
     """
+    is_valid, reason, start_dt, end_dt, effective_discount = PromotionValidator.validate_and_normalize(item)
+    if not is_valid:
+        raise ValueError(f"Invalid promotion '{getattr(item, 'product_name', '')}': {reason}")
+
     data = _promotion_data(item, resolved_entities)
     fingerprint = promotion_identity_fingerprint(data)
     now = observed_at or _utc_now()
+    metadata = extraction_metadata or {}
 
     promotion = (
         db.query(Promotion)
@@ -144,8 +147,7 @@ def upsert_promotion_observation(
         "discount_percentage", "promotion_type", "buy_quantity", "free_quantity",
         "bundle_quantity", "cashback_amount", "voucher_amount",
         "minimum_purchase_amount", "minimum_purchase_quantity", "gift_description",
-        "promotion_title", "promotion_description", "start_date", "end_date",
-        "channel", "geography",
+        "promotion_title", "promotion_description", "channel", "geography",
     ):
         if hasattr(item, field):
             value = getattr(item, field)
@@ -158,6 +160,12 @@ def upsert_promotion_observation(
             if value is not None:
                 setattr(promotion, field, value)
 
+    # Validator owns date parsing and effective-discount derivation; never pass
+    # source date strings directly into SQLAlchemy DateTime columns.
+    promotion.start_date = start_dt
+    promotion.end_date = end_dt
+    promotion.discount_percentage = effective_discount
+    promotion.status = evaluate_lifecycle(start_dt, end_dt, now=now)
     promotion.last_seen_at = max(promotion.last_seen_at, now)
     promotion.updated_at = now
 
@@ -177,6 +185,11 @@ def upsert_promotion_observation(
             raw_text=raw_text,
             extracted_json=extracted_json,
             ai_confidence=getattr(item, "confidence", None),
+            extraction_model=metadata.get("model"),
+            extraction_status=metadata.get("status"),
+            extracted_at=metadata.get("extracted_at"),
+            extraction_raw_response_hash=metadata.get("raw_response_hash"),
+            extraction_rejected_count=metadata.get("rejected_count"),
             observed_at=now,
             created_at=now,
         )
@@ -190,6 +203,16 @@ def upsert_promotion_observation(
         confidence = getattr(item, "confidence", None)
         if confidence is not None:
             observation.ai_confidence = confidence
+        if metadata.get("model") is not None:
+            observation.extraction_model = metadata["model"]
+        if metadata.get("status") is not None:
+            observation.extraction_status = metadata["status"]
+        if metadata.get("extracted_at") is not None:
+            observation.extracted_at = metadata["extracted_at"]
+        if metadata.get("raw_response_hash") is not None:
+            observation.extraction_raw_response_hash = metadata["raw_response_hash"]
+        if metadata.get("rejected_count") is not None:
+            observation.extraction_rejected_count = metadata["rejected_count"]
 
     _persist_evidence(
         db,
