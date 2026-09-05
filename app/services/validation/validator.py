@@ -35,6 +35,29 @@ class PromotionValidator:
             return None, f"Invalid date format: {value}"
 
     @staticmethod
+    def validate_evidence_quote(
+        item: ExtractedPromotionItem,
+        raw_text: Optional[str],
+    ) -> Tuple[bool, str]:
+        """Ensure the model's evidence quote is actually present in source text.
+
+        Evidence is deliberately checked as a literal contiguous substring.
+        This prevents an LLM from inventing a plausible quote that was not
+        present in the crawled document. Whitespace/case normalization is not
+        used because the extraction contract requires an exact source quote.
+        """
+        evidence = (item.evidence_quote or "").strip()
+        source = raw_text or ""
+
+        if not evidence:
+            return False, "Missing evidence quote"
+        if not source:
+            return False, "Missing source text for evidence verification"
+        if evidence not in source:
+            return False, "Evidence quote is not present verbatim in source text"
+        return True, "Valid"
+
+    @staticmethod
     def validate_and_normalize(item: ExtractedPromotionItem) -> Tuple[bool, str, Optional[datetime], Optional[datetime], float]:
         """
         Validate an extracted promotion without fabricating missing information.
