@@ -8,7 +8,12 @@ from typing import Any, Optional
 from sqlalchemy.orm import Session
 
 from app.models.promotion import Promotion, PromotionEvidence, PromotionObservation
-from app.services.promotions.identity import IDENTITY_VERSION, promotion_identity_fingerprint
+from app.services.promotions.identity import (
+    IDENTITY_VERSION,
+    SOURCE_IDENTITY_VERSION,
+    promotion_identity_fingerprint,
+    promotion_source_identity_fingerprint,
+)
 from app.services.ranking.scorer import PromotionScorer
 from app.services.validation.lifecycle import evaluate_lifecycle
 from app.services.validation.validator import PromotionValidator
@@ -42,6 +47,31 @@ def _promotion_data(item: Any, resolved: Optional[dict[str, Any]] = None) -> dic
         "promotion_title": getattr(item, "promotion_title", None),
         "start_date": getattr(item, "start_date", None),
         "end_date": getattr(item, "end_date", None),
+        "channel": getattr(item, "channel", None),
+        "geography": getattr(item, "geography", "Indonesia"),
+    }
+
+
+def _source_identity_data(item: Any) -> dict[str, Any]:
+    """Return source-observed names used by the stable commercial identity."""
+    return {
+        "retailer": getattr(item, "retailer", None),
+        "brand": getattr(item, "brand", None),
+        "competitor": getattr(item, "competitor", None),
+        "product_name": getattr(item, "product_name", None),
+        "sku": getattr(item, "sku", None),
+        "pack_size": getattr(item, "pack_size", None),
+        "promotion_type": getattr(item, "promotion_type", None),
+        "buy_quantity": getattr(item, "buy_quantity", None),
+        "free_quantity": getattr(item, "free_quantity", None),
+        "bundle_quantity": getattr(item, "bundle_quantity", None),
+        "cashback_amount": getattr(item, "cashback_amount", None),
+        "voucher_amount": getattr(item, "voucher_amount", None),
+        "minimum_purchase_amount": getattr(item, "minimum_purchase_amount", None),
+        "minimum_purchase_quantity": getattr(item, "minimum_purchase_quantity", None),
+        "gift_description": getattr(item, "gift_description", None),
+        "promo_price": getattr(item, "promo_price", None),
+        "currency": getattr(item, "currency", "IDR"),
         "channel": getattr(item, "channel", None),
         "geography": getattr(item, "geography", "Indonesia"),
     }
@@ -101,8 +131,9 @@ def upsert_promotion_observation(
 ) -> tuple[Promotion, PromotionObservation, bool]:
     """Validate, canonicalize, rank, and upsert a promotion observation.
 
-    The caller owns the transaction. Extraction metadata stores audit fields,
-    not the potentially large raw LLM response.
+    The caller owns the transaction. A stable source identity is checked after
+    the legacy v1 fingerprint so entity-resolution changes do not create a new
+    canonical promotion merely because its UUIDs became available later.
     """
     is_valid, reason, start_dt, end_dt, effective_discount = PromotionValidator.validate_and_normalize(item)
     if not is_valid:
@@ -116,6 +147,7 @@ def upsert_promotion_observation(
 
     data = _promotion_data(item, resolved_entities)
     fingerprint = promotion_identity_fingerprint(data)
+    source_fingerprint = promotion_source_identity_fingerprint(_source_identity_data(item))
     now = observed_at or _utc_now()
     metadata = extraction_metadata or {}
 
@@ -128,12 +160,26 @@ def upsert_promotion_observation(
         .one_or_none()
     )
 
+    # v2 source identity is deliberately a secondary lookup. It is only safe
+    # because retailer/channel/geography and the commercial mechanics are part
+    # of the fingerprint; ambiguous fuzzy entity resolution never participates.
+    if promotion is None:
+        promotion = (
+            db.query(Promotion)
+            .filter(
+                Promotion.source_identity_fingerprint == source_fingerprint,
+                Promotion.identity_version == SOURCE_IDENTITY_VERSION,
+            )
+            .one_or_none()
+        )
+
     created = promotion is None
     if promotion is None:
         promotion = Promotion(
             product_name=data["product_name"],
             identity_fingerprint=fingerprint,
-            identity_version=IDENTITY_VERSION,
+            identity_version=SOURCE_IDENTITY_VERSION,
+            source_identity_fingerprint=source_fingerprint,
             first_seen_at=now,
             last_seen_at=now,
             created_at=now,
@@ -141,6 +187,11 @@ def upsert_promotion_observation(
         )
         db.add(promotion)
         db.flush()
+    else:
+        promotion.source_identity_fingerprint = source_fingerprint
+        # New observations use v2 as the active identity generation while the
+        # original v1 fingerprint remains available for backward traceability.
+        promotion.identity_version = SOURCE_IDENTITY_VERSION
 
     for field in (
         "competitor_id", "brand_id", "product_id", "retailer_id", "product_name",
