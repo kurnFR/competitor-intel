@@ -58,12 +58,19 @@ Migration `migrations/versions/2026_09_05_2100-f6a91c3d8e52_crawl_job_retry_stat
 
 The discovery budget is currently **10 pages per aggregator crawl** to prevent accidental whole-site crawling. Regression coverage is in `tests/unit/test_discovery.py`.
 
+### P1 — Retailer-specific promotion adapters 🟢 foundation
+
+`app/services/crawler/retailer.py` adds a source-specific promotion discovery adapter for **Indomaret** and **Alfamart**. `manager.py` now dispatches those domains to the adapter rather than the generic aggregator. The adapter keeps a bounded 10-page crawl, follows same-retailer promotion/catalog links, handles `www`/apex host variants, reuses the existing rate-limited fetch path, and routes PDF/image assets through the existing acquisition layer. Regression coverage is in `tests/unit/test_retailer_crawler.py`.
+
+This is intentionally a discovery/extraction foundation, not a claim that retailer-specific live URLs or anti-bot behavior have been fully validated in production.
+
 ## Remaining P1 work
 
 - install/operate Playwright Chromium where dynamic rendering is enabled;
 - install/configure Tesseract language data (`ind` + `eng`) where image OCR is enabled;
 - durable raw PDF/image object storage instead of encoding binary payloads into the legacy text field;
-- source-specific adapters for major Indonesian retailers;
+- deepen retailer-specific adapters with validated live source paths and retailer-specific selectors/API endpoints;
+- add adapters for the next priority sources (Superindo, Hypermart, Lotte, Yogya, TIP TOP, Transmart, and major marketplace/brand sources);
 - stronger document provenance for rendered/PDF/image sources;
 - distributed rate limiting if workers are deployed across multiple processes/hosts.
 
