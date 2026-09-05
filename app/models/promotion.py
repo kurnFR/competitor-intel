@@ -25,6 +25,11 @@ class PromotionObservation(Base):
     raw_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     extracted_json: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     ai_confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    extraction_model: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    extraction_status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, index=True)
+    extracted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    extraction_raw_response_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    extraction_rejected_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
