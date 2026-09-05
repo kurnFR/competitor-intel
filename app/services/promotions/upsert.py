@@ -1,4 +1,4 @@
-"""Canonical promotion upsert and observation linkage.
+"""Canonical promotion upsert, observation linkage, and evidence persistence.
 
 This service is deliberately transaction-scoped: callers own the session and
 commit/rollback boundary. Re-processing the same extracted promotion resolves
@@ -12,7 +12,7 @@ from typing import Any, Optional
 
 from sqlalchemy.orm import Session
 
-from app.models.promotion import Promotion, PromotionObservation
+from app.models.promotion import Promotion, PromotionEvidence, PromotionObservation
 from app.services.promotions.identity import IDENTITY_VERSION, promotion_identity_fingerprint
 
 
@@ -49,6 +49,51 @@ def _promotion_data(item: Any, resolved: Optional[dict[str, Any]] = None) -> dic
     }
 
 
+def _persist_evidence(
+    db: Session,
+    *,
+    promotion: Promotion,
+    document_id,
+    item: Any,
+    source_url: Optional[str] = None,
+    captured_at: Optional[datetime] = None,
+) -> Optional[PromotionEvidence]:
+    """Persist the model's exact evidence quote without duplicating it.
+
+    Evidence is only stored when the extractor supplied a non-empty quote. The
+    uniqueness check is scoped to promotion + document + exact evidence text,
+    allowing a document to legitimately contain multiple evidence snippets.
+    """
+    evidence_text = getattr(item, "evidence_quote", None)
+    if not evidence_text or not str(evidence_text).strip():
+        return None
+
+    evidence_text = str(evidence_text).strip()
+    existing = (
+        db.query(PromotionEvidence)
+        .filter(
+            PromotionEvidence.promotion_id == promotion.id,
+            PromotionEvidence.document_id == document_id,
+            PromotionEvidence.evidence_text == evidence_text,
+        )
+        .one_or_none()
+    )
+    if existing is not None:
+        return existing
+
+    evidence = PromotionEvidence(
+        promotion_id=promotion.id,
+        document_id=document_id,
+        evidence_type="TEXT",
+        evidence_text=evidence_text,
+        source_url=source_url,
+        captured_at=captured_at or _utc_now(),
+    )
+    db.add(evidence)
+    db.flush()
+    return evidence
+
+
 def upsert_promotion_observation(
     db: Session,
     *,
@@ -58,11 +103,13 @@ def upsert_promotion_observation(
     raw_text: Optional[str] = None,
     extracted_json: Optional[dict[str, Any]] = None,
     observed_at: Optional[datetime] = None,
+    source_url: Optional[str] = None,
 ) -> tuple[Promotion, PromotionObservation, bool]:
     """Create/link a canonical promotion and its observation idempotently.
 
     Returns (promotion, observation, created_promotion). A repeated extraction
-    for the same document and promotion returns the existing observation.
+    for the same document and promotion returns the existing observation and
+    does not create duplicate evidence for the same exact quote.
     """
     data = _promotion_data(item, resolved_entities)
     fingerprint = promotion_identity_fingerprint(data)
@@ -136,8 +183,6 @@ def upsert_promotion_observation(
         db.add(observation)
         db.flush()
     else:
-        # Preserve the original observation timestamp, but refresh extracted
-        # payload/confidence when a document is explicitly reprocessed.
         if raw_text is not None:
             observation.raw_text = raw_text
         if extracted_json is not None:
@@ -145,5 +190,14 @@ def upsert_promotion_observation(
         confidence = getattr(item, "confidence", None)
         if confidence is not None:
             observation.ai_confidence = confidence
+
+    _persist_evidence(
+        db,
+        promotion=promotion,
+        document_id=document_id,
+        item=item,
+        source_url=source_url,
+        captured_at=now,
+    )
 
     return promotion, observation, created
