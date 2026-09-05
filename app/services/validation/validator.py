@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, time, timezone
 from typing import Tuple, Optional
 from app.schemas.ai import ExtractedPromotionItem
 
@@ -14,8 +14,16 @@ VALID_PROMOTION_TYPES = {
 
 class PromotionValidator:
     @staticmethod
-    def _parse_date(value: Optional[str]) -> Tuple[Optional[datetime], Optional[str]]:
-        """Parse a source date without inventing timezone/date information."""
+    def _parse_date(
+        value: Optional[str],
+        *,
+        end_of_day_for_date_only: bool = False,
+    ) -> Tuple[Optional[datetime], Optional[str]]:
+        """Parse a source date without inventing a calendar date or timezone.
+
+        A date-only promotion end date is treated as inclusive through the end
+        of that calendar day. Explicit datetimes keep their supplied time.
+        """
         if not value:
             return None, None
 
@@ -24,12 +32,23 @@ class PromotionValidator:
             return None, None
 
         try:
-            # Accept YYYY-MM-DD and ISO datetime values.
+            # Preserve date-only semantics: YYYY-MM-DD means the whole source
+            # calendar day, not midnight at its beginning when used as an end.
+            parsed_date = date.fromisoformat(raw)
+            if end_of_day_for_date_only:
+                parsed = datetime.combine(parsed_date, time.max, tzinfo=timezone.utc)
+            else:
+                parsed = datetime.combine(parsed_date, time.min, tzinfo=timezone.utc)
+            return parsed, None
+        except ValueError:
+            pass
+
+        try:
+            # Accept ISO datetime values. Explicit timezone offsets are kept
+            # as supplied until PostgreSQL stores the timezone-aware value.
             parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
             if parsed.tzinfo is None:
                 parsed = parsed.replace(tzinfo=timezone.utc)
-            else:
-                parsed = parsed.astimezone(timezone.utc)
             return parsed, None
         except ValueError:
             return None, f"Invalid date format: {value}"
@@ -90,7 +109,10 @@ class PromotionValidator:
         if start_error:
             return False, start_error, None, None, 0.0
 
-        end_dt, end_error = PromotionValidator._parse_date(item.end_date)
+        end_dt, end_error = PromotionValidator._parse_date(
+            item.end_date,
+            end_of_day_for_date_only=True,
+        )
         if end_error:
             return False, end_error, None, None, 0.0
 
