@@ -1,6 +1,5 @@
 import hashlib
 import logging
-from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
@@ -9,6 +8,7 @@ from app.models.source import CrawlDocument, SourceRegistry
 from app.models.promotion import Promotion
 from app.services.crawler.manager import run_all_crawlers
 from app.services.entity_resolution.resolver import EntityResolver
+from app.services.entity_resolution.review import persist_resolution_reviews
 from app.services.extraction.llm_extractor import LLMExtractor
 from app.services.promotions.upsert import upsert_promotion_observation
 
@@ -40,6 +40,7 @@ def run_pipeline(crawl_fresh: bool = False, max_docs: int = 3):
         total_canonical_created = 0
         total_observations = 0
         total_rejected = 0
+        total_review_items = 0
 
         for doc in docs:
             logger.info(f"Document {doc.id} ({doc.url}) text length: {len(doc.text_content or '')}")
@@ -96,7 +97,7 @@ def run_pipeline(crawl_fresh: bool = False, max_docs: int = 3):
                     }
 
                     try:
-                        _, _, created = upsert_promotion_observation(
+                        promotion, observation, created = upsert_promotion_observation(
                             db,
                             document_id=doc.id,
                             item=item,
@@ -111,6 +112,18 @@ def run_pipeline(crawl_fresh: bool = False, max_docs: int = 3):
                             extraction_metadata=metadata,
                             source_reliability=reliability,
                         )
+
+                        review_items = persist_resolution_reviews(
+                            db,
+                            observation_id=observation.id,
+                            promotion_id=promotion.id,
+                            resolutions=(
+                                ("RETAILER", item.retailer, retailer_result),
+                                ("BRAND", item.brand, brand_result),
+                                ("COMPETITOR", item.competitor, competitor_result),
+                            ),
+                        )
+                        total_review_items += review_items
                         total_canonical_created += int(created)
                         total_observations += 1
                     except ValueError as validation_error:
@@ -127,6 +140,7 @@ def run_pipeline(crawl_fresh: bool = False, max_docs: int = 3):
         logger.info(f"Total Newly Canonical Promotions: {total_canonical_created}")
         logger.info(f"Total Extracted Items: {total_extracted}")
         logger.info(f"Total LLM-Rejected Items: {total_rejected}")
+        logger.info(f"Total Entity Review Items: {total_review_items}")
         logger.info(
             "Total Canonical Active Promotions: %s",
             db.query(Promotion).filter(Promotion.status == "ACTIVE").count(),
