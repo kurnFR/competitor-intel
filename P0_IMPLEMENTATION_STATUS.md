@@ -133,11 +133,9 @@ Current improvements:
 - crawl jobs are retained even when the document content is a duplicate;
 - duplicate successful documents are skipped using source + canonical URL + content hash;
 - source success/error timestamps are updated;
-- crawler regression coverage exists in `tests/unit/test_crawler_base.py` for URL canonicalization, hashing, transient-status retry, connection-error retry, and non-transient status handling.
+- initial transient failures are now persisted as `RETRY_WAIT` jobs instead of being discarded as terminal failures.
 
-### P1 — Durable retry/resume state 🟡
-
-A durable queue state layer has now been added without coupling source-specific crawling to queue mechanics.
+### P1 — Durable retry/resume state 🟢
 
 Migration:
 
@@ -145,7 +143,7 @@ Migration:
 
 adds `next_retry_at`, `max_retries`, `last_attempt_at`, and `worker_id` to `crawl_jobs`, plus an index for retry-queue polling.
 
-`app/services/crawler/job_queue.py` now owns deterministic transitions:
+`app/services/crawler/job_queue.py` owns deterministic transitions:
 
 ```text
 QUEUED → RUNNING → SUCCESS
@@ -155,16 +153,29 @@ QUEUED → RUNNING → SUCCESS
         DEAD_LETTER
 ```
 
-It provides bounded exponential backoff, explicit transition validation, retry-budget enforcement, and PostgreSQL `FOR UPDATE SKIP LOCKED` job claiming so multiple workers can safely poll the same queue.
+It provides bounded exponential backoff, explicit transition validation, retry-budget enforcement, and PostgreSQL `FOR UPDATE SKIP LOCKED` job claiming so multiple workers can safely poll the same queue. Permanent failures can be dead-lettered immediately without consuming retry budget.
 
 `app/services/crawler/job_worker.py` provides a bounded worker loop with per-job transaction boundaries. Processor exceptions are persisted as retry state and eventually dead-lettered instead of terminating the whole batch.
 
-Regression coverage was added in:
+`app/services/crawler/job_processor.py` now bridges persisted jobs to the existing source crawler adapters. It reuses the crawler's HTTP client, extraction logic, duplicate-document detection, and existing `CrawlJob` row rather than creating a second job for a retry.
+
+`scripts/run_crawl_worker.py` provides an operational entrypoint for processing a bounded queue batch with a worker ID.
+
+Regression coverage is in:
 
 - `tests/unit/test_crawler_job_queue.py`
 - `tests/unit/test_crawler_job_worker.py`
 
-This is now a reusable durable queue foundation. Source-specific resumable processing still needs to be wired into the worker, and rate limiting, dynamic-page handling, PDF/image acquisition, OCR, deeper discovery/pagination, and source-specific adapters remain P1 work.
+This closes the durable retry/resume wiring for the current HTML crawler foundation. It does **not** yet solve dynamic JavaScript pages, PDF/image acquisition, OCR, rate limiting, or deep source-specific discovery.
+
+## Remaining P1 work
+
+- rate limiting and per-source concurrency controls;
+- dynamic-page handling;
+- PDF/image acquisition and OCR;
+- deeper pagination/discovery;
+- source-specific adapters for major Indonesian retailers;
+- extraction/document provenance for non-HTML sources.
 
 ## Remaining verification before declaring P0 production-ready ⏳
 
