@@ -18,6 +18,10 @@ Added deterministic promotion identity with a legacy v1 fingerprint and a stable
 
 The resolver avoids silent entity creation and weak fuzzy matches. Outcomes are `RESOLVED`, `REVIEW`, or `UNRESOLVED`. Resolution audit persistence and migration retain source values, candidate IDs, confidence, and review status. Regression coverage is in `tests/unit/test_entity_resolution.py`.
 
+### P0-B1 — Product entity resolution ✅
+
+`app/services/entity_resolution/product.py` now resolves products within a resolved brand boundary using barcode, SKU, normalized name, and conservative `pg_trgm` fuzzy matching. Strong fuzzy matches require both a high similarity threshold and a dominance margin. Explicit pack-size conflicts go to review rather than silently selecting another SKU. The main pipeline persists product IDs when resolved and creates PRODUCT review items otherwise. Regression coverage is in `tests/unit/test_product_resolution.py`.
+
 ### P0-C — Validation and lifecycle ✅
 
 `app/services/validation/validator.py` validates core promotion fields, supported mechanics, dates, price relationships, and BUY_X_GET_Y quantities. `app/services/validation/lifecycle.py` separates validity from activity state: `ACTIVE`, `UPCOMING`, `EXPIRED`, `UNKNOWN`. Missing dates are not fabricated from crawl time.
@@ -32,7 +36,7 @@ The resolver avoids silent entity creation and weak fuzzy matches. Outcomes are 
 
 ### P0-F — Pipeline integration and idempotency wiring ✅
 
-`scripts/run_pipeline.py` uses the richer extraction result, hashes the raw model response, resolves entities conservatively, validates/canonicalizes through the shared upsert path, persists evidence and entity review items, and commits per document. The main path no longer manually inserts observations before deduplication or routes through the legacy promotion deduplicator.
+`scripts/run_pipeline.py` uses the richer extraction result, hashes the raw model response, resolves entities conservatively, resolves products within the canonical brand boundary, validates/canonicalizes through the shared upsert path, persists evidence and entity review items, and commits per document. The main path no longer manually inserts observations before deduplication or routes through the legacy promotion deduplicator.
 
 ## P1 work started — crawler reliability and acquisition foundation 🟡
 
