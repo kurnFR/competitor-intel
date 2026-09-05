@@ -7,7 +7,7 @@ from typing import Iterable
 from sqlalchemy.orm import Session
 
 from app.models.resolution import ReviewQueue
-from app.services.entity_resolution.resolver import ResolutionResult, normalize_str
+from app.services.entity_resolution.resolver import ResolutionResult
 
 
 def persist_resolution_reviews(
