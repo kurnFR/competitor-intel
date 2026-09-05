@@ -25,8 +25,9 @@ def get_crawler_for_source(db: Session, source: SourceRegistry) -> BaseCrawler:
 
 
 def run_all_crawlers(db: Session) -> List[CrawlDocument]:
+    """Run active sources independently; one source failure must not stop the batch."""
     sources = db.query(SourceRegistry).filter(SourceRegistry.is_active == True).all()
-    all_docs = []
+    all_docs: List[CrawlDocument] = []
 
     for src in sources:
         crawler = None
@@ -37,11 +38,14 @@ def run_all_crawlers(db: Session) -> List[CrawlDocument]:
             all_docs.extend(docs)
             logger.info("Source %s produced %s documents.", src.name, len(docs))
         except Exception as exc:
-            # One broken source must not prevent the remaining sources from running.
             logger.exception("Failed crawling source %s: %s", src.name, exc)
             db.rollback()
-            src.last_error_at = datetime.now(timezone.utc)
-            db.commit()
+            # Re-fetch the source after rollback so this handler never relies on
+            # potentially expired SQLAlchemy state from the failed transaction.
+            fresh_src = db.get(SourceRegistry, src.id)
+            if fresh_src is not None:
+                fresh_src.last_error_at = datetime.now(timezone.utc)
+                db.commit()
         finally:
             if crawler is not None:
                 client = getattr(crawler, "client", None)
