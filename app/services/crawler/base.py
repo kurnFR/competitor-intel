@@ -2,7 +2,7 @@ import hashlib
 import logging
 import time
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any, Tuple, List
 from urllib.parse import urlsplit, urlunsplit
 
@@ -22,6 +22,8 @@ DEFAULT_HEADERS = {
 }
 
 RETRYABLE_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
+INITIAL_RETRY_DELAY_SECONDS = 60
+DEFAULT_MAX_RETRIES = 3
 
 
 def compute_hash(content: str) -> str:
@@ -39,7 +41,7 @@ class BaseCrawler(ABC):
         self,
         db: Session,
         source: SourceRegistry,
-        max_retries: int = 3,
+        max_retries: int = DEFAULT_MAX_RETRIES,
         retry_backoff_seconds: float = 1.0,
     ):
         self.db = db
@@ -168,15 +170,36 @@ class BaseCrawler(ABC):
     ) -> Optional[CrawlDocument]:
         """Record a new crawl job and persist only new document content."""
         now = datetime.now(timezone.utc)
+        successful = 200 <= http_status < 400 and not error_message
+        transient_failure = not successful and (
+            http_status in RETRYABLE_STATUS_CODES or http_status == 0
+        )
+        if successful:
+            status = "SUCCESS"
+            retry_count = 0
+            next_retry_at = None
+        elif transient_failure:
+            status = "RETRY_WAIT"
+            retry_count = 1
+            next_retry_at = now + timedelta(seconds=INITIAL_RETRY_DELAY_SECONDS)
+        else:
+            status = "DEAD_LETTER"
+            retry_count = 0
+            next_retry_at = None
+
         job = CrawlJob(
             source_id=self.source.id,
             url=url,
             job_type="CATALOG",
-            status="SUCCESS" if (200 <= http_status < 400 and not error_message) else "FAILED",
+            status=status,
             started_at=now,
-            completed_at=now if (200 <= http_status < 400 and not error_message) else None,
+            completed_at=now if successful or status == "DEAD_LETTER" else None,
             http_status=http_status,
             error_message=error_message,
+            retry_count=retry_count,
+            next_retry_at=next_retry_at,
+            max_retries=DEFAULT_MAX_RETRIES,
+            last_attempt_at=now,
             created_at=now,
         )
         self.db.add(job)
