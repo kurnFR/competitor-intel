@@ -16,11 +16,19 @@ class PromotionObservation(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("competitor_intel.crawl_documents.id", ondelete="CASCADE"), nullable=False, index=True)
+    promotion_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("competitor_intel.promotions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     raw_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     extracted_json: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     ai_confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    promotion: Mapped[Optional["Promotion"]] = relationship("Promotion", back_populates="observations")
 
 
 class Promotion(Base):
@@ -75,6 +83,9 @@ class Promotion(Base):
     ai_confidence: Mapped[float] = mapped_column(Float, default=0.8)
     rank_score: Mapped[float] = mapped_column(Float, default=0.0)
 
+    identity_fingerprint: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
+    identity_version: Mapped[str] = mapped_column(String(20), default="v1", nullable=False)
+
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
@@ -84,6 +95,7 @@ class Promotion(Base):
     brand: Mapped[Optional["Brand"]] = relationship("app.models.entity.Brand")
     retailer: Mapped[Optional["Retailer"]] = relationship("app.models.entity.Retailer")
     product: Mapped[Optional["Product"]] = relationship("app.models.entity.Product")
+    observations: Mapped[List["PromotionObservation"]] = relationship("PromotionObservation", back_populates="promotion")
     evidence_items: Mapped[List["PromotionEvidence"]] = relationship("PromotionEvidence", back_populates="promotion", cascade="all, delete-orphan")
 
 
