@@ -2,7 +2,7 @@
 
 This service is deliberately transaction-scoped: callers own the session and
 commit/rollback boundary. Re-processing the same extracted promotion resolves
-to the same canonical identity instead of creating another promotion.
+to the same canonical promotion and observation.
 """
 
 from __future__ import annotations
@@ -21,7 +21,6 @@ def _utc_now() -> datetime:
 
 
 def _promotion_data(item: Any, resolved: Optional[dict[str, Any]] = None) -> dict[str, Any]:
-    """Convert an extracted item plus resolved entity IDs into identity data."""
     resolved = resolved or {}
     return {
         "competitor_id": resolved.get("competitor_id"),
@@ -62,9 +61,8 @@ def upsert_promotion_observation(
 ) -> tuple[Promotion, PromotionObservation, bool]:
     """Create/link a canonical promotion and its observation idempotently.
 
-    Returns (promotion, observation, created_promotion). Existing canonical
-    promotions are updated with the latest observed values, while every source
-    document remains an independent observation/evidence event.
+    Returns (promotion, observation, created_promotion). A repeated extraction
+    for the same document and promotion returns the existing observation.
     """
     data = _promotion_data(item, resolved_entities)
     fingerprint = promotion_identity_fingerprint(data)
@@ -92,12 +90,7 @@ def upsert_promotion_observation(
         )
         db.add(promotion)
         db.flush()
-    else:
-        promotion.last_seen_at = max(promotion.last_seen_at, now)
-        promotion.updated_at = now
 
-    # Fill/update canonical attributes from validated extracted data. Identity
-    # is already established, so these fields cannot change the lookup key.
     for field in (
         "competitor_id", "brand_id", "product_id", "retailer_id", "product_name",
         "sku", "pack_size", "category", "regular_price", "promo_price", "currency",
@@ -121,15 +114,36 @@ def upsert_promotion_observation(
     promotion.last_seen_at = max(promotion.last_seen_at, now)
     promotion.updated_at = now
 
-    observation = PromotionObservation(
-        document_id=document_id,
-        promotion_id=promotion.id,
-        raw_text=raw_text,
-        extracted_json=extracted_json,
-        ai_confidence=getattr(item, "confidence", None),
-        observed_at=now,
-        created_at=now,
+    observation = (
+        db.query(PromotionObservation)
+        .filter(
+            PromotionObservation.document_id == document_id,
+            PromotionObservation.promotion_id == promotion.id,
+        )
+        .one_or_none()
     )
-    db.add(observation)
-    db.flush()
+
+    if observation is None:
+        observation = PromotionObservation(
+            document_id=document_id,
+            promotion_id=promotion.id,
+            raw_text=raw_text,
+            extracted_json=extracted_json,
+            ai_confidence=getattr(item, "confidence", None),
+            observed_at=now,
+            created_at=now,
+        )
+        db.add(observation)
+        db.flush()
+    else:
+        # Preserve the original observation timestamp, but refresh extracted
+        # payload/confidence when a document is explicitly reprocessed.
+        if raw_text is not None:
+            observation.raw_text = raw_text
+        if extracted_json is not None:
+            observation.extracted_json = extracted_json
+        confidence = getattr(item, "confidence", None)
+        if confidence is not None:
+            observation.ai_confidence = confidence
+
     return promotion, observation, created
