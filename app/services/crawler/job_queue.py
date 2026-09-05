@@ -94,18 +94,25 @@ def mark_job_failure(
     now: Optional[datetime] = None,
     base_seconds: int = DEFAULT_RETRY_BASE_SECONDS,
     max_seconds: int = DEFAULT_RETRY_MAX_SECONDS,
+    retryable: bool = True,
 ) -> CrawlJob:
     """Record a failed attempt and schedule a retry or dead-letter the job."""
     if job.status != RUNNING:
         raise ValueError(f"Cannot fail job from status {job.status!r}")
 
     current = _utc_now(now)
-    job.retry_count = (job.retry_count or 0) + 1
     job.last_attempt_at = current
     job.error_message = error_message
     if http_status is not None:
         job.http_status = http_status
 
+    if not retryable:
+        job.status = DEAD_LETTER
+        job.next_retry_at = None
+        job.completed_at = current
+        return job
+
+    job.retry_count = (job.retry_count or 0) + 1
     max_retries = max(0, job.max_retries or 0)
     if job.retry_count <= max_retries:
         delay = calculate_retry_delay(job.retry_count, base_seconds, max_seconds)
