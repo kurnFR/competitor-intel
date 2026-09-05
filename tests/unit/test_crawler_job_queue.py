@@ -63,6 +63,17 @@ class CrawlJobQueueTests(unittest.TestCase):
         self.assertEqual(job.http_status, 503)
         self.assertIsNone(job.completed_at)
 
+    def test_permanent_failure_dead_letters_without_consuming_retry_budget(self):
+        now = datetime(2026, 9, 5, 12, 0, tzinfo=timezone.utc)
+        job = self.make_job(status=RUNNING, max_retries=3)
+
+        mark_job_failure(job, "HTTP 404", http_status=404, now=now, retryable=False)
+
+        self.assertEqual(job.status, DEAD_LETTER)
+        self.assertEqual(job.retry_count, 0)
+        self.assertIsNone(job.next_retry_at)
+        self.assertEqual(job.completed_at, now)
+
     def test_failure_after_retry_budget_moves_to_dead_letter(self):
         now = datetime(2026, 9, 5, 12, 0, tzinfo=timezone.utc)
         job = self.make_job(status=RUNNING, max_retries=2)
