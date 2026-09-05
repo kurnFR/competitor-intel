@@ -1,7 +1,7 @@
 """Add stable source-observed promotion identity fingerprint.
 
 Revision ID: 4c8d2e7f1a63
-Revises: b7e41c2d8f90
+Revises: 91c4e7a2b5d8
 """
 
 from alembic import op
@@ -9,7 +9,7 @@ import sqlalchemy as sa
 
 
 revision = "4c8d2e7f1a63"
-down_revision = "b7e41c2d8f90"
+down_revision = "91c4e7a2b5d8"
 branch_labels = None
 depends_on = None
 
