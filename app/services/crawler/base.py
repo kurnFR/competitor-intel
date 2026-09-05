@@ -149,7 +149,8 @@ class BaseCrawler(ABC):
 
     def record_crawl(self, url: str, http_status: int, raw_html: str, text_content: str,
                      title: Optional[str] = None, error_message: Optional[str] = None,
-                     metadata: Optional[Dict[str, Any]] = None) -> Optional[CrawlDocument]:
+                     metadata: Optional[Dict[str, Any]] = None, raw_content: Optional[bytes] = None,
+                     content_type: Optional[str] = None) -> Optional[CrawlDocument]:
         now = datetime.now(timezone.utc)
         successful = 200 <= http_status < 400 and not error_message
         transient_failure = not successful and (http_status in RETRYABLE_STATUS_CODES or http_status == 0)
@@ -165,7 +166,7 @@ class BaseCrawler(ABC):
             next_retry_at=next_retry_at, max_retries=DEFAULT_MAX_RETRIES, last_attempt_at=now, created_at=now)
         self.db.add(job)
         self.db.flush()
-        doc = self.record_crawl_job(job, http_status, raw_html, text_content, title, error_message, metadata)
+        doc = self.record_crawl_job(job, http_status, raw_html, text_content, title, error_message, metadata, raw_content, content_type)
         self.db.commit()
         return doc
 
