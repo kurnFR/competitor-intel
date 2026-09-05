@@ -2,6 +2,7 @@ import unittest
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
+from app.services.crawler.job_errors import PermanentCrawlJobError
 from app.services.crawler.job_worker import process_retryable_jobs
 from app.services.crawler.job_queue import DEAD_LETTER, RETRY_WAIT, SUCCESS
 
@@ -98,6 +99,18 @@ class CrawlJobWorkerTests(unittest.TestCase):
         self.assertIn("temporary source failure", job.error_message)
         self.assertEqual(db.rollbacks, 1)
         self.assertGreaterEqual(db.commits, 1)
+
+    def test_permanent_processor_failure_dead_letters_without_retry(self):
+        job = self.make_job(max_retries=3)
+        db = FakeDb([job])
+
+        def fail(_):
+            raise PermanentCrawlJobError("HTTP 404")
+
+        process_retryable_jobs(db, "worker-1", fail, limit=1)
+
+        self.assertEqual(job.status, DEAD_LETTER)
+        self.assertEqual(job.retry_count, 0)
 
     def test_exhausted_processor_failure_dead_letters_job(self):
         job = self.make_job(max_retries=0)
