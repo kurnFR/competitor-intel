@@ -10,7 +10,6 @@ from app.db.session import Base
 class SourceRegistry(Base):
     __tablename__ = "source_registry"
     __table_args__ = {"schema": "competitor_intel"}
-
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     domain: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
@@ -30,7 +29,6 @@ class SourceRegistry(Base):
     last_error_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
-
     crawl_jobs: Mapped[List["CrawlJob"]] = relationship("CrawlJob", back_populates="source", cascade="all, delete-orphan")
     documents: Mapped[List["CrawlDocument"]] = relationship("CrawlDocument", back_populates="source", cascade="all, delete-orphan")
 
@@ -38,7 +36,6 @@ class SourceRegistry(Base):
 class CrawlJob(Base):
     __tablename__ = "crawl_jobs"
     __table_args__ = {"schema": "competitor_intel"}
-
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     source_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("competitor_intel.source_registry.id", ondelete="CASCADE"), nullable=False, index=True)
     url: Mapped[str] = mapped_column(Text, nullable=False)
@@ -55,7 +52,6 @@ class CrawlJob(Base):
     last_attempt_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     worker_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-
     source: Mapped["SourceRegistry"] = relationship("SourceRegistry", back_populates="crawl_jobs")
     documents: Mapped[List["CrawlDocument"]] = relationship("CrawlDocument", back_populates="crawl_job")
 
@@ -65,9 +61,9 @@ class CrawlDocument(Base):
     __table_args__ = (
         Index("idx_crawl_documents_url", "url"),
         Index("idx_crawl_documents_content_hash", "content_hash"),
+        Index("idx_crawl_documents_raw_sha256", "raw_content_sha256"),
         {"schema": "competitor_intel"}
     )
-
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     crawl_job_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("competitor_intel.crawl_jobs.id", ondelete="SET NULL"), nullable=True, index=True)
     source_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("competitor_intel.source_registry.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -76,6 +72,10 @@ class CrawlDocument(Base):
     document_type: Mapped[str] = mapped_column(String(20), default="HTML")
     title: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     raw_content_uri: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    raw_content_sha256: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    raw_content_type: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    raw_content_size_bytes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    storage_backend: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
     text_content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     content_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     published_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -84,6 +84,5 @@ class CrawlDocument(Base):
     http_status: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     metadata_json: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-
     source: Mapped["SourceRegistry"] = relationship("SourceRegistry", back_populates="documents")
     crawl_job: Mapped[Optional["CrawlJob"]] = relationship("CrawlJob", back_populates="documents")
