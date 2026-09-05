@@ -133,7 +133,7 @@ Current improvements:
 - crawl jobs are retained even when the document content is a duplicate;
 - duplicate successful documents are skipped using source + canonical URL + content hash;
 - source success/error timestamps are updated;
-- initial transient failures are now persisted as `RETRY_WAIT` jobs instead of being discarded as terminal failures.
+- initial transient failures are persisted as `RETRY_WAIT` jobs instead of being discarded as terminal failures.
 
 ### P1 — Durable retry/resume state 🟢
 
@@ -168,14 +168,29 @@ Regression coverage is in:
 
 This closes the durable retry/resume wiring for the current HTML crawler foundation. It does **not** yet solve dynamic JavaScript pages, PDF/image acquisition, OCR, rate limiting, or deep source-specific discovery.
 
+### P1 — Source rate limiting and concurrency 🟢
+
+`app/services/crawler/rate_limiter.py` now provides a thread-safe per-source limiter with:
+
+- configurable requests per second;
+- configurable maximum concurrent requests;
+- optional minimum request interval;
+- a process-wide limiter shared by crawler adapters.
+
+`BaseCrawler.fetch_url()` applies the limiter before every HTTP request, including retries. This prevents concurrent workers in the same process from bursting requests at one source while allowing independent sources to progress concurrently.
+
+The default is intentionally conservative: **1 request/second and 1 concurrent request per source**. Source-specific limits can be supplied to `BaseCrawler` without changing the durable job queue.
+
+Regression coverage is in `tests/unit/test_rate_limiter.py`.
+
 ## Remaining P1 work
 
-- rate limiting and per-source concurrency controls;
 - dynamic-page handling;
 - PDF/image acquisition and OCR;
 - deeper pagination/discovery;
 - source-specific adapters for major Indonesian retailers;
-- extraction/document provenance for non-HTML sources.
+- extraction/document provenance for non-HTML sources;
+- distributed rate limiting if crawler workers are eventually deployed across multiple processes/hosts.
 
 ## Remaining verification before declaring P0 production-ready ⏳
 
