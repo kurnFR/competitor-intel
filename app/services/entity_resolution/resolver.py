@@ -15,6 +15,7 @@ from app.models.resolution import EntityMapping
 
 FUZZY_AUTO_THRESHOLD = 0.92
 FUZZY_REVIEW_THRESHOLD = 0.70
+FUZZY_DOMINANCE_MARGIN = 0.08
 
 
 def normalize_str(value: Optional[str]) -> str:
@@ -104,7 +105,7 @@ class EntityResolver:
         second = float(rows[1].sim) if len(rows) > 1 else 0.0
         margin = best - second
 
-        if best >= FUZZY_AUTO_THRESHOLD and margin >= 0.08:
+        if best >= FUZZY_AUTO_THRESHOLD and margin >= FUZZY_DOMINANCE_MARGIN:
             entity = self.db.query(Retailer).filter(Retailer.id == rows[0].id).first()
             return ResolutionResult(entity, best, "FUZZY", "RESOLVED")
 
@@ -161,7 +162,7 @@ class EntityResolver:
             best = float(candidate[0].sim)
             second = float(candidate[1].sim) if len(candidate) > 1 else 0.0
             margin = best - second
-            if best >= FUZZY_AUTO_THRESHOLD and margin >= 0.08:
+            if best >= FUZZY_AUTO_THRESHOLD and margin >= FUZZY_DOMINANCE_MARGIN:
                 brand = self.db.query(Brand).filter(Brand.id == candidate[0].id).first()
                 competitor = self.db.query(Competitor).filter(Competitor.id == brand.competitor_id).first() if brand else None
                 return (
