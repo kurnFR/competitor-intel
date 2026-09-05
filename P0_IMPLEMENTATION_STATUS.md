@@ -2,7 +2,7 @@
 
 **Repository:** `kurnFR/competitor-intel`  
 **Branch:** `master`  
-**Updated:** 2026-09-05
+**Updated:** 2026-09-06
 
 ## Purpose
 
@@ -12,7 +12,7 @@ This file records what has actually been implemented on `master`, rather than wh
 
 ### P0-A — Promotion identity foundation ✅
 
-Added migration `migrations/versions/2026_09_05_1900-9f2c1a7b4d61_promotion_identity.py` adding `promotions.identity_fingerprint`, `identity_version`, an identity index, and the observation-to-promotion link. The identity service generates a deterministic SHA-256 fingerprint from normalized commercial identity fields while excluding volatile values. There is deliberately no unique constraint on the fingerprint yet; existing data must be checked for collisions first. Regression coverage is in `tests/unit/test_promotion_identity.py`.
+Added deterministic promotion identity with a legacy v1 fingerprint and a stable v2 source-observed commercial fingerprint. The v2 identity is independent of mutable canonical entity UUIDs and marketing copy/date changes, while preserving retailer/channel/geography boundaries. `promotions.source_identity_fingerprint` is indexed and intentionally not unique until real-data collision analysis is complete.
 
 ### P0-B — Entity resolution ✅
 
@@ -24,15 +24,15 @@ The resolver avoids silent entity creation and weak fuzzy matches. Outcomes are 
 
 ### P0-D — Canonical promotion upsert and observation idempotency ✅
 
-`app/services/promotions/upsert.py` builds identity, finds/creates the canonical promotion, updates canonical attributes, links observations, preserves observation timestamps on reprocessing, persists exact evidence quotes, and avoids duplicate evidence. Migration `2026_09_05_2000-c4a81e6f2b73_observation_idempotency.py` adds uniqueness for `(document_id, promotion_id)`.
+`app/services/promotions/upsert.py` builds identity, first checks the legacy identity, then the stable source identity, finds/creates the canonical promotion, updates canonical attributes, links observations, persists exact evidence quotes, and avoids duplicate evidence. Migration `2026_09_05_2000-c4a81e6f2b73_observation_idempotency.py` adds uniqueness for `(document_id, promotion_id)`.
 
 ### P0-E — Structured extraction and provenance hardening ✅
 
-`app/services/extraction/llm_extractor.py` now uses runtime `CURRENT_DATE`, supports richer parser metadata, preserves valid items when individual items fail validation, and distinguishes parser outcomes. Exact evidence quotes remain required. Observation provenance records model, status, extraction timestamp, raw-response hash, and rejected count. Regression coverage is in `tests/unit/test_llm_extractor.py`.
+`app/services/extraction/llm_extractor.py` uses runtime `CURRENT_DATE`, supports richer parser metadata, preserves valid items when individual items fail validation, and distinguishes parser outcomes. Exact evidence quotes remain required. Observation provenance records model, status, extraction timestamp, raw-response hash, and rejected count. Regression coverage is in `tests/unit/test_llm_extractor.py`.
 
 ### P0-F — Pipeline integration and idempotency wiring ✅
 
-`scripts/run_pipeline.py` uses the richer extraction result, hashes the raw model response, resolves entities conservatively, validates/canonicalizes through the shared upsert path, persists evidence, and commits per document. The main path no longer manually inserts observations before deduplication or routes through the legacy promotion deduplicator.
+`scripts/run_pipeline.py` uses the richer extraction result, hashes the raw model response, resolves entities conservatively, validates/canonicalizes through the shared upsert path, persists evidence and entity review items, and commits per document. The main path no longer manually inserts observations before deduplication or routes through the legacy promotion deduplicator.
 
 ## P1 work started — crawler reliability and acquisition foundation 🟡
 
@@ -50,8 +50,6 @@ Migration `migrations/versions/2026_09_05_2100-f6a91c3d8e52_crawl_job_retry_stat
 
 `app/services/crawler/content.py` adds deterministic document-type detection from MIME type, URL extension, and magic bytes; PDF text extraction through `pypdf`; image OCR through optional Pillow + Tesseract; and a Playwright-based optional dynamic-page renderer. Dynamic rendering is only attempted for pages whose static content looks JS-driven or yields insufficient text. Missing optional browser/OCR capabilities produce explicit errors instead of silently inventing content.
 
-`job_processor.py` now uses the binary fetch path, routes HTML/PDF/IMAGE separately, records content type/document type and extraction metadata, and retains the existing durable retry/dead-letter behavior. `requirements.txt` includes the PDF/image Python dependencies. Regression coverage for document detection and dynamic-page heuristics is in `tests/unit/test_content.py`.
-
 ### P1 — Bounded deep pagination/discovery 🟢
 
 `app/services/crawler/discovery.py` provides conservative same-origin pagination discovery with a hard page budget, promotion-relevant path filtering, fragment removal, deterministic ordering, and duplicate suppression. `AggregatorCrawler` now expands from configured seed URLs instead of stopping at hardcoded page 1/page 2. Dynamic rendering is also applied before pagination discovery when a seed page is detected as JavaScript-driven.
@@ -60,7 +58,7 @@ The discovery budget is currently **10 pages per aggregator crawl** to prevent a
 
 ### P1 — Retailer-specific promotion adapters 🟢 foundation
 
-`app/services/crawler/retailer.py` adds a source-specific promotion discovery adapter for **Indomaret** and **Alfamart**. `manager.py` now dispatches those domains to the adapter rather than the generic aggregator. The adapter keeps a bounded 10-page crawl, follows same-retailer promotion/catalog links, handles `www`/apex host variants, reuses the existing rate-limited fetch path, and routes PDF/image assets through the existing acquisition layer. Regression coverage is in `tests/unit/test_retailer_crawler.py`.
+`app/services/crawler/retailer.py` adds a source-specific promotion discovery adapter for **Indomaret** and **Alfamart**. `manager.py` dispatches those domains to the adapter rather than the generic aggregator. The adapter keeps a bounded 10-page crawl, follows same-retailer promotion/catalog links, handles `www`/apex host variants, reuses the existing rate-limited fetch path, and routes PDF/image assets through the existing acquisition layer. Regression coverage is in `tests/unit/test_retailer_crawler.py`.
 
 This is intentionally a discovery/extraction foundation, not a claim that retailer-specific live URLs or anti-bot behavior have been fully validated in production.
 
@@ -98,6 +96,10 @@ c4a81e6f2b73  observation idempotency
 e5d72a1c9b40  extraction provenance
       ↓
 f6a91c3d8e52  crawl job retry state
+      ↓
+91c4e7a2b5d8  raw document provenance
+      ↓
+4c8d2e7f1a63  stable promotion source identity
 ```
 
 ## Database safety rule
