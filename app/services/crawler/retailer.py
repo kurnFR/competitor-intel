@@ -31,6 +31,10 @@ PROFILES = {
 }
 
 
+def _host_without_www(host: str) -> str:
+    return host.lower().removeprefix("www.")
+
+
 class RetailerPromotionCrawler(BaseCrawler):
     """Source-specific promotion discovery for supported retailer domains."""
 
@@ -45,8 +49,9 @@ class RetailerPromotionCrawler(BaseCrawler):
 
     def _is_relevant_link(self, href: str, text: str) -> bool:
         parsed = urlparse(href)
-        source_host = urlparse(self.source.base_url).netloc.lower()
-        if parsed.netloc and parsed.netloc.lower() != source_host:
+        source_host = _host_without_www(urlparse(self.source.base_url).netloc)
+        candidate_host = _host_without_www(parsed.netloc) if parsed.netloc else source_host
+        if candidate_host != source_host:
             return False
         haystack = f"{parsed.path} {parsed.query} {text}".lower()
         return any(keyword in haystack for keyword in self.profile["keywords"])
