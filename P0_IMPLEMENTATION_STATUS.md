@@ -12,194 +12,63 @@ This file records what has actually been implemented on `master`, rather than wh
 
 ### P0-A — Promotion identity foundation ✅
 
-Added migration:
-
-`migrations/versions/2026_09_05_1900-9f2c1a7b4d61_promotion_identity.py`
-
-The migration adds `promotions.identity_fingerprint`, `identity_version`, an identity index, and the observation-to-promotion link.
-
-The identity service generates a deterministic SHA-256 fingerprint from normalized commercial identity fields while excluding volatile values such as AI confidence, ranking score, source reliability, and observation timestamps.
-
-There is deliberately **no unique constraint** on the fingerprint yet. Existing data must be checked for collisions before uniqueness is enforced.
-
-Regression coverage is in `tests/unit/test_promotion_identity.py`.
+Added migration `migrations/versions/2026_09_05_1900-9f2c1a7b4d61_promotion_identity.py` adding `promotions.identity_fingerprint`, `identity_version`, an identity index, and the observation-to-promotion link. The identity service generates a deterministic SHA-256 fingerprint from normalized commercial identity fields while excluding volatile values. There is deliberately no unique constraint on the fingerprint yet; existing data must be checked for collisions first. Regression coverage is in `tests/unit/test_promotion_identity.py`.
 
 ### P0-B — Entity resolution ✅
 
-The resolver was hardened to avoid silent entity creation and weak fuzzy matches.
-
-Resolution outcomes now distinguish:
-
-- `RESOLVED` — exact/known alias or sufficiently dominant high-confidence match;
-- `REVIEW` — ambiguous or weak candidate;
-- `UNRESOLVED` — no acceptable candidate.
-
-Resolution audit persistence and migration were added so source values, candidate IDs, confidence, and review status can be retained.
-
-Regression coverage is in `tests/unit/test_entity_resolution.py`.
+The resolver avoids silent entity creation and weak fuzzy matches. Outcomes are `RESOLVED`, `REVIEW`, or `UNRESOLVED`. Resolution audit persistence and migration retain source values, candidate IDs, confidence, and review status. Regression coverage is in `tests/unit/test_entity_resolution.py`.
 
 ### P0-C — Validation and lifecycle ✅
 
-`app/services/validation/validator.py` validates core promotion fields, supported mechanics, dates, price relationships, and BUY_X_GET_Y quantities.
-
-`app/services/validation/lifecycle.py` separates promotion validity from activity state:
-
-- `ACTIVE`
-- `UPCOMING`
-- `EXPIRED`
-- `UNKNOWN`
-
-Missing dates are not fabricated from crawl time.
+`app/services/validation/validator.py` validates core promotion fields, supported mechanics, dates, price relationships, and BUY_X_GET_Y quantities. `app/services/validation/lifecycle.py` separates validity from activity state: `ACTIVE`, `UPCOMING`, `EXPIRED`, `UNKNOWN`. Missing dates are not fabricated from crawl time.
 
 ### P0-D — Canonical promotion upsert and observation idempotency ✅
 
-Added `app/services/promotions/upsert.py`.
+`app/services/promotions/upsert.py` builds identity, finds/creates the canonical promotion, updates canonical attributes, links observations, preserves observation timestamps on reprocessing, persists exact evidence quotes, and avoids duplicate evidence. Migration `2026_09_05_2000-c4a81e6f2b73_observation_idempotency.py` adds uniqueness for `(document_id, promotion_id)`.
 
-The service:
+### P0-E — Structured extraction and provenance hardening ✅
 
-1. builds the promotion identity payload;
-2. calculates the fingerprint;
-3. finds or creates the canonical promotion;
-4. updates canonical non-null attributes;
-5. links the observation to the canonical promotion;
-6. preserves the original observation timestamp on reprocessing;
-7. refreshes extracted payload/confidence when the same document is explicitly reprocessed;
-8. persists the extractor's exact `evidence_quote` as `PromotionEvidence`;
-9. avoids duplicate evidence when the same promotion/document/quote is reprocessed.
-
-Migration:
-
-`migrations/versions/2026_09_05_2000-c4a81e6f2b73_observation_idempotency.py`
-
-adds uniqueness for `(document_id, promotion_id)`, preventing duplicate observations for the same promotion within one source document.
-
-### P0-E — Structured extraction hardening ✅
-
-The extraction layer has been hardened in `app/services/extraction/llm_extractor.py`:
-
-- removed the hardcoded 2026 year;
-- supplies an explicit runtime `CURRENT_DATE` to the model;
-- allows callers/tests to inject a deterministic date;
-- preserves the existing `extract_from_text()` list-returning API;
-- adds `extract_with_metadata()` for auditable parser results;
-- records model, extraction timestamp, raw model response, parser status, accepted items, and rejected items in the returned result;
-- distinguishes `SUCCESS`, `PARTIAL_SUCCESS`, `EMPTY_RESPONSE`, `INVALID_JSON`, `INVALID_SCHEMA`, and `ERROR`;
-- invalid individual promotion items are rejected without silently discarding valid items;
-- exact evidence quotes remain required;
-- canonical upsert persists each accepted item's exact evidence quote into `promotion_evidence`.
-
-The extraction schema enforces:
-
-- supported promotion categories;
-- supported promotion types;
-- non-negative prices;
-- 0–100 discount percentage;
-- positive BUY/GET quantities;
-- 0–1 confidence;
-- non-empty product names and evidence quotes.
-
-Regression coverage is in `tests/unit/test_llm_extractor.py`.
+`app/services/extraction/llm_extractor.py` now uses runtime `CURRENT_DATE`, supports richer parser metadata, preserves valid items when individual items fail validation, and distinguishes parser outcomes. Exact evidence quotes remain required. Observation provenance records model, status, extraction timestamp, raw-response hash, and rejected count. Regression coverage is in `tests/unit/test_llm_extractor.py`.
 
 ### P0-F — Pipeline integration and idempotency wiring ✅
 
-`scripts/run_pipeline.py` now uses the richer extraction result and passes extraction provenance into the canonical promotion upsert path.
+`scripts/run_pipeline.py` uses the richer extraction result, hashes the raw model response, resolves entities conservatively, validates/canonicalizes through the shared upsert path, persists evidence, and commits per document. The main path no longer manually inserts observations before deduplication or routes through the legacy promotion deduplicator.
 
-The pipeline now:
+## P1 work started — crawler reliability and acquisition foundation 🟡
 
-1. crawls fresh sources or loads the latest documents;
-2. processes bounded text blocks;
-3. extracts structured promotions with parser metadata;
-4. hashes the raw model response without persisting the full raw response in the observation row;
-5. resolves retailer and brand/competitor conservatively;
-6. validates and canonicalizes promotions through the shared upsert service;
-7. persists promotion evidence;
-8. commits per document.
-
-The main pipeline no longer manually inserts `PromotionObservation` before deduplication and no longer routes the main path through the legacy promotion deduplicator.
-
-A regression test was added in `tests/unit/test_promotion_upsert.py` for same-document reprocessing: one canonical promotion, one observation, and one evidence row are retained while extraction provenance is refreshed.
-
-## P1 work started — crawler reliability foundation 🟡
-
-`app/services/crawler/base.py` has been hardened and committed directly to `master`.
-
-Current improvements:
-
-- TLS certificate verification is enabled;
-- transient HTTP statuses (`408`, `425`, `429`, `500`, `502`, `503`, `504`) are retried;
-- bounded exponential backoff is used;
-- `httpx.HTTPError` failures are retried within the configured limit;
-- URLs are canonicalized by scheme/host/path/query with fragments removed;
-- crawl jobs are retained even when the document content is a duplicate;
-- duplicate successful documents are skipped using source + canonical URL + content hash;
-- source success/error timestamps are updated;
-- initial transient failures are persisted as `RETRY_WAIT` jobs instead of being discarded as terminal failures.
+`app/services/crawler/base.py` has TLS verification, bounded transient retries, URL canonicalization, duplicate-document detection, source status timestamps, durable initial retry state, per-source rate limiting, and a new binary-content fetch path.
 
 ### P1 — Durable retry/resume state 🟢
 
-Migration:
-
-`migrations/versions/2026_09_05_2100-f6a91c3d8e52_crawl_job_retry_state.py`
-
-adds `next_retry_at`, `max_retries`, `last_attempt_at`, and `worker_id` to `crawl_jobs`, plus an index for retry-queue polling.
-
-`app/services/crawler/job_queue.py` owns deterministic transitions:
-
-```text
-QUEUED → RUNNING → SUCCESS
-             ↓
-         RETRY_WAIT → RUNNING
-             ↓
-        DEAD_LETTER
-```
-
-It provides bounded exponential backoff, explicit transition validation, retry-budget enforcement, and PostgreSQL `FOR UPDATE SKIP LOCKED` job claiming so multiple workers can safely poll the same queue. Permanent failures can be dead-lettered immediately without consuming retry budget.
-
-`app/services/crawler/job_worker.py` provides a bounded worker loop with per-job transaction boundaries. Processor exceptions are persisted as retry state and eventually dead-lettered instead of terminating the whole batch.
-
-`app/services/crawler/job_processor.py` now bridges persisted jobs to the existing source crawler adapters. It reuses the crawler's HTTP client, extraction logic, duplicate-document detection, and existing `CrawlJob` row rather than creating a second job for a retry.
-
-`scripts/run_crawl_worker.py` provides an operational entrypoint for processing a bounded queue batch with a worker ID.
-
-Regression coverage is in:
-
-- `tests/unit/test_crawler_job_queue.py`
-- `tests/unit/test_crawler_job_worker.py`
-
-This closes the durable retry/resume wiring for the current HTML crawler foundation. It does **not** yet solve dynamic JavaScript pages, PDF/image acquisition, OCR, rate limiting, or deep source-specific discovery.
+Migration `migrations/versions/2026_09_05_2100-f6a91c3d8e52_crawl_job_retry_state.py` adds retry scheduling, retry budget, last-attempt and worker fields plus a queue index. `job_queue.py` owns validated state transitions and PostgreSQL `FOR UPDATE SKIP LOCKED` claiming. `job_worker.py` provides bounded processing with per-job transaction boundaries. `job_processor.py` bridges persisted jobs to source adapters. `scripts/run_crawl_worker.py` provides a bounded worker entrypoint. Regression coverage is in `tests/unit/test_crawler_job_queue.py` and `tests/unit/test_crawler_job_worker.py`.
 
 ### P1 — Source rate limiting and concurrency 🟢
 
-`app/services/crawler/rate_limiter.py` now provides a thread-safe per-source limiter with:
+`app/services/crawler/rate_limiter.py` provides a thread-safe process-wide per-source limiter with configurable requests/second and maximum concurrency. `BaseCrawler.fetch_url()` applies it to every request, including retries. The conservative default is 1 request/second and 1 concurrent request per source.
 
-- configurable requests per second;
-- configurable maximum concurrent requests;
-- optional minimum request interval;
-- a process-wide limiter shared by crawler adapters.
+### P1 — PDF/image and dynamic-page acquisition 🟢 foundation
 
-`BaseCrawler.fetch_url()` applies the limiter before every HTTP request, including retries. This prevents concurrent workers in the same process from bursting requests at one source while allowing independent sources to progress concurrently.
+`app/services/crawler/content.py` adds deterministic document-type detection from MIME type, URL extension, and magic bytes; PDF text extraction through `pypdf`; image OCR through optional Pillow + Tesseract; and a Playwright-based optional dynamic-page renderer. Dynamic rendering is only attempted for pages whose static content looks JS-driven or yields insufficient text. Missing optional browser/OCR capabilities produce explicit errors instead of silently inventing content.
 
-The default is intentionally conservative: **1 request/second and 1 concurrent request per source**. Source-specific limits can be supplied to `BaseCrawler` without changing the durable job queue.
-
-Regression coverage is in `tests/unit/test_rate_limiter.py`.
+`job_processor.py` now uses the binary fetch path, routes HTML/PDF/IMAGE separately, records content type/document type and extraction metadata, and retains the existing durable retry/dead-letter behavior. `requirements.txt` includes the PDF/image Python dependencies. Regression coverage for document detection and dynamic-page heuristics is in `tests/unit/test_content.py`.
 
 ## Remaining P1 work
 
-- dynamic-page handling;
-- PDF/image acquisition and OCR;
+- install/operate Playwright Chromium where dynamic rendering is enabled;
+- install/configure Tesseract language data (`ind` + `eng`) where image OCR is enabled;
+- durable raw PDF/image object storage instead of encoding binary payloads into the legacy text field;
 - deeper pagination/discovery;
 - source-specific adapters for major Indonesian retailers;
-- extraction/document provenance for non-HTML sources;
-- distributed rate limiting if crawler workers are eventually deployed across multiple processes/hosts.
+- stronger document provenance for rendered/PDF/image sources;
+- distributed rate limiting if workers are deployed across multiple processes/hosts.
 
 ## Remaining verification before declaring P0 production-ready ⏳
 
 - run the complete unit-test suite in the repository environment;
 - verify the full Alembic migration chain against a clean `competitor_intel` database;
-- run the crawl → extraction → validation → resolution → upsert → evidence integration path;
+- run crawl → acquisition → extraction → validation → resolution → upsert → evidence integration;
 - verify duplicate/reprocessing behavior against PostgreSQL constraints;
-- test ambiguous and unresolved entity cases with persisted audit records;
-- test lifecycle boundaries around start/end dates;
+- test ambiguous/unresolved entity cases with persisted audit records;
 - analyze existing promotion fingerprint collisions before adding a unique fingerprint constraint;
 - review CI execution and failures once CI is available/confirmed.
 
@@ -221,14 +90,8 @@ f6a91c3d8e52  crawl job retry state
 
 ## Database safety rule
 
-All P0/P1 changes remain inside the `competitor_intel` PostgreSQL schema/database.
-
-No code or migration may introduce a dependency on `dwh_prod`.
+All P0/P1 changes remain inside the `competitor_intel` PostgreSQL schema/database. No code or migration may introduce a dependency on `dwh_prod`.
 
 ## Master branch rule
 
-All implementation updates in this workflow are committed directly to `master`.
-
-Before updating an existing GitHub file, fetch the current `master` version and use its current blob SHA. Do not reuse a stale SHA from an earlier tool result.
-
-For new files, create them once. For subsequent changes, fetch → verify SHA → update → verify commit.
+All implementation updates in this workflow are committed directly to `master`. Before updating an existing GitHub file, fetch the current `master` version and use its current blob SHA. Do not reuse a stale SHA from an earlier tool result.
