@@ -8,7 +8,7 @@ from typing import List, Optional
 from openai import OpenAI
 
 from app.core.config import settings
-from app.schemas.ai import ExtractedPromotionItem, ExtractedPromotionBatch
+from app.schemas.ai import ExtractedPromotionItem
 
 logger = logging.getLogger(__name__)
 
@@ -87,8 +87,8 @@ Respond with valid JSON matching:
       "promotion_type": "DISCOUNT",
       "buy_quantity": null,
       "free_quantity": null,
-      "start_date": "{extraction_date.isoformat()}",
-      "end_date": null,
+      "start_date": null,
+      "end_date": "{extraction_date.isoformat()}",
       "retailer": "Indomaret",
       "evidence_quote": "...",
       "confidence": 0.95
@@ -119,15 +119,23 @@ Respond with valid JSON matching:
                 raw_content = re.sub(r"\s*```$", "", raw_content)
 
             parsed = json.loads(raw_content)
-            batch = ExtractedPromotionBatch.model_validate(parsed)
+            if not isinstance(parsed, dict) or not isinstance(parsed.get("promotions"), list):
+                logger.error("LLM extraction JSON has invalid top-level structure")
+                return ExtractionResult([], [], raw_content, self.model, extracted_at, "INVALID_SCHEMA")
 
             items: List[ExtractedPromotionItem] = []
             rejected_items: List[dict] = []
-            raw_items = parsed.get("promotions", [])
+            raw_items = parsed["promotions"]
             for index, item in enumerate(raw_items):
+                if not isinstance(item, dict):
+                    rejected_items.append({
+                        "index": index,
+                        "item": item,
+                        "error": "Promotion item must be a JSON object",
+                    })
+                    continue
                 try:
-                    validated = ExtractedPromotionItem.model_validate(item)
-                    items.append(validated)
+                    items.append(ExtractedPromotionItem(**item))
                 except Exception as validation_error:
                     rejected_items.append({
                         "index": index,
