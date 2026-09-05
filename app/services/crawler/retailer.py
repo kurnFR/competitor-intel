@@ -1,9 +1,4 @@
-"""Retailer-specific discovery for major Indonesian FMCG promotion sources.
-
-The adapter deliberately discovers links from the configured retailer landing page
-instead of hard-coding fragile product URLs. It only follows same-origin links that
-look like promotion, catalog, flyer, or sale pages, plus direct PDF/image assets.
-"""
+"""Retailer-specific discovery for major Indonesian FMCG promotion sources."""
 
 from __future__ import annotations
 
@@ -20,14 +15,9 @@ from app.services.crawler.content import detect_document_type, extract_non_html,
 
 logger = logging.getLogger(__name__)
 
-
 PROFILES = {
-    "indomaret": {
-        "keywords": ("promo", "promosi", "catalog", "katalog", "hemat", "jsm", "tebus"),
-    },
-    "alfamart": {
-        "keywords": ("promo", "promosi", "katalog", "catalog", "jsm", "serba", "tebus"),
-    },
+    "indomaret": {"keywords": ("promo", "promosi", "catalog", "katalog", "hemat", "jsm", "tebus")},
+    "alfamart": {"keywords": ("promo", "promosi", "katalog", "catalog", "jsm", "serba", "tebus")},
 }
 
 
@@ -77,9 +67,9 @@ class RetailerPromotionCrawler(BaseCrawler):
                 metadata.update(render_meta)
         text, title = self.extract_text(html)
         if not text.strip():
-            self.record_crawl(url, status, html, "", error_message="EMPTY_EXTRACTED_TEXT", metadata=metadata)
+            self.record_crawl(url, status, html, "", error_message="EMPTY_EXTRACTED_TEXT", metadata=metadata, raw_content=html.encode("utf-8"), content_type="text/html")
             return []
-        doc = self.record_crawl(url, status, html, text, title=title, metadata=metadata)
+        doc = self.record_crawl(url, status, html, text, title=title, metadata=metadata, raw_content=html.encode("utf-8"), content_type="text/html")
         return [doc] if doc else []
 
     def _record_asset(self, url: str, status: int, content: bytes, content_type: str) -> List[CrawlDocument]:
@@ -88,18 +78,15 @@ class RetailerPromotionCrawler(BaseCrawler):
             return []
         acquired = extract_non_html(url, content_type, content)
         if acquired.error or not acquired.text.strip():
-            self.record_crawl(url, status, "", "", error_message=acquired.error or "EMPTY_ASSET_TEXT",
-                               metadata={"asset": True, "document_type": acquired.document_type, **acquired.metadata})
+            self.record_crawl(url, status, "", "", error_message=acquired.error or "EMPTY_ASSET_TEXT", metadata={"asset": True, "document_type": acquired.document_type, **acquired.metadata}, raw_content=content, content_type=content_type)
             return []
-        doc = self.record_crawl(url, status, "", acquired.text, title=acquired.title,
-                                metadata={"asset": True, "document_type": acquired.document_type, **acquired.metadata})
+        doc = self.record_crawl(url, status, "", acquired.text, title=acquired.title, metadata={"asset": True, "document_type": acquired.document_type, **acquired.metadata}, raw_content=content, content_type=content_type)
         return [doc] if doc else []
 
     def crawl(self) -> List[CrawlDocument]:
         documents: List[CrawlDocument] = []
         queue = [self.source.base_url]
         seen: Set[str] = set()
-
         while queue and len(seen) < self.max_pages:
             url = canonicalize_url(queue.pop(0))
             if url in seen:
@@ -109,15 +96,10 @@ class RetailerPromotionCrawler(BaseCrawler):
             if error:
                 documents.extend(self._record_html(url, status, "", {"retailer": self.retailer_key, "error": error}))
                 continue
-
             document_type = detect_document_type(url, content_type, content)
             if document_type == "HTML":
                 html = content.decode("utf-8", errors="replace")
-                documents.extend(self._record_html(url, status, html, {
-                    "retailer": self.retailer_key,
-                    "adapter": "retailer_promotion",
-                    "discovery_page": len(seen),
-                }))
+                documents.extend(self._record_html(url, status, html, {"retailer": self.retailer_key, "adapter": "retailer_promotion", "discovery_page": len(seen)}))
                 for discovered in self.discover_promotion_urls(html, url):
                     if discovered not in seen and len(seen) + len(queue) < self.max_pages:
                         queue.append(discovered)
@@ -125,5 +107,4 @@ class RetailerPromotionCrawler(BaseCrawler):
                 documents.extend(self._record_asset(url, status, content, content_type))
             else:
                 logger.info("Ignoring unsupported content from %s", url)
-
         return documents
