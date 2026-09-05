@@ -63,7 +63,9 @@ The service:
 4. updates canonical non-null attributes;
 5. links the observation to the canonical promotion;
 6. preserves the original observation timestamp on reprocessing;
-7. refreshes extracted payload/confidence when the same document is explicitly reprocessed.
+7. refreshes extracted payload/confidence when the same document is explicitly reprocessed;
+8. persists the extractor's exact `evidence_quote` as `PromotionEvidence`;
+9. avoids duplicate evidence when the same promotion/document/quote is reprocessed.
 
 Migration:
 
@@ -83,9 +85,10 @@ The extraction layer has now been hardened in `app/services/extraction/llm_extra
 - records model, extraction timestamp, raw model response, parser status, accepted items, and rejected items in the returned result;
 - distinguishes `SUCCESS`, `PARTIAL_SUCCESS`, `EMPTY_RESPONSE`, `INVALID_JSON`, `INVALID_SCHEMA`, and `ERROR`;
 - invalid individual promotion items are rejected without silently discarding valid items;
-- exact evidence quotes remain required.
+- exact evidence quotes remain required;
+- canonical upsert now persists each accepted item's exact evidence quote into `promotion_evidence`.
 
-The extraction schema now also enforces:
+The extraction schema enforces:
 
 - supported promotion categories;
 - supported promotion types;
@@ -97,7 +100,7 @@ The extraction schema now also enforces:
 
 Regression coverage was added in `tests/unit/test_llm_extractor.py` for runtime date context, partial item rejection, and malformed JSON visibility.
 
-**Remaining P0-E work:** connect extraction metadata into the persisted observation/provenance flow so model/parser status is not lost when the normal pipeline calls the legacy list-returning API.
+**Remaining P0-E work:** ensure the production pipeline passes the richer extraction metadata into `PromotionObservation.extracted_json`, rather than relying only on the backward-compatible list API.
 
 ## P0-F — Integration and end-to-end verification ⏳
 
