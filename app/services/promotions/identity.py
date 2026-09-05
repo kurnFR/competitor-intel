@@ -1,8 +1,7 @@
 """Deterministic promotion identity generation.
 
-The fingerprint is an identity aid, not proof that two observations are the
-same promotion. Callers must still apply entity-resolution and ambiguity rules
-before linking an observation to a canonical promotion.
+Fingerprints are identity aids, not proof that two observations are the same
+promotion. Callers must still apply entity-resolution and ambiguity rules.
 """
 
 from __future__ import annotations
@@ -16,6 +15,7 @@ from typing import Any
 
 
 IDENTITY_VERSION = "v1"
+SOURCE_IDENTITY_VERSION = "v2"
 
 
 def _normalize_text(value: Any) -> str | None:
@@ -45,11 +45,17 @@ def _normalize_datetime(value: Any) -> str | None:
     return _normalize_text(value)
 
 
-def _identity_payload(data: dict[str, Any]) -> dict[str, Any]:
-    """Build the stable, commercially meaningful identity payload.
+def _hash_payload(payload: dict[str, Any]) -> str:
+    encoded = json.dumps(
+        payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
-    Volatile fields such as rank score, AI confidence, observation timestamps,
-    descriptions and source reliability are intentionally excluded.
+
+def _identity_payload(data: dict[str, Any]) -> dict[str, Any]:
+    """Build the legacy canonical identity payload.
+
+    Kept unchanged for backward compatibility with existing v1 fingerprints.
     """
     return {
         "identity_version": IDENTITY_VERSION,
@@ -79,13 +85,54 @@ def _identity_payload(data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _source_identity_payload(data: dict[str, Any]) -> dict[str, Any]:
+    """Build a stable commercial identity independent of mutable entity IDs.
+
+    Entity resolution can improve after the first crawl, and marketing copy
+    can change while the same offer remains active. Therefore this identity
+    deliberately excludes canonical UUIDs, promotion title, and dates. The
+    retailer/channel/geography boundary remains part of identity so identical
+    offers at different retailers are not silently merged.
+    """
+    return {
+        "identity_version": SOURCE_IDENTITY_VERSION,
+        "retailer": _normalize_text(data.get("retailer")),
+        "brand": _normalize_text(data.get("brand")),
+        "competitor": _normalize_text(data.get("competitor")),
+        "product_name": _normalize_text(data.get("product_name")),
+        "sku": _normalize_text(data.get("sku")),
+        "pack_size": _normalize_text(data.get("pack_size")),
+        "promotion_type": _normalize_text(data.get("promotion_type")),
+        "buy_quantity": data.get("buy_quantity"),
+        "free_quantity": data.get("free_quantity"),
+        "bundle_quantity": data.get("bundle_quantity"),
+        "cashback_amount": _normalize_number(data.get("cashback_amount")),
+        "voucher_amount": _normalize_number(data.get("voucher_amount")),
+        "minimum_purchase_amount": _normalize_number(data.get("minimum_purchase_amount")),
+        "minimum_purchase_quantity": data.get("minimum_purchase_quantity"),
+        "gift_description": _normalize_text(data.get("gift_description")),
+        "promo_price": _normalize_number(data.get("promo_price")),
+        "currency": _normalize_text(data.get("currency")),
+        "channel": _normalize_text(data.get("channel")),
+        "geography": _normalize_text(data.get("geography")),
+    }
+
+
 def promotion_identity_payload(data: dict[str, Any]) -> dict[str, Any]:
-    """Return the canonical payload used by the fingerprint and for testing."""
+    """Return the legacy payload used by the v1 fingerprint."""
     return _identity_payload(data)
 
 
 def promotion_identity_fingerprint(data: dict[str, Any]) -> str:
-    """Return a deterministic SHA-256 fingerprint for a promotion identity."""
-    payload = _identity_payload(data)
-    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
+    """Return the deterministic legacy v1 SHA-256 fingerprint."""
+    return _hash_payload(_identity_payload(data))
+
+
+def promotion_source_identity_payload(data: dict[str, Any]) -> dict[str, Any]:
+    """Return the v2 commercial identity payload used for stable matching."""
+    return _source_identity_payload(data)
+
+
+def promotion_source_identity_fingerprint(data: dict[str, Any]) -> str:
+    """Return a stable SHA-256 identity independent of canonical entity IDs."""
+    return _hash_payload(_source_identity_payload(data))
