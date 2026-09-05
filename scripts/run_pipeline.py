@@ -101,7 +101,10 @@ def run_pipeline(crawl_fresh: bool = False, max_docs: int = 3):
                             document_id=doc.id,
                             item=item,
                             resolved_entities=resolved_entities,
-                            raw_text=item.evidence_quote,
+                            # Keep the complete source block here. The upsert
+                            # layer verifies that item.evidence_quote is an
+                            # exact substring before persisting the evidence.
+                            raw_text=chunk,
                             extracted_json=item.model_dump(),
                             observed_at=result.extracted_at,
                             source_url=doc.url,
