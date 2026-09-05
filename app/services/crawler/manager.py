@@ -22,13 +22,26 @@ def get_crawler_for_source(db: Session, source: SourceRegistry) -> BaseCrawler:
 def run_all_crawlers(db: Session) -> List[CrawlDocument]:
     sources = db.query(SourceRegistry).filter(SourceRegistry.is_active == True).all()
     all_docs = []
+
     for src in sources:
+        crawler = None
         try:
-            logger.info(f"Running crawler for source: {src.name} ({src.domain})")
+            logger.info("Running crawler for source: %s (%s)", src.name, src.domain)
             crawler = get_crawler_for_source(db, src)
             docs = crawler.crawl()
             all_docs.extend(docs)
-            logger.info(f"Source {src.name} produced {len(docs)} documents.")
-        except Exception as e:
-            logger.error(f"Failed crawling source {src.name}: {e}")
+            logger.info("Source %s produced %s documents.", src.name, len(docs))
+        except Exception as exc:
+            # One broken source must not prevent the remaining sources from running.
+            logger.exception("Failed crawling source %s: %s", src.name, exc)
+            db.rollback()
+            src.last_error_at = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+            db.commit()
+        finally:
+            if crawler is not None:
+                client = getattr(crawler, "client", None)
+                close = getattr(client, "close", None)
+                if callable(close):
+                    close()
+
     return all_docs
