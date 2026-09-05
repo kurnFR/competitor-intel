@@ -90,6 +90,7 @@ class Promotion(Base):
 
     identity_fingerprint: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
     identity_version: Mapped[str] = mapped_column(String(20), default="v1", nullable=False)
+    source_identity_fingerprint: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
 
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
