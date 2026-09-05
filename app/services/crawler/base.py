@@ -14,14 +14,10 @@ from sqlalchemy.orm import Session
 from app.models.source import SourceRegistry, CrawlJob, CrawlDocument
 from app.services.crawler.content import detect_document_type
 from app.services.crawler.rate_limiter import RateLimitConfig, get_source_rate_limiter
+from app.services.storage import get_raw_document_store
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-    "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
-}
+DEFAULT_HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8", "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7"}
 RETRYABLE_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
 INITIAL_RETRY_DELAY_SECONDS = 60
 DEFAULT_MAX_RETRIES = 3
@@ -52,10 +48,10 @@ class BaseCrawler(ABC):
         self.retry_backoff_seconds = max(0.0, retry_backoff_seconds)
         self.rate_limit_config = RateLimitConfig(requests_per_second=requests_per_second, max_concurrency=max_concurrency)
         self.rate_limiter = get_source_rate_limiter()
+        self.raw_store = get_raw_document_store()
         self.client = httpx.Client(headers=DEFAULT_HEADERS, timeout=30.0, follow_redirects=True, verify=True)
 
     def fetch_content(self, url: str) -> Tuple[int, bytes, str, Optional[str]]:
-        """Fetch raw bytes while preserving the response Content-Type for PDF/image sources."""
         last_status = 0
         last_error: Optional[str] = None
         source_key = str(self.source.id)
@@ -78,7 +74,6 @@ class BaseCrawler(ABC):
         return last_status, b"", "", last_error
 
     def fetch_url(self, url: str) -> Tuple[int, str, Optional[str]]:
-        """Backward-compatible text fetch for existing HTML crawler adapters."""
         status, content, content_type, error = self.fetch_content(url)
         if error:
             return status, "", error
@@ -100,31 +95,33 @@ class BaseCrawler(ABC):
 
     def _existing_document(self, url: str, content_hash: Optional[str]) -> Optional[CrawlDocument]:
         canonical_url = canonicalize_url(url)
-        return self.db.query(CrawlDocument).filter(
-            CrawlDocument.source_id == self.source.id,
-            CrawlDocument.canonical_url == canonical_url,
-            CrawlDocument.content_hash == content_hash,
-        ).order_by(CrawlDocument.retrieved_at.desc()).first()
+        return self.db.query(CrawlDocument).filter(CrawlDocument.source_id == self.source.id,
+            CrawlDocument.canonical_url == canonical_url, CrawlDocument.content_hash == content_hash).order_by(CrawlDocument.retrieved_at.desc()).first()
 
     def record_crawl_job(self, job: CrawlJob, http_status: int, raw_html: str, text_content: str,
                          title: Optional[str] = None, error_message: Optional[str] = None,
-                         metadata: Optional[Dict[str, Any]] = None) -> Optional[CrawlDocument]:
+                         metadata: Optional[Dict[str, Any]] = None, raw_content: Optional[bytes] = None,
+                         content_type: Optional[str] = None) -> Optional[CrawlDocument]:
         now = datetime.now(timezone.utc)
         canonical_url = canonicalize_url(job.url)
+        raw_bytes = raw_content if raw_content is not None else (raw_html or "").encode("utf-8")
         content_hash = compute_hash(text_content or raw_html) if (text_content or raw_html) else None
         successful = 200 <= http_status < 400 and not error_message
         job.http_status = http_status
         job.content_hash = content_hash
         job.error_message = error_message
         job.completed_at = now if successful else None
-        doc = None
         if successful and text_content:
+            metadata = dict(metadata or {})
+            detected_type = metadata.get("document_type") or detect_document_type(job.url, content_type or "", raw_bytes)
+            extension = {"HTML": "html", "PDF": "pdf", "IMAGE": "img"}.get(detected_type, "bin")
+            stored = self.raw_store.put(raw_bytes, content_type or "application/octet-stream", str(self.source.id), extension)
+            metadata.update({"raw_storage_backend": "local", "raw_storage_sha256": stored.sha256, "raw_storage_size_bytes": stored.size_bytes})
             doc = self._existing_document(job.url, content_hash)
             if doc is None:
-                metadata = metadata or {}
                 doc = CrawlDocument(crawl_job_id=job.id, source_id=self.source.id, url=job.url,
-                    canonical_url=canonical_url, document_type=metadata.get("document_type", "HTML"),
-                    title=title, text_content=text_content, content_hash=content_hash,
+                    canonical_url=canonical_url, document_type=detected_type, title=title,
+                    raw_content_uri=stored.uri, text_content=text_content, content_hash=content_hash,
                     retrieved_at=now, http_status=http_status, metadata_json=metadata, created_at=now)
                 self.db.add(doc)
                 self.db.flush()
