@@ -12,6 +12,7 @@ import trafilatura
 from sqlalchemy.orm import Session
 
 from app.models.source import SourceRegistry, CrawlJob, CrawlDocument
+from app.services.crawler.rate_limiter import RateLimitConfig, get_source_rate_limiter
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,8 @@ DEFAULT_HEADERS = {
 RETRYABLE_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
 INITIAL_RETRY_DELAY_SECONDS = 60
 DEFAULT_MAX_RETRIES = 3
+DEFAULT_REQUESTS_PER_SECOND = 1.0
+DEFAULT_MAX_CONCURRENCY = 1
 
 
 def compute_hash(content: str) -> str:
@@ -43,11 +46,18 @@ class BaseCrawler(ABC):
         source: SourceRegistry,
         max_retries: int = DEFAULT_MAX_RETRIES,
         retry_backoff_seconds: float = 1.0,
+        requests_per_second: float = DEFAULT_REQUESTS_PER_SECOND,
+        max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
     ):
         self.db = db
         self.source = source
         self.max_retries = max(0, max_retries)
         self.retry_backoff_seconds = max(0.0, retry_backoff_seconds)
+        self.rate_limit_config = RateLimitConfig(
+            requests_per_second=requests_per_second,
+            max_concurrency=max_concurrency,
+        )
+        self.rate_limiter = get_source_rate_limiter()
         self.client = httpx.Client(
             headers=DEFAULT_HEADERS,
             timeout=30.0,
@@ -56,22 +66,37 @@ class BaseCrawler(ABC):
         )
 
     def fetch_url(self, url: str) -> Tuple[int, str, Optional[str]]:
-        """Fetch URL with bounded exponential backoff for transient failures."""
+        """Fetch URL with source-level pacing and bounded transient retries."""
         last_status = 0
         last_error: Optional[str] = None
+        source_key = str(self.source.id)
 
         for attempt in range(self.max_retries + 1):
             try:
-                resp = self.client.get(url)
+                with self.rate_limiter.acquire(source_key, self.rate_limit_config):
+                    resp = self.client.get(url)
                 last_status = resp.status_code
 
                 if resp.status_code not in RETRYABLE_STATUS_CODES:
                     return resp.status_code, resp.text, None
 
                 last_error = f"HTTP {resp.status_code}"
+                logger.warning(
+                    "Transient HTTP failure for %s (attempt %s/%s): %s",
+                    url,
+                    attempt + 1,
+                    self.max_retries + 1,
+                    last_error,
+                )
             except httpx.HTTPError as exc:
                 last_error = str(exc)
-                logger.warning("Error fetching %s (attempt %s/%s): %s", url, attempt + 1, self.max_retries + 1, exc)
+                logger.warning(
+                    "Error fetching %s (attempt %s/%s): %s",
+                    url,
+                    attempt + 1,
+                    self.max_retries + 1,
+                    exc,
+                )
 
             if attempt < self.max_retries:
                 delay = self.retry_backoff_seconds * (2 ** attempt)
