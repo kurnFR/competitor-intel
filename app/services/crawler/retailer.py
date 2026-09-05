@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import List, Set
+from typing import List, Set, Tuple
 from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
@@ -55,10 +55,10 @@ class RetailerPromotionCrawler(BaseCrawler):
                 found.add(canonicalize_url(href))
         return sorted(found)
 
-    def _record_html(self, url: str, status: int, html: str, metadata: dict) -> List[CrawlDocument]:
+    def _record_html(self, url: str, status: int, html: str, metadata: dict) -> Tuple[List[CrawlDocument], str]:
         if status != 200 or not html:
             self.record_crawl(url, status, "", "", error_message=metadata.get("error"), metadata=metadata)
-            return []
+            return [], html
         if looks_dynamic_html(html):
             rendered = render_dynamic_page(url)
             if rendered:
@@ -68,9 +68,9 @@ class RetailerPromotionCrawler(BaseCrawler):
         text, title = self.extract_text(html)
         if not text.strip():
             self.record_crawl(url, status, html, "", error_message="EMPTY_EXTRACTED_TEXT", metadata=metadata, raw_content=html.encode("utf-8"), content_type="text/html")
-            return []
+            return [], html
         doc = self.record_crawl(url, status, html, text, title=title, metadata=metadata, raw_content=html.encode("utf-8"), content_type="text/html")
-        return [doc] if doc else []
+        return ([doc] if doc else []), html
 
     def _record_asset(self, url: str, status: int, content: bytes, content_type: str) -> List[CrawlDocument]:
         if status != 200 or not content:
@@ -94,13 +94,16 @@ class RetailerPromotionCrawler(BaseCrawler):
             seen.add(url)
             status, content, content_type, error = self.fetch_content(url)
             if error:
-                documents.extend(self._record_html(url, status, "", {"retailer": self.retailer_key, "error": error}))
+                documents.extend(self._record_html(url, status, "", {"retailer": self.retailer_key, "error": error})[0])
                 continue
             document_type = detect_document_type(url, content_type, content)
             if document_type == "HTML":
                 html = content.decode("utf-8", errors="replace")
-                documents.extend(self._record_html(url, status, html, {"retailer": self.retailer_key, "adapter": "retailer_promotion", "discovery_page": len(seen)}))
-                for discovered in self.discover_promotion_urls(html, url):
+                new_documents, discovery_html = self._record_html(url, status, html, {"retailer": self.retailer_key, "adapter": "retailer_promotion", "discovery_page": len(seen)})
+                documents.extend(new_documents)
+                # Discovery must inspect the rendered DOM when the source is JS-driven;
+                # otherwise links injected by JavaScript are invisible to the crawler.
+                for discovered in self.discover_promotion_urls(discovery_html, url):
                     if discovered not in seen and len(seen) + len(queue) < self.max_pages:
                         queue.append(discovered)
             elif document_type in {"PDF", "IMAGE"}:
