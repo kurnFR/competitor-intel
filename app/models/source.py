@@ -57,7 +57,7 @@ class CrawlJob(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     source: Mapped["SourceRegistry"] = relationship("SourceRegistry", back_populates="crawl_jobs")
-    documents: Mapped[List["CrawlDocument"]] = relationship("CrawlJob", back_populates="crawl_job")
+    documents: Mapped[List["CrawlDocument"]] = relationship("CrawlDocument", back_populates="crawl_job")
 
 
 class CrawlDocument(Base):
@@ -85,5 +85,5 @@ class CrawlDocument(Base):
     metadata_json: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
-    source: Mapped["SourceRegistry"] = relationship("SourceRegistry", back_popates="documents")
+    source: Mapped["SourceRegistry"] = relationship("SourceRegistry", back_populates="documents")
     crawl_job: Mapped[Optional["CrawlJob"]] = relationship("CrawlJob", back_populates="documents")
