@@ -1,9 +1,12 @@
 import json
 import logging
 import re
+from dataclasses import dataclass
+from datetime import date, datetime, timezone
 from typing import List, Optional
-from datetime import datetime
+
 from openai import OpenAI
+
 from app.core.config import settings
 from app.schemas.ai import ExtractedPromotionItem, ExtractedPromotionBatch
 
@@ -24,10 +27,22 @@ STRICT EXTRACTION RULES:
    - "Bundle", "Paket" -> promotion_type = "BUNDLE"
 3. Category must be one of: BISCUIT, CRACKER, COOKIE, WAFER, SNACK, OTHER.
 4. Normalize prices into numeric IDR (e.g., "Rp6.500" -> 6500, "18.900" -> 18900).
-5. Normalize dates to ISO YYYY-MM-DD. If year is omitted (e.g. "Sampai 7 Sep"), use current year 2026.
+5. Normalize dates to ISO YYYY-MM-DD. If year is omitted (e.g. "Sampai 7 Sep"), use the CURRENT_DATE supplied by the caller to determine the year. Do not use a hardcoded year.
 6. Provide exact quote from source in evidence_quote.
 7. Return valid JSON only with structure: {"promotions": [...]}
 """
+
+
+@dataclass
+class ExtractionResult:
+    """Auditable result of one LLM extraction attempt."""
+
+    items: List[ExtractedPromotionItem]
+    rejected_items: List[dict]
+    raw_response: Optional[str]
+    model: str
+    extracted_at: datetime
+    parser_status: str
 
 
 class LLMExtractor:
@@ -38,8 +53,21 @@ class LLMExtractor:
         )
         self.model = settings.LLM_MODEL
 
-    def extract_from_text(self, text_chunk: str) -> List[ExtractedPromotionItem]:
-        prompt = f"""Extract all FMCG biscuit, cracker, wafer, and snack promotions from the following catalog text:
+    def extract_from_text(self, text_chunk: str, current_date: Optional[date] = None) -> List[ExtractedPromotionItem]:
+        """Extract promotions while preserving the existing list-returning API."""
+        return self.extract_with_metadata(text_chunk, current_date=current_date).items
+
+    def extract_with_metadata(
+        self,
+        text_chunk: str,
+        current_date: Optional[date] = None,
+    ) -> ExtractionResult:
+        """Extract promotions and return parser/validation provenance for auditability."""
+        extraction_date = current_date or date.today()
+        prompt = f"""Extract all FMCG biscuit, cracker, wafer, and snack promotions from the following catalog text.
+
+CURRENT_DATE: {extraction_date.isoformat()}
+Use CURRENT_DATE only to resolve the year when a source date explicitly omits its year. Never invent a missing day, month, start date, or end date.
 
 {text_chunk}
 
@@ -59,14 +87,17 @@ Respond with valid JSON matching:
       "promotion_type": "DISCOUNT",
       "buy_quantity": null,
       "free_quantity": null,
-      "start_date": "2026-09-01",
-      "end_date": "2026-09-07",
+      "start_date": "{extraction_date.isoformat()}",
+      "end_date": null,
       "retailer": "Indomaret",
       "evidence_quote": "...",
       "confidence": 0.95
     }}
   ]
 }}"""
+
+        extracted_at = datetime.now(timezone.utc)
+        raw_content: Optional[str] = None
 
         try:
             response = self.client.chat.completions.create(
@@ -77,22 +108,53 @@ Respond with valid JSON matching:
                 ],
                 temperature=0.1
             )
-            raw_content = response.choices[0].message.content.strip()
+            raw_content = (response.choices[0].message.content or "").strip()
+            if not raw_content:
+                logger.error("LLM extraction returned an empty response")
+                return ExtractionResult([], [], raw_content, self.model, extracted_at, "EMPTY_RESPONSE")
 
-            # Strip markdown json blocks if present
+            # Strip markdown json blocks if present.
             if raw_content.startswith("```"):
-                raw_content = re.sub(r"^```(?:json)?\n", "", raw_content)
-                raw_content = re.sub(r"\n```$", "", raw_content)
+                raw_content = re.sub(r"^```(?:json)?\s*", "", raw_content)
+                raw_content = re.sub(r"\s*```$", "", raw_content)
 
             parsed = json.loads(raw_content)
-            items = []
-            for p in parsed.get("promotions", []):
-                try:
-                    items.append(ExtractedPromotionItem(**p))
-                except Exception as ve:
-                    logger.warning(f"Validation error for item {p}: {ve}")
-            return items
+            batch = ExtractedPromotionBatch.model_validate(parsed)
 
-        except Exception as e:
-            logger.error(f"LLM extraction error: {e}")
-            return []
+            items: List[ExtractedPromotionItem] = []
+            rejected_items: List[dict] = []
+            raw_items = parsed.get("promotions", [])
+            for index, item in enumerate(raw_items):
+                try:
+                    validated = ExtractedPromotionItem.model_validate(item)
+                    items.append(validated)
+                except Exception as validation_error:
+                    rejected_items.append({
+                        "index": index,
+                        "item": item,
+                        "error": str(validation_error),
+                    })
+
+            logger.info(
+                "LLM extraction completed: model=%s current_date=%s returned=%d accepted=%d rejected=%d",
+                self.model,
+                extraction_date.isoformat(),
+                len(raw_items),
+                len(items),
+                len(rejected_items),
+            )
+            return ExtractionResult(
+                items=items,
+                rejected_items=rejected_items,
+                raw_response=raw_content,
+                model=self.model,
+                extracted_at=extracted_at,
+                parser_status="PARTIAL_SUCCESS" if rejected_items else "SUCCESS",
+            )
+
+        except json.JSONDecodeError as parse_error:
+            logger.error("LLM extraction returned invalid JSON: %s", parse_error)
+            return ExtractionResult([], [], raw_content, self.model, extracted_at, "INVALID_JSON")
+        except Exception as error:
+            logger.error("LLM extraction error: %s", error)
+            return ExtractionResult([], [], raw_content, self.model, extracted_at, "ERROR")
