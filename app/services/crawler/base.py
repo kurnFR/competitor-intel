@@ -1,5 +1,7 @@
 import hashlib
 import logging
+import mimetypes
+import os
 import time
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta, timezone
@@ -36,6 +38,16 @@ def compute_bytes_hash(content: bytes) -> str:
 def canonicalize_url(url: str) -> str:
     parts = urlsplit(url.strip())
     return urlunsplit((parts.scheme.lower(), parts.netloc.lower(), parts.path or "/", parts.query, ""))
+
+
+def _storage_extension(url: str, content_type: str, document_type: str) -> str:
+    path_ext = os.path.splitext(urlsplit(url).path)[1].lower().lstrip(".")
+    if path_ext and path_ext.isalnum():
+        return path_ext
+    guessed = mimetypes.guess_extension((content_type or "").split(";", 1)[0].strip())
+    if guessed:
+        return guessed.lstrip(".")
+    return {"HTML": "html", "PDF": "pdf", "IMAGE": "img"}.get(document_type, "bin")
 
 
 class BaseCrawler(ABC):
@@ -114,14 +126,15 @@ class BaseCrawler(ABC):
         if successful and text_content:
             metadata = dict(metadata or {})
             detected_type = metadata.get("document_type") or detect_document_type(job.url, content_type or "", raw_bytes)
-            extension = {"HTML": "html", "PDF": "pdf", "IMAGE": "img"}.get(detected_type, "bin")
-            stored = self.raw_store.put(raw_bytes, content_type or "application/octet-stream", str(self.source.id), extension)
+            stored = self.raw_store.put(raw_bytes, content_type or "application/octet-stream", str(self.source.id), _storage_extension(job.url, content_type or "", detected_type))
             metadata.update({"raw_storage_backend": "local", "raw_storage_sha256": stored.sha256, "raw_storage_size_bytes": stored.size_bytes})
             doc = self._existing_document(job.url, content_hash)
             if doc is None:
                 doc = CrawlDocument(crawl_job_id=job.id, source_id=self.source.id, url=job.url,
                     canonical_url=canonical_url, document_type=detected_type, title=title,
-                    raw_content_uri=stored.uri, text_content=text_content, content_hash=content_hash,
+                    raw_content_uri=stored.uri, raw_content_sha256=stored.sha256,
+                    raw_content_type=stored.content_type, raw_content_size_bytes=stored.size_bytes,
+                    storage_backend="local", text_content=text_content, content_hash=content_hash,
                     retrieved_at=now, http_status=http_status, metadata_json=metadata, created_at=now)
                 self.db.add(doc)
                 self.db.flush()
