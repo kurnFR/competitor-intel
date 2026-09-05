@@ -8,6 +8,7 @@ from app.models.source import CrawlDocument, SourceRegistry
 from app.models.promotion import Promotion
 from app.services.crawler.manager import run_all_crawlers
 from app.services.entity_resolution.resolver import EntityResolver
+from app.services.entity_resolution.product import resolve_product_result
 from app.services.entity_resolution.review import persist_resolution_reviews
 from app.services.extraction.llm_extractor import LLMExtractor
 from app.services.promotions.upsert import upsert_promotion_observation
@@ -50,8 +51,6 @@ def run_pipeline(crawl_fresh: bool = False, max_docs: int = 3):
             source = doc.source or db.query(SourceRegistry).filter(SourceRegistry.id == doc.source_id).first()
             reliability = source.reliability_score if source else 0.85
 
-            # Split catalog into bounded blocks so one large catalog does not
-            # exceed the LLM context/output budget.
             cards = [c.strip() for c in doc.text_content.split("---") if len(c.strip()) > 30]
             logger.info(f"Splitting into {len(cards)} item cards...")
 
@@ -90,10 +89,19 @@ def run_pipeline(crawl_fresh: bool = False, max_docs: int = 3):
                         item.brand,
                         item.product_name,
                     )
+                    product_result = resolve_product_result(
+                        db,
+                        item.product_name,
+                        brand_result.entity.id if brand_result.status == "RESOLVED" and brand_result.entity else None,
+                        sku=item.sku,
+                        barcode=getattr(item, "barcode", None),
+                        pack_size=item.pack_size,
+                    )
                     resolved_entities = {
                         "retailer_id": retailer_result.entity.id if retailer_result.status == "RESOLVED" else None,
                         "brand_id": brand_result.entity.id if brand_result.status == "RESOLVED" else None,
                         "competitor_id": competitor_result.entity.id if competitor_result.status == "RESOLVED" else None,
+                        "product_id": product_result.entity.id if product_result.status == "RESOLVED" else None,
                     }
 
                     try:
@@ -102,9 +110,6 @@ def run_pipeline(crawl_fresh: bool = False, max_docs: int = 3):
                             document_id=doc.id,
                             item=item,
                             resolved_entities=resolved_entities,
-                            # Keep the complete source block here. The upsert
-                            # layer verifies that item.evidence_quote is an
-                            # exact substring before persisting the evidence.
                             raw_text=chunk,
                             extracted_json=item.model_dump(),
                             observed_at=result.extracted_at,
@@ -121,6 +126,7 @@ def run_pipeline(crawl_fresh: bool = False, max_docs: int = 3):
                                 ("RETAILER", item.retailer, retailer_result),
                                 ("BRAND", item.brand, brand_result),
                                 ("COMPETITOR", item.competitor, competitor_result),
+                                ("PRODUCT", item.product_name, product_result),
                             ),
                         )
                         total_review_items += review_items
