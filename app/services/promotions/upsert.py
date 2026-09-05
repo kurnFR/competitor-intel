@@ -1,9 +1,4 @@
-"""Canonical promotion upsert, observation linkage, and evidence persistence.
-
-This service is transaction-scoped: callers own the session and commit/rollback
-boundary. Re-processing the same extracted promotion resolves to the same
-canonical promotion and observation.
-"""
+"""Canonical promotion upsert, observation linkage, evidence, and lifecycle."""
 
 from __future__ import annotations
 
@@ -14,8 +9,9 @@ from sqlalchemy.orm import Session
 
 from app.models.promotion import Promotion, PromotionEvidence, PromotionObservation
 from app.services.promotions.identity import IDENTITY_VERSION, promotion_identity_fingerprint
-from app.services.validation.validator import PromotionValidator
+from app.services.ranking.scorer import PromotionScorer
 from app.services.validation.lifecycle import evaluate_lifecycle
+from app.services.validation.validator import PromotionValidator
 
 
 def _utc_now() -> datetime:
@@ -60,7 +56,6 @@ def _persist_evidence(
     source_url: Optional[str] = None,
     captured_at: Optional[datetime] = None,
 ) -> Optional[PromotionEvidence]:
-    """Persist the model's exact evidence quote without duplicating it."""
     evidence_text = getattr(item, "evidence_quote", None)
     if not evidence_text or not str(evidence_text).strip():
         return None
@@ -102,12 +97,12 @@ def upsert_promotion_observation(
     observed_at: Optional[datetime] = None,
     source_url: Optional[str] = None,
     extraction_metadata: Optional[dict[str, Any]] = None,
+    source_reliability: float = 0.85,
 ) -> tuple[Promotion, PromotionObservation, bool]:
-    """Validate, canonicalize, and upsert a promotion observation.
+    """Validate, canonicalize, rank, and upsert a promotion observation.
 
-    ``extraction_metadata`` may contain model, parser status, extraction time,
-    raw response hash, and rejected count. The raw LLM response itself is not
-    persisted here; only its SHA-256 hash is retained for audit correlation.
+    The caller owns the transaction. Extraction metadata stores audit fields,
+    not the potentially large raw LLM response.
     """
     is_valid, reason, start_dt, end_dt, effective_discount = PromotionValidator.validate_and_normalize(item)
     if not is_valid:
@@ -160,12 +155,24 @@ def upsert_promotion_observation(
             if value is not None:
                 setattr(promotion, field, value)
 
-    # Validator owns date parsing and effective-discount derivation; never pass
-    # source date strings directly into SQLAlchemy DateTime columns.
     promotion.start_date = start_dt
     promotion.end_date = end_dt
     promotion.discount_percentage = effective_discount
     promotion.status = evaluate_lifecycle(start_dt, end_dt, now=now)
+    promotion.source_reliability = max(promotion.source_reliability or 0.0, source_reliability)
+    promotion.ai_confidence = max(promotion.ai_confidence or 0.0, getattr(item, "confidence", 0.0) or 0.0)
+    competitor_importance = 0.5
+    if resolved_entities and resolved_entities.get("competitor_importance") is not None:
+        competitor_importance = float(resolved_entities["competitor_importance"])
+    promotion.rank_score = PromotionScorer.compute_total_score(
+        promotion_type=promotion.promotion_type,
+        discount_percentage=promotion.discount_percentage,
+        source_reliability=promotion.source_reliability,
+        last_seen_at=now,
+        category=promotion.category,
+        competitor_importance=competitor_importance,
+        ai_confidence=promotion.ai_confidence,
+    )
     promotion.last_seen_at = max(promotion.last_seen_at, now)
     promotion.updated_at = now
 
