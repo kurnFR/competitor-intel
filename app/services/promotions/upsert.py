@@ -108,6 +108,12 @@ def upsert_promotion_observation(
     if not is_valid:
         raise ValueError(f"Invalid promotion '{getattr(item, 'product_name', '')}': {reason}")
 
+    evidence_valid, evidence_reason = PromotionValidator.validate_evidence_quote(item, raw_text)
+    if not evidence_valid:
+        raise ValueError(
+            f"Unverifiable evidence for promotion '{getattr(item, 'product_name', '')}': {evidence_reason}"
+        )
+
     data = _promotion_data(item, resolved_entities)
     fingerprint = promotion_identity_fingerprint(data)
     now = observed_at or _utc_now()
