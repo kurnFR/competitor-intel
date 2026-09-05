@@ -35,12 +35,8 @@ class CrawlJobProcessor:
                 raise RuntimeError(f"Empty response body for {job.url}")
 
             document_type = detect_document_type(job.url, content_type, content)
-            metadata = {
-                "worker_reprocessed": True,
-                "source_type": source.source_type,
-                "content_type": content_type,
-                "document_type": document_type,
-            }
+            metadata = {"worker_reprocessed": True, "source_type": source.source_type,
+                        "content_type": content_type, "document_type": document_type}
 
             if document_type == "HTML":
                 html = content.decode("utf-8", errors="replace")
@@ -51,6 +47,7 @@ class CrawlJobProcessor:
                         html_bytes, render_meta = rendered
                         html = html_bytes.decode("utf-8", errors="replace")
                         text_content, title = crawler.extract_text(html)
+                        content = html_bytes
                         metadata.update(render_meta)
                     else:
                         metadata["dynamic_render_available"] = False
@@ -72,7 +69,8 @@ class CrawlJobProcessor:
 
             content_hash = compute_hash(text_content) if text_content else compute_bytes_hash(content)
             crawler.record_crawl_job(job=job, http_status=status_code, raw_html=raw_content,
-                text_content=text_content, title=title, metadata=metadata)
+                text_content=text_content, title=title, metadata=metadata, raw_content=content,
+                content_type=content_type)
             return status_code, content_hash
         finally:
             client = getattr(crawler, "client", None)
