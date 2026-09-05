@@ -16,8 +16,11 @@ SYSTEM_PROMPT = """You are an FMCG Competitor Promotion Intelligence Extraction 
 Your task is to analyze Indonesian retail catalog text and extract structured promotion activities for biscuits, crackers, wafers, cookies, and related snacks.
 
 STRICT EXTRACTION RULES:
-1. NEVER invent or assume prices, products, or dates. If not explicitly in the text, use null.
-2. Normalize promotion mechanisms:
+1. Extract ONLY facts explicitly supported by the supplied source text. NEVER invent or infer prices, products, brands, competitors, retailers, promotion mechanics, or dates.
+2. If a field is not explicitly supported by the source text, return null. This includes start_date and end_date.
+3. A crawl/retrieval date is NOT a promotion start date or end date. Never convert "today", crawl time, or CURRENT_DATE into a promotion date unless the source text explicitly establishes that date.
+4. CURRENT_DATE may ONLY resolve the YEAR of an explicitly stated source date that omits its year (for example, "sampai 7 Sep"). It must never supply a missing day, month, start date, or end date.
+5. Normalize promotion mechanisms:
    - "Beli 1 Gratis 1", "B1G1", "Buy 1 Get 1" -> promotion_type = "BUY_X_GET_Y", buy_quantity = 1, free_quantity = 1
    - "Beli 2 Gratis 1", "B2G1" -> promotion_type = "BUY_X_GET_Y", buy_quantity = 2, free_quantity = 1
    - "Diskon X%", "Hemat X%", price drop -> promotion_type = "DISCOUNT"
@@ -25,11 +28,11 @@ STRICT EXTRACTION RULES:
    - "Khusus Member", "Member price" -> promotion_type = "MEMBER_PRICE"
    - "Cashback" -> promotion_type = "CASHBACK"
    - "Bundle", "Paket" -> promotion_type = "BUNDLE"
-3. Category must be one of: BISCUIT, CRACKER, COOKIE, WAFER, SNACK, OTHER.
-4. Normalize prices into numeric IDR (e.g., "Rp6.500" -> 6500, "18.900" -> 18900).
-5. Normalize dates to ISO YYYY-MM-DD. If year is omitted (e.g. "Sampai 7 Sep"), use the CURRENT_DATE supplied by the caller to determine the year. Do not use a hardcoded year.
-6. Provide exact quote from source in evidence_quote.
-7. Return valid JSON only with structure: {"promotions": [...]}
+6. Category must be one of: BISCUIT, CRACKER, COOKIE, WAFER, SNACK, OTHER. Use OTHER when the source does not support a more specific category.
+7. Normalize prices into numeric IDR only when a price is explicitly present (e.g. "Rp6.500" -> 6500, "18.900" -> 18900). Do not derive a price from unrelated text.
+8. Provide an exact, contiguous quote from the supplied source text in evidence_quote. The quote must support the extracted promotion; do not fabricate or paraphrase evidence.
+9. Confidence must reflect evidence quality, not model certainty. Lower confidence when the source is ambiguous or incomplete.
+10. Return valid JSON only with structure: {"promotions": [...]}
 """
 
 
@@ -67,7 +70,7 @@ class LLMExtractor:
         prompt = f"""Extract all FMCG biscuit, cracker, wafer, and snack promotions from the following catalog text.
 
 CURRENT_DATE: {extraction_date.isoformat()}
-Use CURRENT_DATE only to resolve the year when a source date explicitly omits its year. Never invent a missing day, month, start date, or end date.
+Use CURRENT_DATE only to resolve the year when a source date explicitly omits its year. Never use CURRENT_DATE as a substitute for an absent promotion date.
 
 {text_chunk}
 
@@ -76,22 +79,22 @@ Respond with valid JSON matching:
   "promotions": [
     {{
       "product_name": "...",
-      "brand": "...",
-      "competitor": "...",
+      "brand": null,
+      "competitor": null,
       "category": "BISCUIT",
-      "variant": "...",
-      "pack_size": "...",
-      "regular_price": 10000.0,
-      "promo_price": 7000.0,
-      "discount_percentage": 30.0,
+      "variant": null,
+      "pack_size": null,
+      "regular_price": null,
+      "promo_price": null,
+      "discount_percentage": null,
       "promotion_type": "DISCOUNT",
       "buy_quantity": null,
       "free_quantity": null,
       "start_date": null,
-      "end_date": "{extraction_date.isoformat()}",
-      "retailer": "Indomaret",
-      "evidence_quote": "...",
-      "confidence": 0.95
+      "end_date": null,
+      "retailer": null,
+      "evidence_quote": "exact source text",
+      "confidence": 0.0
     }}
   ]
 }}"""
