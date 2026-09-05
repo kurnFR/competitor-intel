@@ -135,7 +135,36 @@ Current improvements:
 - source success/error timestamps are updated;
 - crawler regression coverage exists in `tests/unit/test_crawler_base.py` for URL canonicalization, hashing, transient-status retry, connection-error retry, and non-transient status handling.
 
-This is a foundation only. The crawler layer still needs dynamic-page handling, PDF/image acquisition and OCR, deeper pagination/discovery, durable retry/resume/dead-letter behavior, rate limiting, and source-specific adapters.
+### P1 — Durable retry/resume state 🟡
+
+A durable queue state layer has now been added without coupling source-specific crawling to queue mechanics.
+
+Migration:
+
+`migrations/versions/2026_09_05_2100-f6a91c3d8e52_crawl_job_retry_state.py`
+
+adds `next_retry_at`, `max_retries`, `last_attempt_at`, and `worker_id` to `crawl_jobs`, plus an index for retry-queue polling.
+
+`app/services/crawler/job_queue.py` now owns deterministic transitions:
+
+```text
+QUEUED → RUNNING → SUCCESS
+             ↓
+         RETRY_WAIT → RUNNING
+             ↓
+        DEAD_LETTER
+```
+
+It provides bounded exponential backoff, explicit transition validation, retry-budget enforcement, and PostgreSQL `FOR UPDATE SKIP LOCKED` job claiming so multiple workers can safely poll the same queue.
+
+`app/services/crawler/job_worker.py` provides a bounded worker loop with per-job transaction boundaries. Processor exceptions are persisted as retry state and eventually dead-lettered instead of terminating the whole batch.
+
+Regression coverage was added in:
+
+- `tests/unit/test_crawler_job_queue.py`
+- `tests/unit/test_crawler_job_worker.py`
+
+This is now a reusable durable queue foundation. Source-specific resumable processing still needs to be wired into the worker, and rate limiting, dynamic-page handling, PDF/image acquisition, OCR, deeper discovery/pagination, and source-specific adapters remain P1 work.
 
 ## Remaining verification before declaring P0 production-ready ⏳
 
@@ -160,11 +189,13 @@ b7e41c2d8f90  entity resolution audit
 c4a81e6f2b73  observation idempotency
       ↓
 e5d72a1c9b40  extraction provenance
+      ↓
+f6a91c3d8e52  crawl job retry state
 ```
 
 ## Database safety rule
 
-All P0 changes remain inside the `competitor_intel` PostgreSQL schema/database.
+All P0/P1 changes remain inside the `competitor_intel` PostgreSQL schema/database.
 
 No code or migration may introduce a dependency on `dwh_prod`.
 
