@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.models.promotion import Promotion, PromotionEvidence, PromotionObservation
 from app.services.promotions.change_detection import detect_promotion_changes
+from app.services.promotions.change_history import persist_promotion_change_events
 from app.services.promotions.identity import (
     IDENTITY_VERSION,
     SOURCE_IDENTITY_VERSION,
@@ -189,5 +190,16 @@ def upsert_promotion_observation(db: Session, *, document_id, item: Any, resolve
         if metadata.get("raw_response_hash") is not None: observation.extraction_raw_response_hash = metadata["raw_response_hash"]
         if metadata.get("rejected_count") is not None: observation.extraction_rejected_count = metadata["rejected_count"]
 
+    persist_promotion_change_events(
+        db,
+        promotion=promotion,
+        observation=observation,
+        changes=changes,
+        created=created,
+        observed_at=now,
+        document_id=document_id,
+        change_impact=change_impact,
+        superseded_promotion=superseded_promotion,
+    )
     _persist_evidence(db, promotion=promotion, document_id=document_id, item=item, source_url=source_url, captured_at=now)
     return promotion, observation, created
