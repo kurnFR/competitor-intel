@@ -45,11 +45,9 @@ def persist_promotion_change_events(
     document_id=None,
     change_impact: float = 0.0,
     superseded_promotion=None,
+    created: bool = False,
 ) -> list[PromotionChangeEvent]:
-    """Persist one event per detected field change plus lifecycle creation/supersession events.
-
-    The event fingerprint makes retries and repeated document processing idempotent.
-    """
+    """Persist lifecycle/change events; repeated document processing is idempotent."""
     events: list[PromotionChangeEvent] = []
 
     def add_event(
@@ -88,17 +86,16 @@ def persist_promotion_change_events(
         db.flush()
         events.append(event)
 
-    if not changes:
+    if created:
         add_event(event_type="CREATED", new_value={"promotion_id": str(promotion.id)})
-    else:
-        for change in changes:
-            add_event(
-                event_type=str(change.get("event_type", "TERMS_CHANGED")),
-                field_name=change.get("field"),
-                previous_value=change.get("previous_value"),
-                new_value=change.get("new_value"),
-                impact=change_impact,
-            )
+    for change in changes or []:
+        add_event(
+            event_type=str(change.get("event_type", "TERMS_CHANGED")),
+            field_name=change.get("field"),
+            previous_value=change.get("previous_value"),
+            new_value=change.get("new_value"),
+            impact=change_impact,
+        )
 
     if superseded_promotion is not None:
         add_event(
