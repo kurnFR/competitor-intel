@@ -13,6 +13,7 @@ from app.services.promotions.identity import (
     SOURCE_IDENTITY_VERSION,
     promotion_identity_fingerprint,
     promotion_source_identity_fingerprint,
+    source_identity_periods_compatible,
 )
 from app.services.ranking.scorer import PromotionScorer
 from app.services.validation.lifecycle import evaluate_lifecycle
@@ -74,6 +75,8 @@ def _source_identity_data(item: Any) -> dict[str, Any]:
         "currency": getattr(item, "currency", "IDR"),
         "channel": getattr(item, "channel", None),
         "geography": getattr(item, "geography", "Indonesia"),
+        "start_date": getattr(item, "start_date", None),
+        "end_date": getattr(item, "end_date", None),
     }
 
 
@@ -147,7 +150,8 @@ def upsert_promotion_observation(
 
     data = _promotion_data(item, resolved_entities)
     fingerprint = promotion_identity_fingerprint(data)
-    source_fingerprint = promotion_source_identity_fingerprint(_source_identity_data(item))
+    source_data = _source_identity_data(item)
+    source_fingerprint = promotion_source_identity_fingerprint(source_data)
     now = observed_at or _utc_now()
     metadata = extraction_metadata or {}
 
@@ -160,18 +164,28 @@ def upsert_promotion_observation(
         .one_or_none()
     )
 
-    # v2 source identity is deliberately a secondary lookup. It is only safe
-    # because retailer/channel/geography and the commercial mechanics are part
-    # of the fingerprint; ambiguous fuzzy entity resolution never participates.
+    # v2 source identity is deliberately a secondary lookup. The fingerprint
+    # ignores dates so copy/date corrections do not fragment one campaign, but
+    # recurring identical campaigns must remain separate when their periods do
+    # not overlap. Missing dates are treated as uncertainty by the compatibility
+    # helper rather than as proof that campaigns differ.
     if promotion is None:
-        promotion = (
+        source_candidates = (
             db.query(Promotion)
             .filter(
                 Promotion.source_identity_fingerprint == source_fingerprint,
                 Promotion.identity_version == SOURCE_IDENTITY_VERSION,
             )
-            .one_or_none()
+            .order_by(Promotion.last_seen_at.desc())
+            .all()
         )
+        for candidate in source_candidates:
+            if source_identity_periods_compatible(
+                source_data,
+                {"start_date": candidate.start_date, "end_date": candidate.end_date},
+            ):
+                promotion = candidate
+                break
 
     created = promotion is None
     if promotion is None:
