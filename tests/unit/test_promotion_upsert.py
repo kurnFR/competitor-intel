@@ -113,6 +113,23 @@ def test_missing_dates_do_not_erase_known_canonical_dates():
     assert updated.end_date == original_end
 
 
+def test_missing_discount_does_not_erase_known_canonical_discount():
+    db = FakeSession()
+    observed_at = datetime(2026, 9, 10, 10, 0, tzinfo=timezone.utc)
+    promotion, _, _ = upsert_promotion_observation(
+        db, document_id=uuid4(), item=_item(),
+        raw_text="Roma Kelapa 300g Rp7.000 diskon 30%", observed_at=observed_at,
+    )
+
+    updated, _, created = upsert_promotion_observation(
+        db, document_id=uuid4(), item=_item(discount_percentage=None, promo_price=None),
+        raw_text="Roma Kelapa 300g promo", observed_at=observed_at,
+    )
+    assert created is False
+    assert updated is promotion
+    assert updated.discount_percentage == 30
+
+
 def test_explicit_later_date_can_correct_canonical_date():
     db = FakeSession()
     observed_at = datetime(2026, 9, 10, 10, 0, tzinfo=timezone.utc)
@@ -128,6 +145,26 @@ def test_explicit_later_date_can_correct_canonical_date():
     assert corrected is promotion
     assert corrected.start_date.day == 2
     assert corrected.end_date.day == 30
+
+
+def test_material_change_increases_rank_score_when_identity_is_stable():
+    db = FakeSession()
+    observed_at = datetime(2026, 9, 10, 10, 0, tzinfo=timezone.utc)
+    promotion, _, _ = upsert_promotion_observation(
+        db, document_id=uuid4(), item=_item(),
+        raw_text="Roma Kelapa 300g Rp7.000 diskon 30%", observed_at=observed_at,
+    )
+    original_score = promotion.rank_score
+
+    # Date correction is part of the stable source identity, so this is an
+    # existing promotion and the change detector can boost its ranking.
+    updated, _, created = upsert_promotion_observation(
+        db, document_id=uuid4(), item=_item(start_date="2026-09-02"),
+        raw_text="Roma Kelapa 300g Rp7.000 diskon 30% berlaku 2-30 September", observed_at=observed_at,
+    )
+    assert created is False
+    assert updated is promotion
+    assert updated.rank_score > original_score
 
 
 if __name__ == "__main__":
