@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from app.models.promotion import Promotion, PromotionEvidence, PromotionObservation
+from app.models.promotion_change import PromotionChangeEvent
 from app.schemas.ai import ExtractedPromotionItem
 from app.services.promotions.upsert import upsert_promotion_observation
 
@@ -19,6 +20,9 @@ class FakeQuery:
     def all(self):
         return list(self.rows)
 
+    def first(self):
+        return self.rows[0] if self.rows else None
+
     def one_or_none(self):
         if not self.rows:
             return None
@@ -31,7 +35,7 @@ class FakeSession:
     """Small deterministic session double for the service-level upsert tests."""
 
     def __init__(self):
-        self.rows = {Promotion: [], PromotionObservation: [], PromotionEvidence: []}
+        self.rows = {Promotion: [], PromotionObservation: [], PromotionEvidence: [], PromotionChangeEvent: []}
 
     def query(self, model):
         return FakeQuery(self.rows[model])
@@ -88,9 +92,28 @@ def test_upsert_is_idempotent_for_same_document_and_promotion():
     assert len(db.rows[Promotion]) == 1
     assert len(db.rows[PromotionObservation]) == 1
     assert len(db.rows[PromotionEvidence]) == 1
+    assert len(db.rows[PromotionChangeEvent]) == 1
+    assert db.rows[PromotionChangeEvent][0].event_type == "CREATED"
     assert second_observation.extraction_model == "test-model-v2"
     assert second_observation.extraction_raw_response_hash == "b" * 64
     assert second_observation.extracted_json["revision"] == 2
+
+
+def test_change_event_is_created_for_each_material_field_change():
+    db = FakeSession()
+    observed_at = datetime(2026, 9, 10, 10, 0, tzinfo=timezone.utc)
+    promotion, _, _ = upsert_promotion_observation(
+        db, document_id=uuid4(), item=_item(),
+        raw_text="Roma Kelapa 300g Rp7.000 diskon 30%", observed_at=observed_at,
+    )
+    upsert_promotion_observation(
+        db, document_id=uuid4(), item=_item(promo_price=6500, discount_percentage=35),
+        raw_text="Roma Kelapa 300g Rp6.500 diskon 35%", observed_at=observed_at,
+    )
+
+    events = [e for e in db.rows[PromotionChangeEvent] if e.promotion_id == promotion.id]
+    assert {e.event_type for e in events} == {"CREATED", "PRICE_OR_VALUE_CHANGED"}
+    assert {e.field_name for e in events if e.field_name} == {"promo_price", "discount_percentage"}
 
 
 def test_missing_dates_do_not_erase_known_canonical_dates():
@@ -139,7 +162,7 @@ def test_explicit_later_date_can_correct_canonical_date():
     )
     corrected, _, created = upsert_promotion_observation(
         db, document_id=uuid4(), item=_item(start_date="2026-09-02", end_date="2026-09-30"),
-        raw_text="Roma Kelapa 300g Rp7.000 diskon 30%", observed_at=observed_at,
+        raw_text="Roma Kelapa 300g Rp7.000 diskon 30% berlaku 2-30 September", observed_at=observed_at,
     )
     assert created is False
     assert corrected is promotion
@@ -156,8 +179,6 @@ def test_material_change_increases_rank_score_when_identity_is_stable():
     )
     original_score = promotion.rank_score
 
-    # Date correction is part of the stable source identity, so this is an
-    # existing promotion and the change detector can boost its ranking.
     updated, _, created = upsert_promotion_observation(
         db, document_id=uuid4(), item=_item(start_date="2026-09-02"),
         raw_text="Roma Kelapa 300g Rp7.000 diskon 30% berlaku 2-30 September", observed_at=observed_at,
@@ -165,8 +186,3 @@ def test_material_change_increases_rank_score_when_identity_is_stable():
     assert created is False
     assert updated is promotion
     assert updated.rank_score > original_score
-
-
-if __name__ == "__main__":
-    import unittest
-    unittest.main()
