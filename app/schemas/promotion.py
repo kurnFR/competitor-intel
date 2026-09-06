@@ -6,7 +6,6 @@ import uuid
 
 class EvidenceOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
-
     id: uuid.UUID
     evidence_type: str
     evidence_text: str
@@ -16,7 +15,6 @@ class EvidenceOut(BaseModel):
 
 class Top10PromotionItem(BaseModel):
     model_config = ConfigDict(from_attributes=True)
-
     id: uuid.UUID
     rank: int
     product_name: str
@@ -54,7 +52,6 @@ class Top10Response(BaseModel):
 
 class PromotionDetailOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
-
     id: uuid.UUID
     product_name: str
     brand: Optional[str] = None
@@ -72,6 +69,7 @@ class PromotionDetailOut(BaseModel):
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
     status: str
+    supersedes_promotion_id: Optional[uuid.UUID] = None
     source_reliability: float
     ai_confidence: float
     rank_score: float
