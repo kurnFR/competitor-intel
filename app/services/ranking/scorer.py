@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, Sequence, Mapping, Any
 
 
 class PromotionScorer:
@@ -65,6 +65,35 @@ class PromotionScorer:
             return 0.50
         return 0.0
 
+    @staticmethod
+    def calculate_change_impact(changes: Optional[Sequence[Mapping[str, Any]]]) -> float:
+        """Score how important a newly observed promotion change is.
+
+        The score is intentionally bounded and based on the change categories
+        emitted by change_detection. Missing/unchanged fields produce no impact.
+        Multiple changes accumulate with diminishing returns so a noisy document
+        cannot overwhelm a genuinely material change.
+        """
+        if not changes:
+            return 0.0
+
+        weights = {
+            "PRICE_OR_VALUE_CHANGED": 0.40,
+            "MECHANIC_CHANGED": 0.35,
+            "DATES_CHANGED": 0.20,
+            "TERMS_CHANGED": 0.15,
+        }
+        impact = 0.0
+        seen_fields: set[str] = set()
+        for change in changes:
+            field = str(change.get("field", ""))
+            if field in seen_fields:
+                continue
+            seen_fields.add(field)
+            impact += weights.get(str(change.get("event_type", "TERMS_CHANGED")), 0.15)
+
+        return round(min(1.0, impact), 4)
+
     @classmethod
     def compute_total_score(
         cls,
@@ -76,6 +105,7 @@ class PromotionScorer:
         competitor_importance: float,
         ai_confidence: float,
         *,
+        change_impact: float = 0.0,
         now: Optional[datetime] = None,
     ) -> float:
         strength = cls.calculate_promotion_strength(promotion_type, discount_percentage)
@@ -84,13 +114,19 @@ class PromotionScorer:
         reliability = cls._bounded(source_reliability, 0.8)
         importance = cls._bounded(competitor_importance, 0.5)
         confidence = cls._bounded(ai_confidence, 0.8)
+        change = cls._bounded(change_impact, 0.0)
 
+        # Keep promotion strength as the largest single driver while giving
+        # genuinely new material changes enough weight to outrank stale,
+        # high-discount promotions. Existing callers remain compatible because
+        # change_impact defaults to zero.
         score = (
-            0.30 * strength
-            + 0.20 * reliability
-            + 0.15 * freshness
+            0.25 * strength
+            + 0.15 * reliability
+            + 0.10 * freshness
             + 0.15 * relevance
             + 0.10 * importance
             + 0.10 * confidence
+            + 0.15 * change
         )
         return round(min(1.0, max(0.0, score)), 4)
