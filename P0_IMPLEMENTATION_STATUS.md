@@ -46,6 +46,10 @@ The resolver avoids silent entity creation and weak fuzzy matches. Outcomes are 
 
 When a materially different offer creates a new canonical promotion identity, `app/services/promotions/lineage.py` conservatively searches for an active predecessor using resolved product + retailer IDs and overlapping campaign periods. The new promotion records `supersedes_promotion_id`, while the predecessor is marked `SUPERSEDED` so it does not remain in the active Top-10 feed. The detail API exposes the predecessor relationship. This intentionally does not infer lineage when product or retailer resolution is uncertain.
 
+### P0-I — Persistent promotion change history ✅
+
+`app/models/promotion_change.py` and migration `2026_09_06_0630-6e2a9b4c1d73_promotion_change_events.py` add immutable, queryable promotion event history. The upsert path records `CREATED` events, one event per detected price/value, mechanic, date, or terms change, and `SUPERSEDED` events for lineage transitions. Event fingerprints make repeated document processing idempotent, while observation/document IDs preserve provenance without duplicating source evidence. The API exposes `/{promotion_id}/changes` with event-type/date/limit filters and includes the latest 50 events in promotion detail. Regression coverage now verifies creation idempotency and per-field change events.
+
 ## P1 work started — crawler reliability and acquisition foundation 🟡
 
 `app/services/crawler/base.py` has TLS verification, bounded transient retries, URL canonicalization, duplicate-document detection, source status timestamps, durable initial retry state, per-source rate limiting, and a new binary-content fetch path.
@@ -114,6 +118,8 @@ f6a91c3d8e52  crawl job retry state
 4c8d2e7f1a63  stable promotion source identity
       ↓
 5d1f8a3c7b92  promotion supersession lineage
+      ↓
+6e2a9b4c1d73  promotion change event history
 ```
 
 ## Database safety rule
