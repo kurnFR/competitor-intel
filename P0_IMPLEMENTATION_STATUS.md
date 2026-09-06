@@ -42,6 +42,10 @@ The resolver avoids silent entity creation and weak fuzzy matches. Outcomes are 
 
 `app/services/promotions/change_detection.py` detects material price/value, mechanic, date, and terms changes before canonical refresh. `PromotionScorer.calculate_change_impact()` converts those changes into a bounded ranking signal, and the canonical upsert feeds that signal into `rank_score`. The ranking remains dominated by promotion strength while giving material changes enough weight to surface above otherwise similar stale promotions. Missing source fields still do not erase known canonical values, including a previously known discount. Regression coverage is in `tests/unit/test_promotion_scoring.py` and `tests/unit/test_promotion_upsert.py`.
 
+### P0-H — Promotion supersession lineage ✅
+
+When a materially different offer creates a new canonical promotion identity, `app/services/promotions/lineage.py` conservatively searches for an active predecessor using resolved product + retailer IDs and overlapping campaign periods. The new promotion records `supersedes_promotion_id`, while the predecessor is marked `SUPERSEDED` so it does not remain in the active Top-10 feed. The detail API exposes the predecessor relationship. This intentionally does not infer lineage when product or retailer resolution is uncertain.
+
 ## P1 work started — crawler reliability and acquisition foundation 🟡
 
 `app/services/crawler/base.py` has TLS verification, bounded transient retries, URL canonicalization, duplicate-document detection, source status timestamps, durable initial retry state, per-source rate limiting, and a new binary-content fetch path.
@@ -108,6 +112,8 @@ f6a91c3d8e52  crawl job retry state
 91c4e7a2b5d8  raw document provenance
       ↓
 4c8d2e7f1a63  stable promotion source identity
+      ↓
+5d1f8a3c7b92  promotion supersession lineage
 ```
 
 ## Database safety rule
