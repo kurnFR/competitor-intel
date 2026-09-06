@@ -43,7 +43,6 @@ def _promotion_data(item: Any, resolved: Optional[dict[str, Any]] = None) -> dic
 
 
 def _source_identity_data(item: Any) -> dict[str, Any]:
-    """Return source-observed values used by the stable commercial identity."""
     return {
         "retailer": getattr(item, "retailer", None), "brand": getattr(item, "brand", None),
         "competitor": getattr(item, "competitor", None), "product_name": getattr(item, "product_name", None),
@@ -82,6 +81,28 @@ def _persist_evidence(db: Session, *, promotion: Promotion, document_id, item: A
     return evidence
 
 
+# Fields that are safe to refresh when a later observation explicitly supplies
+# a value. Resolution IDs are handled separately because unresolved values must
+# never clear an already-resolved canonical entity.
+_REFRESHABLE_FIELDS = (
+    "competitor_id", "brand_id", "product_id", "retailer_id", "product_name", "sku", "pack_size",
+    "category", "regular_price", "promo_price", "currency", "discount_percentage", "promotion_type",
+    "buy_quantity", "free_quantity", "bundle_quantity", "cashback_amount", "voucher_amount",
+    "minimum_purchase_amount", "minimum_purchase_quantity", "gift_description", "promotion_title",
+    "promotion_description", "channel", "geography",
+)
+
+
+def _refresh_canonical_fields(promotion: Promotion, item: Any) -> None:
+    """Apply only explicit, validated source values; never let omissions erase data."""
+    for field in _REFRESHABLE_FIELDS:
+        if not hasattr(item, field):
+            continue
+        value = getattr(item, field)
+        if value is not None:
+            setattr(promotion, field, value)
+
+
 def upsert_promotion_observation(db: Session, *, document_id, item: Any,
                                  resolved_entities: Optional[dict[str, Any]] = None,
                                  raw_text: Optional[str] = None,
@@ -90,12 +111,7 @@ def upsert_promotion_observation(db: Session, *, document_id, item: Any,
                                  source_url: Optional[str] = None,
                                  extraction_metadata: Optional[dict[str, Any]] = None,
                                  source_reliability: float = 0.85) -> tuple[Promotion, PromotionObservation, bool]:
-    """Validate, canonicalize, rank, and upsert a promotion observation.
-
-    The caller owns the transaction. v2 source identity prevents entity-ID or
-    copy-text changes from fragmenting a campaign while period compatibility
-    keeps non-overlapping recurring campaigns separate.
-    """
+    """Validate, canonicalize, rank, and upsert a promotion observation."""
     is_valid, reason, start_dt, end_dt, effective_discount = PromotionValidator.validate_and_normalize(item)
     if not is_valid:
         raise ValueError(f"Invalid promotion '{getattr(item, 'product_name', '')}': {reason}")
@@ -114,16 +130,13 @@ def upsert_promotion_observation(db: Session, *, document_id, item: Any,
         Promotion.identity_fingerprint == fingerprint,
         Promotion.identity_version == IDENTITY_VERSION,
     ).one_or_none())
-
     if promotion is None:
         source_candidates = (db.query(Promotion).filter(
             Promotion.source_identity_fingerprint == source_fingerprint,
             Promotion.identity_version == SOURCE_IDENTITY_VERSION,
         ).order_by(Promotion.last_seen_at.desc()).all())
         for candidate in source_candidates:
-            if source_identity_periods_compatible(source_data, {
-                "start_date": candidate.start_date, "end_date": candidate.end_date,
-            }):
+            if source_identity_periods_compatible(source_data, {"start_date": candidate.start_date, "end_date": candidate.end_date}):
                 promotion = candidate
                 break
 
@@ -140,21 +153,7 @@ def upsert_promotion_observation(db: Session, *, document_id, item: Any,
         promotion.source_identity_fingerprint = source_fingerprint
         promotion.identity_version = SOURCE_IDENTITY_VERSION
 
-    # Only source-provided non-null values can improve canonical fields.
-    # In particular, a later observation with missing dates must not erase
-    # dates established by an earlier, stronger observation.
-    for field in (
-        "competitor_id", "brand_id", "product_id", "retailer_id", "product_name", "sku", "pack_size",
-        "category", "regular_price", "promo_price", "currency", "discount_percentage", "promotion_type",
-        "buy_quantity", "free_quantity", "bundle_quantity", "cashback_amount", "voucher_amount",
-        "minimum_purchase_amount", "minimum_purchase_quantity", "gift_description", "promotion_title",
-        "promotion_description", "channel", "geography",
-    ):
-        if hasattr(item, field):
-            value = getattr(item, field)
-            if value is not None:
-                setattr(promotion, field, value)
-
+    _refresh_canonical_fields(promotion, item)
     if resolved_entities:
         for field in ("competitor_id", "brand_id", "product_id", "retailer_id"):
             value = resolved_entities.get(field)
