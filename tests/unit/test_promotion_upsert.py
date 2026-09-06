@@ -122,8 +122,8 @@ def test_missing_discount_does_not_erase_known_canonical_discount():
     )
 
     updated, _, created = upsert_promotion_observation(
-        db, document_id=uuid4(), item=_item(discount_percentage=None, promo_price=None),
-        raw_text="Roma Kelapa 300g promo", observed_at=observed_at,
+        db, document_id=uuid4(), item=_item(regular_price=None, discount_percentage=None),
+        raw_text="Roma Kelapa 300g promo Rp7.000", observed_at=observed_at,
     )
     assert created is False
     assert updated is promotion
