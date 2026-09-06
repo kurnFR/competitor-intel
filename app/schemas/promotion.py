@@ -13,6 +13,21 @@ class EvidenceOut(BaseModel):
     captured_at: datetime
 
 
+class PromotionChangeEventOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    promotion_id: uuid.UUID
+    previous_promotion_id: Optional[uuid.UUID] = None
+    observation_id: Optional[uuid.UUID] = None
+    document_id: Optional[uuid.UUID] = None
+    event_type: str
+    field_name: Optional[str] = None
+    previous_value: Optional[Dict[str, Any]] = None
+    new_value: Optional[Dict[str, Any]] = None
+    change_impact: float
+    observed_at: datetime
+
+
 class Top10PromotionItem(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
@@ -76,6 +91,7 @@ class PromotionDetailOut(BaseModel):
     first_seen_at: datetime
     last_seen_at: datetime
     evidence_items: List[EvidenceOut] = []
+    change_events: List[PromotionChangeEventOut] = []
 
 
 class StatsResponse(BaseModel):
