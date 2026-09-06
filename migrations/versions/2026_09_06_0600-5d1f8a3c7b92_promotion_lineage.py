@@ -5,6 +5,7 @@ Revises: 4c8d2e7f1a63
 """
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 revision = "5d1f8a3c7b92"
 down_revision = "4c8d2e7f1a63"
@@ -15,7 +16,7 @@ depends_on = None
 def upgrade() -> None:
     op.add_column(
         "promotions",
-        sa.Column("supersedes_promotion_id", sa.UUID(), nullable=True),
+        sa.Column("supersedes_promotion_id", postgresql.UUID(as_uuid=True), nullable=True),
         schema="competitor_intel",
     )
     op.create_foreign_key(
