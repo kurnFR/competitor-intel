@@ -1,33 +1,31 @@
-"""Detect material changes between canonical promotion state and a new observation.
-
-Changes are reported separately from canonical persistence so marketing can see
-real commercial changes without silently treating every extraction difference
-as a new promotion.
-"""
-
+"""Detect material promotion changes for marketing intelligence."""
 from __future__ import annotations
 
 from typing import Any
 
-
 TRACKED_FIELDS = (
-    "regular_price",
-    "promo_price",
-    "discount_percentage",
-    "promotion_type",
-    "buy_quantity",
-    "free_quantity",
-    "bundle_quantity",
-    "cashback_amount",
-    "voucher_amount",
-    "minimum_purchase_amount",
-    "minimum_purchase_quantity",
-    "gift_description",
-    "channel",
-    "geography",
-    "start_date",
-    "end_date",
+    "regular_price", "promo_price", "discount_percentage", "promotion_type",
+    "buy_quantity", "free_quantity", "bundle_quantity", "cashback_amount",
+    "voucher_amount", "minimum_purchase_amount", "minimum_purchase_quantity",
+    "gift_description", "channel", "geography", "start_date", "end_date",
 )
+
+_PRICE_FIELDS = {"regular_price", "promo_price", "discount_percentage", "cashback_amount", "voucher_amount"}
+_MECHANIC_FIELDS = {
+    "promotion_type", "buy_quantity", "free_quantity", "bundle_quantity",
+    "minimum_purchase_amount", "minimum_purchase_quantity", "gift_description",
+}
+_DATE_FIELDS = {"start_date", "end_date"}
+
+
+def _event_type(field: str) -> str:
+    if field in _PRICE_FIELDS:
+        return "PRICE_OR_VALUE_CHANGED"
+    if field in _MECHANIC_FIELDS:
+        return "MECHANIC_CHANGED"
+    if field in _DATE_FIELDS:
+        return "DATES_CHANGED"
+    return "TERMS_CHANGED"
 
 
 def detect_promotion_changes(promotion: Any, item: Any) -> list[dict[str, Any]]:
@@ -41,6 +39,7 @@ def detect_promotion_changes(promotion: Any, item: Any) -> list[dict[str, Any]]:
         if new_value is None or new_value == old_value:
             continue
         changes.append({
+            "event_type": _event_type(field),
             "field": field,
             "previous_value": old_value,
             "new_value": new_value,
