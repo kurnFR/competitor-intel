@@ -8,6 +8,7 @@ from typing import Any, Optional
 from sqlalchemy.orm import Session
 
 from app.models.promotion import Promotion, PromotionEvidence, PromotionObservation
+from app.services.promotions.change_detection import detect_promotion_changes
 from app.services.promotions.identity import (
     IDENTITY_VERSION,
     SOURCE_IDENTITY_VERSION,
@@ -149,10 +150,15 @@ def upsert_promotion_observation(db: Session, *, document_id, item: Any,
         )
         db.add(promotion)
         db.flush()
+        changes: list[dict[str, Any]] = []
     else:
+        # Detect against canonical state before refreshing it; otherwise the
+        # change feed would always see the already-updated values.
+        changes = detect_promotion_changes(promotion, item)
         promotion.source_identity_fingerprint = source_fingerprint
         promotion.identity_version = SOURCE_IDENTITY_VERSION
 
+    change_impact = PromotionScorer.calculate_change_impact(changes)
     _refresh_canonical_fields(promotion, item)
     if resolved_entities:
         for field in ("competitor_id", "brand_id", "product_id", "retailer_id"):
@@ -165,7 +171,10 @@ def upsert_promotion_observation(db: Session, *, document_id, item: Any,
     if end_dt is not None:
         promotion.end_date = end_dt
 
-    promotion.discount_percentage = effective_discount
+    # A missing discount means the source did not provide enough information
+    # to recompute it. Preserve the last known canonical value in that case.
+    if effective_discount is not None:
+        promotion.discount_percentage = effective_discount
     promotion.status = evaluate_lifecycle(promotion.start_date, promotion.end_date, now=now)
     promotion.source_reliability = max(promotion.source_reliability or 0.0, source_reliability)
     promotion.ai_confidence = max(promotion.ai_confidence or 0.0, getattr(item, "confidence", 0.0) or 0.0)
@@ -176,6 +185,7 @@ def upsert_promotion_observation(db: Session, *, document_id, item: Any,
         promotion_type=promotion.promotion_type, discount_percentage=promotion.discount_percentage,
         source_reliability=promotion.source_reliability, last_seen_at=now, category=promotion.category,
         competitor_importance=competitor_importance, ai_confidence=promotion.ai_confidence,
+        change_impact=change_impact,
     )
     promotion.last_seen_at = max(promotion.last_seen_at, now)
     promotion.updated_at = now
