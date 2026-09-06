@@ -4,6 +4,7 @@ from app.services.promotions.identity import (
     SOURCE_IDENTITY_VERSION,
     promotion_source_identity_fingerprint,
     promotion_source_identity_payload,
+    source_identity_periods_compatible,
 )
 
 
@@ -41,6 +42,31 @@ class PromotionSourceIdentityTests(unittest.TestCase):
             promotion_source_identity_fingerprint(self.source),
             promotion_source_identity_fingerprint(changed),
         )
+        self.assertTrue(source_identity_periods_compatible(self.source, changed))
+
+    def test_non_overlapping_recurring_campaigns_are_not_compatible(self) -> None:
+        recurring = dict(self.source)
+        recurring.update({
+            "promotion_title": "Oktober Hemat",
+            "start_date": "2026-10-01",
+            "end_date": "2026-10-31",
+        })
+        self.assertEqual(
+            promotion_source_identity_fingerprint(self.source),
+            promotion_source_identity_fingerprint(recurring),
+        )
+        self.assertFalse(source_identity_periods_compatible(self.source, recurring))
+
+    def test_adjacent_campaigns_without_overlap_are_not_compatible(self) -> None:
+        next_campaign = dict(self.source)
+        next_campaign.update({"start_date": "2026-10-01", "end_date": "2026-10-15"})
+        self.assertFalse(source_identity_periods_compatible(self.source, next_campaign))
+
+    def test_missing_dates_remain_compatible_as_uncertain(self) -> None:
+        unknown = dict(self.source)
+        unknown["start_date"] = None
+        unknown["end_date"] = None
+        self.assertTrue(source_identity_periods_compatible(self.source, unknown))
 
     def test_retailer_boundary_is_preserved(self) -> None:
         changed = dict(self.source)
