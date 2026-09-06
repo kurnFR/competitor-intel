@@ -5,8 +5,9 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
 from app.db.session import get_db
 from app.models.promotion import Promotion, PromotionEvidence
+from app.models.promotion_change import PromotionChangeEvent
 from app.models.entity import Competitor, Brand, Retailer
-from app.schemas.promotion import Top10Response, Top10PromotionItem, PromotionDetailOut, StatsResponse
+from app.schemas.promotion import Top10Response, Top10PromotionItem, PromotionDetailOut, PromotionChangeEventOut, StatsResponse
 
 router = APIRouter()
 VERIFIED_CHANNELS = {"Retail", "Modern Trade", "General Trade", "E-commerce", "Wholesale", "Distributor", "Foodservice", "N/A"}
@@ -78,12 +79,33 @@ def get_top10_promotions(
     return Top10Response(generated_at=now.isoformat(), count=len(items), promotions=items)
 
 
+@router.get("/{promotion_id}/changes", response_model=List[PromotionChangeEventOut])
+def get_promotion_changes(
+    promotion_id: str,
+    event_type: Optional[str] = Query(None, description="Filter event type, e.g. PRICE_OR_VALUE_CHANGED"),
+    days: int = Query(90, ge=1, le=3650, description="History window in days"),
+    limit: int = Query(100, ge=1, le=500, description="Maximum events to return"),
+    db: Session = Depends(get_db),
+):
+    if not db.query(Promotion).filter(Promotion.id == promotion_id).first():
+        raise HTTPException(status_code=404, detail="Promotion not found")
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    query = db.query(PromotionChangeEvent).filter(
+        PromotionChangeEvent.promotion_id == promotion_id,
+        PromotionChangeEvent.observed_at >= cutoff,
+    )
+    if event_type:
+        query = query.filter(PromotionChangeEvent.event_type == event_type)
+    return query.order_by(PromotionChangeEvent.observed_at.desc()).limit(limit).all()
+
+
 @router.get("/{promotion_id}", response_model=PromotionDetailOut)
 def get_promotion_detail(promotion_id: str, db: Session = Depends(get_db)):
     p = db.query(Promotion).filter(Promotion.id == promotion_id).first()
     if not p:
         raise HTTPException(status_code=404, detail="Promotion not found")
     evidence = db.query(PromotionEvidence).filter(PromotionEvidence.promotion_id == p.id).all()
+    changes = db.query(PromotionChangeEvent).filter(PromotionChangeEvent.promotion_id == p.id).order_by(PromotionChangeEvent.observed_at.desc()).limit(50).all()
     return PromotionDetailOut(
         id=p.id, product_name=p.product_name, brand=p.brand.name if p.brand else None,
         competitor=p.competitor.name if p.competitor else None, category=p.category, pack_size=p.pack_size,
@@ -92,5 +114,5 @@ def get_promotion_detail(promotion_id: str, db: Session = Depends(get_db)):
         promo_price=p.promo_price, discount_percentage=p.discount_percentage, start_date=p.start_date,
         end_date=p.end_date, status=p.status, supersedes_promotion_id=p.supersedes_promotion_id,
         source_reliability=p.source_reliability, ai_confidence=p.ai_confidence, rank_score=p.rank_score,
-        first_seen_at=p.first_seen_at, last_seen_at=p.last_seen_at, evidence_items=evidence,
+        first_seen_at=p.first_seen_at, last_seen_at=p.last_seen_at, evidence_items=evidence, change_events=changes,
     )
