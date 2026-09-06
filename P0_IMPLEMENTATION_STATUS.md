@@ -38,6 +38,10 @@ The resolver avoids silent entity creation and weak fuzzy matches. Outcomes are 
 
 `scripts/run_pipeline.py` uses the richer extraction result, hashes the raw model response, resolves entities conservatively, resolves products within the canonical brand boundary, validates/canonicalizes through the shared upsert path, persists evidence and entity review items, and commits per document. The main path no longer manually inserts observations before deduplication or routes through the legacy promotion deduplicator.
 
+### P0-G — Change-aware marketing ranking ✅
+
+`app/services/promotions/change_detection.py` detects material price/value, mechanic, date, and terms changes before canonical refresh. `PromotionScorer.calculate_change_impact()` converts those changes into a bounded ranking signal, and the canonical upsert feeds that signal into `rank_score`. The ranking remains dominated by promotion strength while giving material changes enough weight to surface above otherwise similar stale promotions. Missing source fields still do not erase known canonical values, including a previously known discount. Regression coverage is in `tests/unit/test_promotion_scoring.py` and `tests/unit/test_promotion_upsert.py`.
+
 ## P1 work started — crawler reliability and acquisition foundation 🟡
 
 `app/services/crawler/base.py` has TLS verification, bounded transient retries, URL canonicalization, duplicate-document detection, source status timestamps, durable initial retry state, per-source rate limiting, and a new binary-content fetch path.
