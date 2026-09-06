@@ -45,6 +45,45 @@ def _normalize_datetime(value: Any) -> str | None:
     return _normalize_text(value)
 
 
+def _as_date(value: Any) -> date | None:
+    """Parse supported date/datetime values for temporal identity checks."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return date.fromisoformat(text[:10])
+    except ValueError:
+        return None
+
+
+def source_identity_periods_compatible(left: dict[str, Any], right: dict[str, Any]) -> bool:
+    """Return whether two source observations can represent one campaign.
+
+    The v2 fingerprint intentionally ignores dates so minor copy/date corrections
+    do not fragment a promotion. That alone would incorrectly merge recurring
+    identical campaigns, however. When both observations provide parseable date
+    ranges, require the ranges to overlap. Missing dates remain compatible because
+    absence is uncertainty, not evidence that the campaigns are different.
+    """
+    left_start = _as_date(left.get("start_date"))
+    left_end = _as_date(left.get("end_date"))
+    right_start = _as_date(right.get("start_date"))
+    right_end = _as_date(right.get("end_date"))
+
+    if left_start is None or right_start is None:
+        return True
+
+    left_end = left_end or left_start
+    right_end = right_end or right_start
+    return max(left_start, right_start) <= min(left_end, right_end)
+
+
 def _hash_payload(payload: dict[str, Any]) -> str:
     encoded = json.dumps(
         payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True
