@@ -40,7 +40,9 @@ def get_top10_promotions(
         .outerjoin(Retailer, Promotion.retailer_id == Retailer.id)
         .filter(
             Promotion.status == "ACTIVE",
-            Promotion.last_seen_at >= cutoff,
+            Promotion.last_verified_at.is_not(None),
+            Promotion.last_verified_at >= cutoff,
+            (Promotion.start_date == None) | (Promotion.start_date <= now),
             (Promotion.end_date == None) | (Promotion.end_date >= now)
         )
     )
@@ -55,7 +57,7 @@ def get_top10_promotions(
         query = query.filter(Promotion.channel == normalized_channel)
     if q:
         keyword = f"%{q}%"
-        query = query.filter(or_(Promotion.product_name.ilike(keyword), Promotion.promotion_type.ilike(keyword), Promotion.category.ilike(keyword), Promotion.channel.ilike(keyword), Promotion.geography.ilike(keyword), Retailer.name.ilike(keyword), Competitor.name.ilike(keyword), Brand.name.ilike(keyword)))
+        query = query.filter(or_(Promotion.product_name.ilike(keyword), Promotion.promotion_type.ilike(keyword), Promotion.category.ilike(keyword), Promotion.channel.ilike(keyword), Promotion.legacy_geography.ilike(keyword), Retailer.name.ilike(keyword), Competitor.name.ilike(keyword), Brand.name.ilike(keyword)))
     if brand:
         query = query.filter(Brand.name.ilike(f"%{brand}%"))
     if competitor:
@@ -85,7 +87,7 @@ def get_top10_promotions(
                 retailer=p.retailer.name if p.retailer else None,
                 outlet=p.retailer.name if p.retailer else None,
                 channel=display_channel(p.channel),
-                geography=p.geography,
+                geography=p.legacy_geography,
                 promotion_type=p.promotion_type,
                 buy_quantity=p.buy_quantity,
                 free_quantity=p.free_quantity,
@@ -101,7 +103,7 @@ def get_top10_promotions(
                 evidence_quote=latest_evidence.evidence_text if latest_evidence else None,
                 source_url=latest_evidence.source_url if latest_evidence else None,
                 source_status=("Verified source" if latest_evidence and latest_evidence.source_url and latest_evidence.evidence_text else "Unverified source"),
-                last_verified=p.last_seen_at
+                last_verified=p.last_verified_at
             )
         )
 
