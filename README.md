@@ -4,6 +4,8 @@ AI-powered competitive promotion intelligence for the Indonesian FMCG snack mark
 
 > **Documentation freeze:** These documents define the requirements that implementation must follow. Do not add mock promotion data or silently invent missing commercial facts.
 
+> **Implementation audit:** `IMPLEMENTATION_AUDIT.md` compares the current code/migrations with this documentation freeze. The repository is an MVP foundation; the audit identifies schema and crawler changes that must be completed before expanding source coverage.
+
 ## What the system does
 
 The platform discovers and monitors multiple public sources that may contain competitor product, price and promotion information. It converts source content into structured observations, validates the facts, resolves entities, preserves geography, deduplicates without losing regional differences, and exposes trusted data to the UI.
@@ -193,6 +195,7 @@ See [`UI_UX_DESIGN.md`](UI_UX_DESIGN.md).
 | `DATA_QUALITY.md` | Validation, provenance, freshness and trust rules |
 | `UI_UX_DESIGN.md` | Professional dashboard UX and interaction requirements |
 | `RUNBOOK.md` | Operational procedures, troubleshooting and production checks |
+| `IMPLEMENTATION_AUDIT.md` | Current-code gap analysis and implementation order before production build |
 
 ## Setup
 
