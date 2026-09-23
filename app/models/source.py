@@ -17,6 +17,9 @@ class SourceRegistry(Base):
     base_url: Mapped[str] = mapped_column(Text, nullable=False)
     source_type: Mapped[str] = mapped_column(String(50), default="RETAILER")
     tier: Mapped[str] = mapped_column(String(20), default="TIER_1")
+    lifecycle_status: Mapped[str] = mapped_column(String(30), default="CANDIDATE", index=True)
+    access_mode: Mapped[str] = mapped_column(String(30), default="HTTP", index=True)
+    access_status: Mapped[str] = mapped_column(String(30), default="UNKNOWN", index=True)
     reliability_score: Mapped[float] = mapped_column(Float, default=1.0)
     country: Mapped[str] = mapped_column(String(10), default="ID")
     language: Mapped[str] = mapped_column(String(10), default="id")
@@ -28,11 +31,43 @@ class SourceRegistry(Base):
     last_crawled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     last_success_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     last_error_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    consecutive_failures: Mapped[int] = mapped_column(Integer, default=0)
+    last_yield_count: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     crawl_jobs: Mapped[List["CrawlJob"]] = relationship("CrawlJob", back_populates="source", cascade="all, delete-orphan")
     documents: Mapped[List["CrawlDocument"]] = relationship("CrawlDocument", back_populates="source", cascade="all, delete-orphan")
+    urls: Mapped[List["SourceUrl"]] = relationship("SourceUrl", back_populates="source", cascade="all, delete-orphan")
+
+
+class SourceUrl(Base):
+    __tablename__ = "source_urls"
+    __table_args__ = (
+        Index("idx_source_urls_due", "is_active", "next_crawl_at"),
+        Index("idx_source_urls_source", "source_id"),
+        {"schema": "competitor_intel"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("competitor_intel.source_registry.id", ondelete="CASCADE"), nullable=False, index=True)
+    url: Mapped[str] = mapped_column(Text, nullable=False)
+    canonical_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    page_type: Mapped[str] = mapped_column(String(50), default="OTHER")
+    category: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    priority: Mapped[int] = mapped_column(Integer, default=5)
+    frequency_minutes: Mapped[int] = mapped_column(Integer, default=360)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    last_crawled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_changed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_content_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    next_crawl_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    consecutive_failures: Mapped[int] = mapped_column(Integer, default=0)
+    last_http_status: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    source: Mapped["SourceRegistry"] = relationship("SourceRegistry", back_populates="urls")
 
 
 class CrawlJob(Base):
@@ -41,6 +76,7 @@ class CrawlJob(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     source_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("competitor_intel.source_registry.id", ondelete="CASCADE"), nullable=False, index=True)
+    source_url_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("competitor_intel.source_urls.id", ondelete="SET NULL"), nullable=True, index=True)
     url: Mapped[str] = mapped_column(Text, nullable=False)
     job_type: Mapped[str] = mapped_column(String(50), default="CATALOG")
     status: Mapped[str] = mapped_column(String(50), default="QUEUED", index=True)
@@ -61,7 +97,7 @@ class CrawlDocument(Base):
     __table_args__ = (
         Index("idx_crawl_documents_url", "url"),
         Index("idx_crawl_documents_content_hash", "content_hash"),
-        {"schema": "competitor_intel"}
+        {"schema": "competitor_intel"},
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
