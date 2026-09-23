@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from app.db.session import SessionLocal
 from app.models.entity import Competitor, Brand, Product, Retailer
-from app.models.source import SourceRegistry
+from app.models.source import SourceRegistry, SourceUrl
 
 
 def normalize(name: str) -> str:
@@ -230,6 +230,24 @@ def seed_reference_data():
                     is_active=True
                 )
                 db.add(src)
+
+        db.flush()
+
+        # Approved crawl targets are explicit registry records, not hard-coded crawler URLs.
+        for s_data in sources:
+            src = db.query(SourceRegistry).filter(SourceRegistry.domain == s_data["domain"]).first()
+            if src and src.lifecycle_status == "ACTIVE":
+                existing_url = db.query(SourceUrl).filter(SourceUrl.source_id == src.id, SourceUrl.url == s_data["base_url"]).first()
+                if not existing_url:
+                    db.add(SourceUrl(source_id=src.id, url=s_data["base_url"], canonical_url=s_data["base_url"], page_type="PROMOTION", category=s_data["category"], priority=1, frequency_minutes=s_data["crawl_frequency_minutes"], is_active=True))
+                if src.domain == "superindo.co.id":
+                    second = "https://www.superindo.co.id/promosi/promo-koran"
+                    if not db.query(SourceUrl).filter(SourceUrl.source_id == src.id, SourceUrl.url == second).first():
+                        db.add(SourceUrl(source_id=src.id, url=second, canonical_url=second, page_type="PROMOTION", category=s_data["category"], priority=2, frequency_minutes=s_data["crawl_frequency_minutes"], is_active=True))
+                if src.domain == "hemat.id":
+                    for page in ["https://www.hemat.id/katalog/biskuit-kraker-wafer/?page=1", "https://www.hemat.id/katalog/biskuit-kraker-wafer/?page=2"]:
+                        if not db.query(SourceUrl).filter(SourceUrl.source_id == src.id, SourceUrl.url == page).first():
+                            db.add(SourceUrl(source_id=src.id, url=page, canonical_url=page, page_type="PROMOTION", category=s_data["category"], priority=2, frequency_minutes=s_data["crawl_frequency_minutes"], is_active=True))
 
         db.commit()
         print("✅ Seeding completed successfully!")
