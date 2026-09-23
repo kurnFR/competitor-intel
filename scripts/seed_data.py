@@ -227,7 +227,9 @@ def seed_reference_data():
                     crawl_frequency_minutes=s_data["crawl_frequency_minutes"],
                     country="ID",
                     language="id",
-                    is_active=True
+                    is_active=s_data["domain"] in {"superindo.co.id", "hemat.id"},
+                    lifecycle_status="ACTIVE" if s_data["domain"] in {"superindo.co.id", "hemat.id"} else "CANDIDATE",
+                    access_status="UNKNOWN"
                 )
                 db.add(src)
 
