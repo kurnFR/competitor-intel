@@ -2,7 +2,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 from sqlalchemy.orm import Session
-from app.models.promotion import Promotion, PromotionEvidence, PromotionGeography
+from app.models.promotion import Promotion, PromotionEvidence, PromotionGeography, PromotionObservation
 from app.models.entity import Competitor, Brand, Product, Retailer
 from app.models.source import CrawlDocument
 from app.models.geography import Geography
@@ -103,6 +103,12 @@ class PromotionDeduplicator:
         channel = item.channel or (retailer.channel_type if retailer else None)
 
         if matched_promo:
+            if observation_id:
+                obs = self.db.query(PromotionObservation).filter(PromotionObservation.id == observation_id).first()
+                if obs:
+                    obs.quality_status = "VERIFIED" if quality_pass else "PENDING_REVIEW"
+                    obs.verification_status = "VERIFIED" if quality_pass else "UNVERIFIED"
+                    obs.last_verified_at = now if quality_pass else None
             matched_promo.last_seen_at = now
             matched_promo.source_reliability = max(matched_promo.source_reliability, source_reliability)
             matched_promo.ai_confidence = max(matched_promo.ai_confidence, item.confidence)
@@ -171,6 +177,12 @@ class PromotionDeduplicator:
         self.db.add(new_promo)
         self.db.flush()
         self._attach_geography(new_promo, item.geography, now)
+        if observation_id:
+            obs = self.db.query(PromotionObservation).filter(PromotionObservation.id == observation_id).first()
+            if obs:
+                obs.quality_status = "VERIFIED" if quality_pass else "PENDING_REVIEW"
+                obs.verification_status = "VERIFIED" if quality_pass else "UNVERIFIED"
+                obs.last_verified_at = now if quality_pass else None
         self.db.add(PromotionEvidence(
             promotion_id=new_promo.id,
             observation_id=observation_id,
