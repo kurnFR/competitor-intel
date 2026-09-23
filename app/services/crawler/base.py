@@ -73,7 +73,8 @@ class BaseCrawler(ABC):
         text_content: str,
         title: Optional[str] = None,
         error_message: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
+        source_url_id: Optional[uuid.UUID] = None
     ) -> Optional[CrawlDocument]:
         """
         Creates CrawlJob and CrawlDocument records in database.
@@ -84,6 +85,7 @@ class BaseCrawler(ABC):
         job_status = "SUCCESS" if (http_status == 200 and not error_message) else "FAILED"
         job = CrawlJob(
             source_id=self.source.id,
+            source_url_id=source_url_id,
             url=url,
             job_type="CATALOG",
             status=job_status,
@@ -117,11 +119,30 @@ class BaseCrawler(ABC):
             # Update source stats
             self.source.last_crawled_at = now
             self.source.last_success_at = now
+            self.source.consecutive_failures = 0
+            if source_url_id:
+                target = self.db.query(__import__('app.models.source', fromlist=['SourceUrl']).SourceUrl).filter(__import__('app.models.source', fromlist=['SourceUrl']).SourceUrl.id == source_url_id).first()
+                if target:
+                    target.last_crawled_at = now
+                    target.last_changed_at = now if target.last_content_hash != content_hash else target.last_changed_at
+                    target.last_content_hash = content_hash
+                    target.consecutive_failures = 0
+                    target.last_http_status = http_status
+                    from datetime import timedelta
+                    target.next_crawl_at = now + timedelta(minutes=max(1, target.frequency_minutes))
             self.db.flush()
         else:
             self.source.last_crawled_at = now
             self.source.last_error_at = now
-            self.db.flush()
+            self.source.consecutive_failures += 1
+            if source_url_id:
+                target = self.db.query(__import__('app.models.source', fromlist=['SourceUrl']).SourceUrl).filter(__import__('app.models.source', fromlist=['SourceUrl']).SourceUrl.id == source_url_id).first()
+                if target:
+                    target.consecutive_failures += 1
+                    target.last_http_status = http_status
+                    from datetime import timedelta
+                    backoff = min(1440, max(15, target.frequency_minutes * (2 ** min(target.consecutive_failures, 5))))
+                    target.next_crawl_at = now + timedelta(minutes=backoff)
 
         self.db.commit()
         return doc
