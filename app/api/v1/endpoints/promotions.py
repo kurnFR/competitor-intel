@@ -130,6 +130,7 @@ def get_promotion_detail(promotion_id: str, db: Session = Depends(get_db)):
         pack_size=p.pack_size,
         retailer=p.retailer.name if p.retailer else None,
         channel=p.channel,
+        geography=p.legacy_geography,
         promotion_type=p.promotion_type,
         buy_quantity=p.buy_quantity,
         free_quantity=p.free_quantity,
@@ -144,5 +145,6 @@ def get_promotion_detail(promotion_id: str, db: Session = Depends(get_db)):
         rank_score=p.rank_score,
         first_seen_at=p.first_seen_at,
         last_seen_at=p.last_seen_at,
+        last_verified_at=p.last_verified_at,
         evidence_items=evidence
     )
