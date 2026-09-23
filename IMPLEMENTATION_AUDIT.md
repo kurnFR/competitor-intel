@@ -648,3 +648,22 @@ Add individually assessed public sources and browser adapters where appropriate.
 The current repository is a useful MVP foundation, but **it should not be extended by adding more crawler classes yet**.
 
 First correct the source registry, URL registry, geography, observation/deduplication and quality-gate foundations. Then implement one real end-to-end source and use that vertical slice as the acceptance test for every subsequent source.
+
+
+## Phase 0 implementation update — 2026-09-23
+
+The first foundation corrections are now committed on this branch:
+
+- Crawlers consume registered `source_urls` rather than hard-coded URL lists.
+- URL-level crawl state now tracks content hash, last crawl/change, HTTP status, failures, and next crawl time with backoff.
+- Source lifecycle/access gates are enforced before scheduled crawling.
+- Unknown sources no longer fall through to a generic aggregator adapter.
+- AI extraction now preserves source-stated geography and channel as optional facts rather than inventing defaults.
+- Promotion reconciliation now keeps material dimensions in the identity match and does not overwrite a canonical promotion with a materially different observation.
+- Evidence records link back to the originating promotion observation.
+- Canonical promotions become `ACTIVE` only after the deterministic evidence/validity quality gate passes; otherwise they remain `PENDING_REVIEW`.
+- `last_verified_at` is now distinct from `last_seen_at`, and the Top 10 endpoint filters on verification freshness plus validity.
+- The pre-production migration history was consolidated to one current-schema bootstrap migration so the branch no longer has competing Alembic roots.
+- Seed data now creates explicit source URL registry entries and only activates sources with an implemented adapter.
+
+Remaining before the first production crawl: run the application test suite against a real empty `competitor_intel` PostgreSQL database, add explicit regional price observation structures, add browser/JS rendering where an approved source requires it, add source/review/evidence API endpoints, and implement the remaining approved source adapters.
