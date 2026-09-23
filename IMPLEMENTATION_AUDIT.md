@@ -4,7 +4,7 @@
 
 This document compares the current repository implementation on `docs/production-architecture-v2` with the frozen documentation set.
 
-**Status: DO NOT START NEW FEATURE IMPLEMENTATION YET.**
+**Status: PHASE 0 IN PROGRESS — database/source/geography foundations landed; orchestration and quality-gate work remain.**
 
 The repository already contains a useful MVP vertical slice, but several implementation details contradict the new multi-source, geography-first, evidence-first architecture. These must be corrected before production implementation.
 
@@ -31,6 +31,31 @@ The repository already contains a useful MVP vertical slice, but several impleme
 | Mock data | Dashboard appears API-backed | Keep no-mock rule and add tests | KEEP + TEST |
 | Seed data | Hard-coded sources and products | Seed only approved initial configuration; no fake promotion facts | CHANGE |
 | Tests | Architecture requires them | Add migration, integration, crawler and quality-gate tests | ADD |
+
+### Phase 0 implementation checkpoint
+
+Completed on this branch:
+
+- source registry now carries lifecycle/access state and crawl health counters.
+- source_urls is a first-class persisted crawl-target registry.
+- crawl jobs can reference a registered URL target.
+- geography is modeled relationally through geographies and promotion_geographies.
+- source geography wording is retained on the promotion-geography relation; missing geography is not defaulted to Indonesia.
+- canonical promotions now separate last_seen_at from last_verified_at.
+- observations carry verification/quality state and validity dates.
+- evidence can point back to the immutable observation that produced it.
+- monetary promotion fields use PostgreSQL NUMERIC.
+- the first Alembic migration bootstraps an empty competitor_intel database from the declarative schema.
+
+Still required before production crawling:
+
+- replace source-level crawler orchestration with due source_urls scheduling.
+- implement explicit adapter selection and browser fallback.
+- implement deterministic quality gate.
+- rewrite deduplication around material commercial dimensions.
+- migrate/update existing seed data and API contracts.
+- add database/integration/source-fixture tests.
+- run migration and application tests against a clean PostgreSQL competitor_intel database.
 
 ## 1. Database and schema
 
@@ -597,15 +622,15 @@ Add individually assessed public sources and browser adapters where appropriate.
 
 ## 21. Definition of done before production crawling
 
-- [ ] `source_urls` exists
-- [ ] source lifecycle exists
-- [ ] access status exists
+- [x] `source_urls` exists
+- [x] source lifecycle exists
+- [x] access status exists
 - [ ] browser adapter exists where needed
-- [ ] geography is relational
+- [x] geography is relational
 - [ ] regional prices remain distinct
-- [ ] `last_verified_at` exists
-- [ ] money uses NUMERIC
-- [ ] observations are immutable
+- [x] `last_verified_at` exists
+- [x] money uses NUMERIC
+- [x] observations are immutable
 - [ ] dedup key includes material commercial dimensions
 - [ ] failed crawl != zero promotions
 - [ ] explicit expiry wins
