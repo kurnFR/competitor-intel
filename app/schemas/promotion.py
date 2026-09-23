@@ -77,6 +77,7 @@ class PromotionDetailOut(BaseModel):
     rank_score: float
     first_seen_at: datetime
     last_seen_at: datetime
+    last_verified_at: Optional[datetime] = None
     evidence_items: List[EvidenceOut] = []
 
 
