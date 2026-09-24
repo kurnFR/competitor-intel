@@ -2,7 +2,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 from sqlalchemy.orm import Session
-from app.models.promotion import Promotion, PromotionEvidence, PromotionGeography, PromotionObservation
+from app.models.promotion import Promotion, PromotionEvidence, PromotionGeography, PromotionObservation, PromotionPriceObservation
 from app.models.entity import Competitor, Brand, Product, Retailer
 from app.models.source import CrawlDocument
 from app.models.geography import Geography
@@ -81,6 +81,32 @@ class PromotionDeduplicator:
             return ep
         return None
 
+
+    def _record_price_observation(self, promotion, item, doc, observation_id, retailer, now):
+        if item.regular_price is None and item.promo_price is None:
+            return
+        geography = None
+        if item.geography:
+            geography = self.db.query(Geography).filter(
+                Geography.normalized_name == normalize_str(item.geography)
+            ).first()
+        quality_pass, _, _, _ = (True, None, None, None)
+        self.db.add(PromotionPriceObservation(
+            promotion_id=promotion.id,
+            observation_id=observation_id,
+            geography_id=geography.id if geography else None,
+            source_id=doc.source_id,
+            retailer_id=retailer.id if retailer else None,
+            channel=item.channel or (retailer.channel_type if retailer else None),
+            geography_source_text=item.geography,
+            regular_price=item.regular_price,
+            promo_price=item.promo_price,
+            currency="IDR",
+            captured_at=now,
+            last_verified_at=now if quality_pass else None,
+            evidence_text=item.evidence_quote,
+        ))
+
     def process_and_save(
         self,
         item: ExtractedPromotionItem,
@@ -124,6 +150,7 @@ class PromotionDeduplicator:
                 competitor_importance=comp_importance,
                 ai_confidence=matched_promo.ai_confidence,
             )
+            self._record_price_observation(matched_promo, item, doc, observation_id, retailer, now)
             evidence = PromotionEvidence(
                 promotion_id=matched_promo.id,
                 observation_id=observation_id,
@@ -183,6 +210,7 @@ class PromotionDeduplicator:
                 obs.quality_status = "VERIFIED" if quality_pass else "PENDING_REVIEW"
                 obs.verification_status = "VERIFIED" if quality_pass else "UNVERIFIED"
                 obs.last_verified_at = now if quality_pass else None
+        self._record_price_observation(new_promo, item, doc, observation_id, retailer, now)
         self.db.add(PromotionEvidence(
             promotion_id=new_promo.id,
             observation_id=observation_id,
