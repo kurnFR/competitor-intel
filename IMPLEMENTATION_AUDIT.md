@@ -680,3 +680,17 @@ Additional foundation work completed:
 - Bootstrap migration now explicitly creates the isolated `competitor_intel` schema before creating tables.
 
 The implementation still requires an actual PostgreSQL integration run before production use. The environment used for this documentation pass cannot reach GitHub/PostgreSQL over the network, so test execution has not been represented as passing.
+
+### Phase 0 follow-up — 2026-09-24 (source/review/change-detection block)
+
+Additional implementation work completed:
+
+- Added source registry APIs for lifecycle/access filtering, source health fields, source detail, and registered URL inventory/due-target views.
+- Added review queue APIs for PENDING_REVIEW promotions and explicit approve/reject decisions.
+- Review approvals now require traceable evidence text plus a source URL; decisions are persisted in an audit table.
+- Regional price observations now retain the exact crawl URL rather than only the source base URL.
+- Registered URL content hashes now produce CrawlJob.status=UNCHANGED and skip downstream document creation/extraction when the content is unchanged.
+- Monetary SQLAlchemy annotations now use Decimal alongside PostgreSQL NUMERIC columns.
+- Added a forward migration for the review audit table and regional price evidence URL.
+
+Still required before production crawling: execute migrations/tests against a real empty PostgreSQL competitor_intel database, add source-fixture/integration tests, improve adapter-specific extraction units, and implement approved discovery workflows and additional source adapters.
