@@ -1,16 +1,16 @@
 # IMPLEMENTATION_AUDIT.md — Implementation Status Against the Production Plan
 
-> **Planning baseline:** `IMPLEMENTATION_PLAN.md` is now the master execution plan. This audit records implementation reality against that plan; it is not a replacement for the product, architecture, data-quality, UX or runbook documents.
+> **Planning baseline:** `IMPLEMENTATION_PLAN.md` is the master execution plan. This audit records implementation reality against that plan.
 >
-> **Current status (2026-09-24):** planning baseline established; implementation remains **NOT PRODUCTION READY**. Existing code is a partial vertical slice and must pass the phase exit gates before production source expansion.
+> **Current status (2026-09-25):** implementation remains **NOT PRODUCTION READY**. The repository is a partial vertical slice and must pass the phase exit gates before production source expansion.
 
 ## Current phase status
 
 | Phase | Status | Notes |
 |---|---|---|
-| 0 Foundation | PARTIAL | Bootstrap now explicitly creates/drops the application schema; clean PostgreSQL migration/test execution still required. |
-| 1 Discovery & Registry | PARTIAL | Added explicit discovery, lifecycle transition, URL registration/disable controls and public-URL validation; admin/auth policy and full integration verification remain. |
-| 2 Crawling & Change Detection | PARTIAL | Manager now selects only approved active sources with due registered URL targets; full scheduler/fixture/operational verification remains. |
+| 0 Foundation | PARTIAL | Bootstrap explicitly creates/drops the application schema; clean PostgreSQL migration/test execution still required. |
+| 1 Discovery & Registry | PARTIAL | Discovery, lifecycle transitions, URL registration/disablement, SSRF validation and admin authorization are implemented; full integration/assessment verification remains. |
+| 2 Crawling & Change Detection | PARTIAL | Due-target selection, explicit adapters, change detection, backoff and redirect validation exist; scheduler/fixture/operational verification remains. |
 | 3 Extraction & Validation | PARTIAL | AI schema and deterministic validation foundations exist; source-specific fixture coverage remains. |
 | 4 Observation & Canonicalization | PARTIAL | Observation/evidence/dedup foundations exist; full material identity/conflict test coverage remains. |
 | 5 Geography & Regional Pricing | PARTIAL | Relational geography and regional price observations exist; normalization and regression coverage remain. |
@@ -24,9 +24,15 @@
 
 ## Latest hardening completed
 
-- Fixed the bootstrap migration so \\`competitor_intel\\` is created before SQLAlchemy metadata creation.
+- Fixed the bootstrap migration so `competitor_intel` is created before SQLAlchemy metadata creation.
 - Cleaned the review/price migration and made its downgrade tolerant of already-absent objects.
-- Changed crawler orchestration to select sources only when an approved active registered URL is due.\n- Added source discovery/lifecycle endpoints with explicit adapter-gated activation and independent URL disablement.\n- Added public HTTP(S) URL validation that rejects credential-bearing and private/local/reserved targets at registration time.\n- Added source lifecycle transition unit tests.
+- Changed crawler orchestration to select sources only when an approved active registered URL is due.
+- Added source discovery/lifecycle endpoints with explicit adapter-gated activation and independent URL disablement.
+- Added public HTTP(S) URL validation that rejects credential-bearing and private/local/reserved targets.
+- Added crawl-time DNS and redirect validation to reduce SSRF risk.
+- Added source lifecycle transition unit tests.
+- Added an explicit administrative token requirement for source mutations and manual pipeline execution.
+- Restricted CORS configuration to explicit configured origins instead of wildcard access.
 - Preserved explicit adapter selection; unsupported sources still fail rather than using a generic parser.
 
 ## Immediate implementation order
@@ -76,9 +82,9 @@ These remain non-negotiable:
 - Explicit expiry overrides crawl freshness.
 - Top 10 uses `last_verified_at`, not merely `last_seen_at`.
 - UI contains no synthetic production promotion rows.
+- Administrative mutations require configured authorization.
 - Production behavior changes require documentation, migration where applicable, and tests.
 
 ## Source of truth for execution
 
 See `IMPLEMENTATION_PLAN.md` for phase objectives, dependencies, exit gates and production acceptance criteria.
-
