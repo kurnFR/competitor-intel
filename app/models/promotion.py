@@ -1,3 +1,4 @@
+from decimal import Decimal
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from app.models.entity import Competitor, Brand, Product, Retailer
@@ -55,18 +56,18 @@ class Promotion(Base):
     pack_size: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     category: Mapped[str] = mapped_column(String(100), default="BISCUIT")
 
-    regular_price: Mapped[Optional[float]] = mapped_column(Numeric(18, 2), nullable=True)
-    promo_price: Mapped[Optional[float]] = mapped_column(Numeric(18, 2), nullable=True)
+    regular_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2), nullable=True)
+    promo_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2), nullable=True)
     currency: Mapped[str] = mapped_column(String(10), default="IDR")
-    discount_percentage: Mapped[Optional[float]] = mapped_column(Numeric(7, 3), nullable=True)
+    discount_percentage: Mapped[Optional[Decimal]] = mapped_column(Numeric(7, 3), nullable=True)
 
     promotion_type: Mapped[str] = mapped_column(String(50), nullable=False, default="DISCOUNT")
     buy_quantity: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     free_quantity: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     bundle_quantity: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    cashback_amount: Mapped[Optional[float]] = mapped_column(Numeric(18, 2), nullable=True)
-    voucher_amount: Mapped[Optional[float]] = mapped_column(Numeric(18, 2), nullable=True)
-    minimum_purchase_amount: Mapped[Optional[float]] = mapped_column(Numeric(18, 2), nullable=True)
+    cashback_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2), nullable=True)
+    voucher_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2), nullable=True)
+    minimum_purchase_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2), nullable=True)
     minimum_purchase_quantity: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     gift_description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
