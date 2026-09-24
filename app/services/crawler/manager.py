@@ -15,11 +15,6 @@ def get_crawler_for_source(db: Session, source: SourceRegistry) -> BaseCrawler:
         return SuperindoCrawler(db, source)
     if adapter_key == "HEMAT":
         return AggregatorCrawler(db, source)
-    domain = (source.domain or "").lower()
-    if "superindo" in domain:
-        return SuperindoCrawler(db, source)
-    if "hemat.id" in domain or source.source_type == "PROMOTION_AGGREGATOR":
-        return AggregatorCrawler(db, source)
     raise ValueError(f"No approved source adapter for {source.name} ({source.domain}); source must not use a generic fallback")
 
 
