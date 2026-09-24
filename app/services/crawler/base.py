@@ -9,6 +9,7 @@ from bs4 import BeautifulSoup
 import trafilatura
 from sqlalchemy.orm import Session
 from app.models.source import SourceRegistry, SourceUrl, CrawlJob, CrawlDocument
+from app.services.url_security import validate_public_url
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,7 @@ class BaseCrawler(ABC):
         self.client = httpx.Client(
             headers=DEFAULT_HEADERS,
             timeout=30.0,
-            follow_redirects=True,
+            follow_redirects=False,
             verify=True
         )
 
@@ -47,8 +48,18 @@ class BaseCrawler(ABC):
                     status = response.status if response else 200
                     browser.close()
                     return status, html, None
-            resp = self.client.get(url)
-            return resp.status_code, resp.text, None
+            current_url = validate_public_url(url, resolve_dns=True)
+            for _ in range(5):
+                resp = self.client.get(current_url)
+                if resp.is_redirect or resp.status_code in {301, 302, 303, 307, 308}:
+                    location = resp.headers.get("location")
+                    if not location:
+                        return resp.status_code, resp.text, "Redirect response missing Location header"
+                    from urllib.parse import urljoin
+                    current_url = validate_public_url(urljoin(current_url, location), resolve_dns=True)
+                    continue
+                return resp.status_code, resp.text, None
+            return 0, "", "Too many redirects"
         except Exception as e:
             logger.error(f"Error fetching %s: %s", url, e)
             return 0, "", str(e)
