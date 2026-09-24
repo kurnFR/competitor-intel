@@ -82,7 +82,7 @@ class PromotionDeduplicator:
         return None
 
 
-    def _record_price_observation(self, promotion, item, doc, observation_id, retailer, now):
+    def _record_price_observation(self, promotion, item, doc, observation_id, retailer, now, quality_pass):
         if item.regular_price is None and item.promo_price is None:
             return
         geography = None
@@ -90,7 +90,6 @@ class PromotionDeduplicator:
             geography = self.db.query(Geography).filter(
                 Geography.normalized_name == normalize_str(item.geography)
             ).first()
-        quality_pass, _, _, _ = (True, None, None, None)
         self.db.add(PromotionPriceObservation(
             promotion_id=promotion.id,
             observation_id=observation_id,
@@ -150,7 +149,7 @@ class PromotionDeduplicator:
                 competitor_importance=comp_importance,
                 ai_confidence=matched_promo.ai_confidence,
             )
-            self._record_price_observation(matched_promo, item, doc, observation_id, retailer, now)
+            self._record_price_observation(matched_promo, item, doc, observation_id, retailer, now, quality_pass)
             evidence = PromotionEvidence(
                 promotion_id=matched_promo.id,
                 observation_id=observation_id,
@@ -210,7 +209,7 @@ class PromotionDeduplicator:
                 obs.quality_status = "VERIFIED" if quality_pass else "PENDING_REVIEW"
                 obs.verification_status = "VERIFIED" if quality_pass else "UNVERIFIED"
                 obs.last_verified_at = now if quality_pass else None
-        self._record_price_observation(new_promo, item, doc, observation_id, retailer, now)
+        self._record_price_observation(new_promo, item, doc, observation_id, retailer, now, quality_pass)
         self.db.add(PromotionEvidence(
             promotion_id=new_promo.id,
             observation_id=observation_id,
