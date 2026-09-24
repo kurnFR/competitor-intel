@@ -123,6 +123,7 @@ class PromotionPriceObservation(Base):
     captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     last_verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     evidence_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    source_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     promotion: Mapped["Promotion"] = relationship("Promotion")
@@ -162,3 +163,22 @@ class PromotionGeography(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     promotion: Mapped["Promotion"] = relationship("Promotion", back_populates="geographies")
+
+
+class PromotionReviewDecision(Base):
+    __tablename__ = "promotion_review_decisions"
+    __table_args__ = (
+        Index("idx_promotion_review_decisions_promotion", "promotion_id"),
+        Index("idx_promotion_review_decisions_reviewed_at", "reviewed_at"),
+        {"schema": "competitor_intel"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    promotion_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("competitor_intel.promotions.id", ondelete="CASCADE"), nullable=False, index=True)
+    decision: Mapped[str] = mapped_column(String(20), nullable=False)
+    reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    reviewer: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    reviewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    promotion: Mapped["Promotion"] = relationship("Promotion")
