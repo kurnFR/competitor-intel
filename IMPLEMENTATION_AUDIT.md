@@ -667,3 +667,16 @@ The first foundation corrections are now committed on this branch:
 - Seed data now creates explicit source URL registry entries and only activates sources with an implemented adapter.
 
 Remaining before the first production crawl: run the application test suite against a real empty `competitor_intel` PostgreSQL database, add explicit regional price observation structures, add browser/JS rendering where an approved source requires it, add source/review/evidence API endpoints, and implement the remaining approved source adapters.
+
+
+### Phase 0 follow-up — 2026-09-24
+
+Additional foundation work completed:
+
+- Added `promotion_price_observations` for regional/retailer/channel-specific price facts, with source observation linkage, geography, evidence, and verification timestamp.
+- Added `GET /api/v1/regional-prices/` for UI-ready regional price comparison data.
+- Added browser-rendered collection capability using Playwright for sources explicitly configured with `access_mode=BROWSER`.
+- Added model-level tests covering Phase 0 table registration and PostgreSQL NUMERIC money fields.
+- Bootstrap migration now explicitly creates the isolated `competitor_intel` schema before creating tables.
+
+The implementation still requires an actual PostgreSQL integration run before production use. The environment used for this documentation pass cannot reach GitHub/PostgreSQL over the network, so test execution has not been represented as passing.
