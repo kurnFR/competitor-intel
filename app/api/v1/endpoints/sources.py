@@ -43,7 +43,7 @@ def list_sources(
 
 @router.post("/", response_model=SourceRegistryOut, status_code=201)
 def discover_source(payload: SourceCreate, db: Session = Depends(get_db)):
-    safe_base = validate_public_url(str(payload.base_url))
+    safe_base = validate_public_url(str(payload.base_url), resolve_dns=False)
     if db.query(SourceRegistry).filter(SourceRegistry.domain == payload.domain.lower()).first():
         raise HTTPException(status_code=409, detail="A source with this domain already exists")
     source = SourceRegistry(name=payload.name, domain=payload.domain.lower(), base_url=safe_base, source_type=payload.source_type,
