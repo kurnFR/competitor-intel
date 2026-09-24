@@ -57,4 +57,4 @@ jobs:
 
       - name: Run unit tests
         run: |
-          PYTHONPATH=. pytest -q tests/unit
+          PYTHONPATH=. pytest -q tests/unit tests/test_api.py
