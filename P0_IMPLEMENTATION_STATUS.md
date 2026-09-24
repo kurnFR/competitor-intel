@@ -98,6 +98,18 @@ This is intentionally a discovery/extraction foundation, not a claim that retail
 - analyze existing promotion fingerprint collisions before adding a unique fingerprint constraint;
 - review CI execution and failures once CI is available/confirmed.
 
+## Phase 0/1 verification gate added — 2026-09-24
+
+The repository now contains an executable clean-PostgreSQL verification path:
+
+- `.github/workflows/postgres-migration.yml` provisions PostgreSQL 16 and runs the migration chain from a fresh database.
+- `tests/integration/test_postgres_schema.py` verifies the `competitor_intel` schema, required tables, foreign-key targets, extensions, and Alembic version.
+- `scripts/verify_foundation.sh` provides the same upgrade → verify → downgrade base → upgrade head → verify sequence for a local environment.
+- Migration `7f3a1c9e5b20` ensures `pg_trgm` and `uuid-ossp` are available through the migration chain. Extensions are intentionally retained on downgrade because they are database-level resources.
+- `IMPLEMENTATION_GATES.md` records the phase-by-phase gates and explicitly keeps production readiness blocked until the clean PostgreSQL and later end-to-end/operational gates have evidence.
+
+**Important:** the clean PostgreSQL gate has been implemented but has not yet produced a successful CI execution result in this workflow. Therefore production readiness remains **not claimed**.
+
 ## Migration chain
 
 ```text
