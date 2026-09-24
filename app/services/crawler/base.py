@@ -35,14 +35,22 @@ class BaseCrawler(ABC):
         )
 
     def fetch_url(self, url: str) -> Tuple[int, str, Optional[str]]:
-        """
-        Fetches URL and returns (http_status, html_content, error_message).
-        """
+        """Fetch a public URL using HTTP or an approved browser-rendered mode."""
         try:
+            if self.source.access_mode == "BROWSER":
+                from playwright.sync_api import sync_playwright
+                with sync_playwright() as pw:
+                    browser = pw.chromium.launch(headless=True)
+                    page = browser.new_page(extra_http_headers=DEFAULT_HEADERS)
+                    response = page.goto(url, wait_until="networkidle", timeout=60000)
+                    html = page.content()
+                    status = response.status if response else 200
+                    browser.close()
+                    return status, html, None
             resp = self.client.get(url)
             return resp.status_code, resp.text, None
         except Exception as e:
-            logger.error(f"Error fetching {url}: {e}")
+            logger.error(f"Error fetching %s: %s", url, e)
             return 0, "", str(e)
 
     def extract_text(self, html: str) -> Tuple[str, Optional[str]]:
