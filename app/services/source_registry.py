@@ -45,8 +45,8 @@ def get_source_or_404(db: Session, source_id: UUID) -> SourceRegistry:
 def register_url(db: Session, source: SourceRegistry, url: str, canonical_url: Optional[str], page_type: str, category: Optional[str], priority: int, frequency_minutes: int) -> SourceUrl:
     if source.lifecycle_status in {"BLOCKED", "DISABLED"}:
         raise HTTPException(status_code=409, detail="Cannot register a crawl target for a blocked or disabled source")
-    safe_url = validate_public_url(url)
-    safe_canonical = validate_public_url(canonical_url) if canonical_url else safe_url
+    safe_url = validate_public_url(url, resolve_dns=False)
+    safe_canonical = validate_public_url(canonical_url, resolve_dns=False) if canonical_url else safe_url
     if db.query(SourceUrl).filter(SourceUrl.source_id == source.id, SourceUrl.url == safe_url).first():
         raise HTTPException(status_code=409, detail="URL is already registered for this source")
     target = SourceUrl(source_id=source.id, url=safe_url, canonical_url=safe_canonical, page_type=page_type, category=category, priority=priority, frequency_minutes=frequency_minutes, is_active=True)
