@@ -195,7 +195,8 @@ See [`UI_UX_DESIGN.md`](UI_UX_DESIGN.md).
 | `DATA_QUALITY.md` | Validation, provenance, freshness and trust rules |
 | `UI_UX_DESIGN.md` | Professional dashboard UX and interaction requirements |
 | `RUNBOOK.md` | Operational procedures, troubleshooting and production checks |
-| `IMPLEMENTATION_AUDIT.md` | Current-code gap analysis and implementation order before production build |
+| `IMPLEMENTATION_PLAN.md` | Master phased execution plan, dependencies, exit gates and production acceptance criteria |
+| `IMPLEMENTATION_AUDIT.md` | Current-code gap analysis and implementation status against the plan |
 
 ## Setup
 
