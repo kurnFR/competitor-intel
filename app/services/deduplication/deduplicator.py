@@ -104,6 +104,7 @@ class PromotionDeduplicator:
             captured_at=now,
             last_verified_at=now if quality_pass else None,
             evidence_text=item.evidence_quote,
+            source_url=doc.url,
         ))
 
     def process_and_save(
