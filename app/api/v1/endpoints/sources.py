@@ -1,10 +1,13 @@
 from typing import Optional
+from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from app.db.session import get_db
 from app.models.source import SourceRegistry, SourceUrl
-from app.schemas.source_registry import SourceRegistryOut, SourceUrlOut, SourceHealthSummary
+from app.schemas.source_registry import SourceRegistryOut, SourceUrlOut, SourceHealthSummary, SourceCreate, SourceTransitionRequest, SourceUrlCreate
+from app.services.source_registry import get_source_or_404, register_url, transition_source
+from app.services.url_security import validate_public_url
 
 router = APIRouter()
 
@@ -36,6 +39,47 @@ def list_sources(
         ))
     sources = query.order_by(SourceRegistry.priority.asc(), SourceRegistry.name.asc()).all()
     return sources
+
+
+@router.post("/", response_model=SourceRegistryOut, status_code=201)
+def discover_source(payload: SourceCreate, db: Session = Depends(get_db)):
+    safe_base = validate_public_url(str(payload.base_url))
+    if db.query(SourceRegistry).filter(SourceRegistry.domain == payload.domain.lower()).first():
+        raise HTTPException(status_code=409, detail="A source with this domain already exists")
+    source = SourceRegistry(name=payload.name, domain=payload.domain.lower(), base_url=safe_base, source_type=payload.source_type,
+        adapter_key=payload.adapter_key, tier=payload.tier, lifecycle_status="DISCOVERED", is_active=False,
+        category=payload.category, priority=payload.priority, crawl_frequency_minutes=payload.crawl_frequency_minutes)
+    db.add(source); db.commit(); db.refresh(source)
+    return source
+
+
+@router.post("/{source_id}/transition", response_model=SourceRegistryOut)
+def transition_source_status(source_id: UUID, payload: SourceTransitionRequest, db: Session = Depends(get_db)):
+    source = get_source_or_404(db, source_id)
+    if payload.adapter_key is not None: source.adapter_key = payload.adapter_key
+    if payload.access_status is not None: source.access_status = payload.access_status
+    transition_source(source, payload.lifecycle_status)
+    db.commit(); db.refresh(source)
+    return source
+
+
+@router.post("/{source_id}/urls", response_model=SourceUrlOut, status_code=201)
+def add_source_url(source_id: UUID, payload: SourceUrlCreate, db: Session = Depends(get_db)):
+    source = get_source_or_404(db, source_id)
+    target = register_url(db, source, str(payload.url), str(payload.canonical_url) if payload.canonical_url else None,
+        payload.page_type, payload.category, payload.priority, payload.frequency_minutes)
+    db.commit(); db.refresh(target)
+    return target
+
+
+@router.patch("/{source_id}/urls/{url_id}/disable", response_model=SourceUrlOut)
+def disable_source_url(source_id: UUID, url_id: UUID, db: Session = Depends(get_db)):
+    source = get_source_or_404(db, source_id)
+    target = db.query(SourceUrl).filter(SourceUrl.id == url_id, SourceUrl.source_id == source.id).first()
+    if not target: raise HTTPException(status_code=404, detail="Source URL not found")
+    target.is_active = False
+    db.commit(); db.refresh(target)
+    return target
 
 
 @router.get("/urls/registry", response_model=list[SourceUrlOut])
