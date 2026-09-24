@@ -51,3 +51,13 @@ class SourceRegistryOut(BaseModel):
     urls: List[SourceUrlOut] = []
     created_at: datetime
     updated_at: datetime
+
+
+class SourceHealthSummary(BaseModel):
+    total_sources: int
+    active_sources: int
+    blocked_sources: int
+    warning_sources: int
+    failing_sources: int
+    registered_urls: int
+    due_urls: int
