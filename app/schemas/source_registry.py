@@ -1,7 +1,34 @@
 from datetime import datetime
 from typing import Optional, List
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 import uuid
+
+
+class SourceUrlCreate(BaseModel):
+    url: HttpUrl
+    canonical_url: Optional[HttpUrl] = None
+    page_type: str = "OTHER"
+    category: Optional[str] = None
+    priority: int = Field(default=5, ge=1, le=100)
+    frequency_minutes: int = Field(default=360, ge=5, le=10080)
+
+
+class SourceCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=255)
+    domain: str = Field(min_length=1, max_length=255)
+    base_url: HttpUrl
+    source_type: str = "RETAILER"
+    adapter_key: Optional[str] = None
+    tier: str = "TIER_3"
+    category: Optional[str] = None
+    priority: int = Field(default=5, ge=1, le=100)
+    crawl_frequency_minutes: int = Field(default=360, ge=5, le=10080)
+
+
+class SourceTransitionRequest(BaseModel):
+    lifecycle_status: str
+    access_status: Optional[str] = None
+    adapter_key: Optional[str] = None
 
 
 class SourceUrlOut(BaseModel):
@@ -48,7 +75,7 @@ class SourceRegistryOut(BaseModel):
     last_error_at: Optional[datetime] = None
     consecutive_failures: int
     last_yield_count: int
-    urls: List[SourceUrlOut] = []
+    urls: List[SourceUrlOut] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 
