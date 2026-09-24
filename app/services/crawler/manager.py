@@ -10,6 +10,11 @@ logger = logging.getLogger(__name__)
 
 
 def get_crawler_for_source(db: Session, source: SourceRegistry) -> BaseCrawler:
+    adapter_key = (source.adapter_key or "").upper()
+    if adapter_key == "SUPERINDO":
+        return SuperindoCrawler(db, source)
+    if adapter_key == "HEMAT":
+        return AggregatorCrawler(db, source)
     domain = (source.domain or "").lower()
     if "superindo" in domain:
         return SuperindoCrawler(db, source)
