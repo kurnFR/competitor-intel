@@ -89,9 +89,9 @@ class EntityResolver:
 
         rows = self.db.execute(
             text("""
-                SELECT id, name, similarity(normalized_name::text, CAST(:norm AS text)) AS sim
+                SELECT id, name, public.similarity(normalized_name::text, CAST(:norm AS text)) AS sim
                 FROM competitor_intel.retailers
-                WHERE similarity(normalized_name::text, CAST(:norm AS text)) >= :threshold
+                WHERE public.similarity(normalized_name::text, CAST(:norm AS text)) >= :threshold
                 ORDER BY sim DESC
                 LIMIT 2
             """),
@@ -149,9 +149,9 @@ class EntityResolver:
 
         candidate = self.db.execute(
             text("""
-                SELECT id, name, similarity(normalized_name::text, CAST(:norm AS text)) AS sim
+                SELECT id, name, public.similarity(normalized_name::text, CAST(:norm AS text)) AS sim
                 FROM competitor_intel.brands
-                WHERE similarity(normalized_name::text, CAST(:norm AS text)) >= :threshold
+                WHERE public.similarity(normalized_name::text, CAST(:norm AS text)) >= :threshold
                 ORDER BY sim DESC
                 LIMIT 2
             """),
