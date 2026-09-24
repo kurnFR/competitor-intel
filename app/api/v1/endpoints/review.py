@@ -83,6 +83,17 @@ def decide_review(
 
     now = datetime.now(timezone.utc)
     if normalized == "APPROVE":
+        evidence = (
+            db.query(PromotionEvidence)
+            .filter(
+                PromotionEvidence.promotion_id == promotion.id,
+                PromotionEvidence.evidence_text.is_not(None),
+            )
+            .order_by(PromotionEvidence.captured_at.desc())
+            .first()
+        )
+        if not evidence or len((evidence.evidence_text or "").strip()) < 8 or not evidence.source_url:
+            raise HTTPException(status_code=409, detail="Promotion cannot be approved without traceable evidence text and source URL")
         promotion.status = "ACTIVE"
         promotion.last_verified_at = now
     else:
