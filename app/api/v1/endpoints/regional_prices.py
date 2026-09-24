@@ -53,6 +53,6 @@ def list_regional_prices(
             captured_at=price.captured_at,
             last_verified_at=price.last_verified_at,
             evidence_text=price.evidence_text,
-            source_url=source.base_url,
+            source_url=price.source_url or source.base_url,
         ))
     return rows
