@@ -5,6 +5,7 @@ Revises: 20260924_01
 """
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy import inspect
 
 
 revision = "20260924_02"
@@ -14,12 +15,13 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "promotion_price_observations",
-        sa.Column("source_url", sa.Text(), nullable=True),
-        schema="competitor_intel",
-    )
-    op.create_table(
+    inspector = inspect(op.get_bind())
+    columns = {c["name"] for c in inspector.get_columns("promotion_price_observations", schema="competitor_intel")}
+    if "source_url" not in columns:
+        op.add_column("promotion_price_observations", sa.Column("source_url", sa.Text(), nullable=True), schema="competitor_intel")
+    tables = set(inspector.get_table_names(schema="competitor_intel"))
+    if "promotion_review_decisions" not in tables:
+        op.create_table(
         "promotion_review_decisions",
         sa.Column("id", sa.UUID(), nullable=False),
         sa.Column("promotion_id", sa.UUID(), nullable=False),
@@ -36,20 +38,20 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         schema="competitor_intel",
     )
-    op.create_index(
+        op.create_index(
         "idx_promotion_review_decisions_promotion",
         "promotion_review_decisions",
         ["promotion_id"],
         unique=False,
         schema="competitor_intel",
     )
-    op.create_index(
+        op.create_index(
         "idx_promotion_review_decisions_reviewed_at",
         "promotion_review_decisions",
         ["reviewed_at"],
         unique=False,
         schema="competitor_intel",
-    )
+        )
 
 
 def downgrade() -> None:
