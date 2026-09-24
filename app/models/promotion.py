@@ -98,6 +98,37 @@ class Promotion(Base):
     geographies: Mapped[List["PromotionGeography"]] = relationship("PromotionGeography", back_populates="promotion", cascade="all, delete-orphan")
 
 
+class PromotionPriceObservation(Base):
+    """Regional/channel/retailer price fact tied to a source observation."""
+    __tablename__ = "promotion_price_observations"
+    __table_args__ = (
+        Index("idx_price_obs_promotion_geo", "promotion_id", "geography_id"),
+        Index("idx_price_obs_verified", "last_verified_at"),
+        {"schema": "competitor_intel"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    promotion_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("competitor_intel.promotions.id", ondelete="CASCADE"), nullable=False, index=True)
+    observation_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("competitor_intel.promotion_observations.id", ondelete="SET NULL"), nullable=True, index=True)
+    geography_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("competitor_intel.geographies.id", ondelete="SET NULL"), nullable=True, index=True)
+    source_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("competitor_intel.source_registry.id", ondelete="RESTRICT"), nullable=False, index=True)
+    retailer_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("competitor_intel.retailers.id", ondelete="SET NULL"), nullable=True, index=True)
+    channel: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    geography_source_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    regular_price: Mapped[Optional[float]] = mapped_column(Numeric(18, 2), nullable=True)
+    promo_price: Mapped[Optional[float]] = mapped_column(Numeric(18, 2), nullable=True)
+    currency: Mapped[str] = mapped_column(String(10), default="IDR")
+    minimum_purchase_quantity: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    minimum_purchase_amount: Mapped[Optional[float]] = mapped_column(Numeric(18, 2), nullable=True)
+    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    last_verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    evidence_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    promotion: Mapped["Promotion"] = relationship("Promotion")
+    geography: Mapped[Optional["Geography"]] = relationship("Geography")
+
+
 class PromotionEvidence(Base):
     __tablename__ = "promotion_evidence"
     __table_args__ = {"schema": "competitor_intel"}
