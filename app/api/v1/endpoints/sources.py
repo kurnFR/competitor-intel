@@ -92,28 +92,3 @@ def list_source_urls(
             (SourceUrl.next_crawl_at.is_(None)) | (SourceUrl.next_crawl_at <= now),
         )
     return query.order_by(SourceUrl.priority.asc(), SourceUrl.next_crawl_at.asc().nullsfirst()).all()
-
-
-@router.get("/urls/registry", response_model=list[SourceUrlOut])
-def list_url_registry(
-    source_id: Optional[str] = Query(None),
-    page_type: Optional[str] = Query(None),
-    active_only: bool = Query(False),
-    due_only: bool = Query(False),
-    db: Session = Depends(get_db),
-):
-    from datetime import datetime, timezone
-    query = db.query(SourceUrl)
-    if source_id:
-        query = query.filter(SourceUrl.source_id == source_id)
-    if page_type:
-        query = query.filter(SourceUrl.page_type == page_type)
-    if active_only:
-        query = query.filter(SourceUrl.is_active.is_(True))
-    if due_only:
-        now = datetime.now(timezone.utc)
-        query = query.filter(
-            SourceUrl.is_active.is_(True),
-            (SourceUrl.next_crawl_at.is_(None)) | (SourceUrl.next_crawl_at <= now),
-        )
-    return query.order_by(SourceUrl.priority.asc(), SourceUrl.next_crawl_at.asc().nullsfirst()).limit(1000).all()
