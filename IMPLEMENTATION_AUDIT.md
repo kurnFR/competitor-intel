@@ -8,9 +8,9 @@
 
 | Phase | Status | Notes |
 |---|---|---|
-| 0 Foundation | PARTIAL | DB/schema/migrations and core model foundations exist; clean PostgreSQL migration/test execution still required. |
+| 0 Foundation | PARTIAL | Bootstrap now explicitly creates/drops the application schema; clean PostgreSQL migration/test execution still required. |
 | 1 Discovery & Registry | PARTIAL | Source/URL registry and explicit adapter keys exist; discovery/assessment workflow and complete contracts remain. |
-| 2 Crawling & Change Detection | PARTIAL | Due-target/backoff/change detection foundations exist; full scheduler/fixture/operational verification remains. |
+| 2 Crawling & Change Detection | PARTIAL | Manager now selects only approved active sources with due registered URL targets; full scheduler/fixture/operational verification remains. |
 | 3 Extraction & Validation | PARTIAL | AI schema and deterministic validation foundations exist; source-specific fixture coverage remains. |
 | 4 Observation & Canonicalization | PARTIAL | Observation/evidence/dedup foundations exist; full material identity/conflict test coverage remains. |
 | 5 Geography & Regional Pricing | PARTIAL | Relational geography and regional price observations exist; normalization and regression coverage remain. |
@@ -21,6 +21,13 @@
 | 10 Production Operations | NOT COMPLETE | Scheduler, monitoring, alerts, backups and adaptive operations remain. |
 | 11 Testing & Hardening | NOT COMPLETE | Clean-DB integration, source fixtures, E2E, security and reliability suites remain. |
 | 12 Production Readiness | NOT COMPLETE | Final deployment, recovery and acceptance gates remain. |
+
+## Latest hardening completed
+
+- Fixed the bootstrap migration so \\`competitor_intel\\` is created before SQLAlchemy metadata creation.
+- Cleaned the review/price migration and made its downgrade tolerant of already-absent objects.
+- Changed crawler orchestration to select sources only when an approved active registered URL is due.
+- Preserved explicit adapter selection; unsupported sources still fail rather than using a generic parser.
 
 ## Immediate implementation order
 
