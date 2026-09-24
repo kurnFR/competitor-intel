@@ -16,6 +16,7 @@ class SourceRegistry(Base):
     domain: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     base_url: Mapped[str] = mapped_column(Text, nullable=False)
     source_type: Mapped[str] = mapped_column(String(50), default="RETAILER")
+    adapter_key: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, index=True)
     tier: Mapped[str] = mapped_column(String(20), default="TIER_1")
     lifecycle_status: Mapped[str] = mapped_column(String(30), default="CANDIDATE", index=True)
     access_mode: Mapped[str] = mapped_column(String(30), default="HTTP", index=True)
