@@ -2,7 +2,7 @@ from app.db.session import Base
 from app.models.source import SourceRegistry, SourceUrl, CrawlJob, CrawlDocument
 from app.models.entity import Competitor, Brand, Product, Retailer
 from app.models.geography import Geography
-from app.models.promotion import PromotionObservation, Promotion, PromotionEvidence, PromotionPriceObservation, PromotionGeography
+from app.models.promotion import PromotionObservation, Promotion, PromotionEvidence, PromotionPriceObservation, PromotionGeography, PromotionReviewDecision
 from app.models.resolution import EntityMapping, ReviewQueue
 
 __all__ = [
@@ -11,5 +11,5 @@ __all__ = [
     "Competitor", "Brand", "Product", "Retailer",
     "Geography",
     "PromotionObservation", "Promotion", "PromotionEvidence", "PromotionGeography",
-    "EntityMapping", "ReviewQueue",
+    "EntityMapping", "ReviewQueue", "PromotionReviewDecision",
 ]
