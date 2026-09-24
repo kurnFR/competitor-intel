@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from app.db.session import get_db
 from app.models.source import SourceRegistry, SourceUrl
-from app.schemas.source_registry import SourceRegistryOut, SourceUrlOut
+from app.schemas.source_registry import SourceRegistryOut, SourceUrlOut, SourceHealthSummary
 
 router = APIRouter()
 
@@ -61,6 +61,20 @@ def list_url_registry(
             (SourceUrl.next_crawl_at.is_(None)) | (SourceUrl.next_crawl_at <= now),
         )
     return query.order_by(SourceUrl.priority.asc(), SourceUrl.next_crawl_at.asc().nullsfirst()).limit(1000).all()
+
+
+@router.get("/health-summary", response_model=SourceHealthSummary)
+def source_health_summary(db: Session = Depends(get_db)):
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    total = db.query(SourceRegistry).count()
+    active = db.query(SourceRegistry).filter(SourceRegistry.lifecycle_status == "ACTIVE", SourceRegistry.is_active.is_(True)).count()
+    blocked = db.query(SourceRegistry).filter(SourceRegistry.access_status.in_([ "BLOCKED", "LOGIN_REQUIRED", "CAPTCHA_REQUIRED", "PAYWALL" ])).count()
+    warning = db.query(SourceRegistry).filter(SourceRegistry.lifecycle_status.in_([ "WARNING", "STALE" ])).count()
+    failing = db.query(SourceRegistry).filter(SourceRegistry.consecutive_failures > 0).count()
+    urls = db.query(SourceUrl).count()
+    due = db.query(SourceUrl).filter(SourceUrl.is_active.is_(True), (SourceUrl.next_crawl_at.is_(None)) | (SourceUrl.next_crawl_at <= now)).count()
+    return SourceHealthSummary(total_sources=total, active_sources=active, blocked_sources=blocked, warning_sources=warning, failing_sources=failing, registered_urls=urls, due_urls=due)
 
 
 @router.get("/{source_id}", response_model=SourceRegistryOut)
