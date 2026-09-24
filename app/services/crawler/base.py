@@ -38,12 +38,13 @@ class BaseCrawler(ABC):
     def fetch_url(self, url: str) -> Tuple[int, str, Optional[str]]:
         """Fetch a public URL using HTTP or an approved browser-rendered mode."""
         try:
+            current_url = validate_public_url(url, resolve_dns=True)
             if self.source.access_mode == "BROWSER":
                 from playwright.sync_api import sync_playwright
                 with sync_playwright() as pw:
                     browser = pw.chromium.launch(headless=True)
                     page = browser.new_page(extra_http_headers=DEFAULT_HEADERS)
-                    response = page.goto(url, wait_until="networkidle", timeout=60000)
+                    response = page.goto(current_url, wait_until="networkidle", timeout=60000)
                     html = page.content()
                     status = response.status if response else 200
                     browser.close()
