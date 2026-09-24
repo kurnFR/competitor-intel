@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.db.session import get_db
-from app.models.promotion import Promotion, PromotionEvidence
+from app.models.promotion import Promotion, PromotionEvidence, PromotionReviewDecision
 from app.models.entity import Brand, Competitor, Retailer
 from app.schemas.review import ReviewQueueItem, ReviewDecision, ReviewDecisionOut
 
@@ -89,6 +89,13 @@ def decide_review(
         promotion.status = "REJECTED"
         promotion.last_verified_at = None
 
+    db.add(PromotionReviewDecision(
+        promotion_id=promotion.id,
+        decision=normalized,
+        reason=decision.reason,
+        reviewed_at=now,
+        created_at=now,
+    ))
     db.add(promotion)
     db.commit()
     db.refresh(promotion)
