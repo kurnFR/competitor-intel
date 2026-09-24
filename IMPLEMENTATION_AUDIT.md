@@ -9,7 +9,7 @@
 | Phase | Status | Notes |
 |---|---|---|
 | 0 Foundation | PARTIAL | Bootstrap now explicitly creates/drops the application schema; clean PostgreSQL migration/test execution still required. |
-| 1 Discovery & Registry | PARTIAL | Source/URL registry and explicit adapter keys exist; discovery/assessment workflow and complete contracts remain. |
+| 1 Discovery & Registry | PARTIAL | Added explicit discovery, lifecycle transition, URL registration/disable controls and public-URL validation; admin/auth policy and full integration verification remain. |
 | 2 Crawling & Change Detection | PARTIAL | Manager now selects only approved active sources with due registered URL targets; full scheduler/fixture/operational verification remains. |
 | 3 Extraction & Validation | PARTIAL | AI schema and deterministic validation foundations exist; source-specific fixture coverage remains. |
 | 4 Observation & Canonicalization | PARTIAL | Observation/evidence/dedup foundations exist; full material identity/conflict test coverage remains. |
@@ -26,7 +26,7 @@
 
 - Fixed the bootstrap migration so \\`competitor_intel\\` is created before SQLAlchemy metadata creation.
 - Cleaned the review/price migration and made its downgrade tolerant of already-absent objects.
-- Changed crawler orchestration to select sources only when an approved active registered URL is due.
+- Changed crawler orchestration to select sources only when an approved active registered URL is due.\n- Added source discovery/lifecycle endpoints with explicit adapter-gated activation and independent URL disablement.\n- Added public HTTP(S) URL validation that rejects credential-bearing and private/local/reserved targets at registration time.\n- Added source lifecycle transition unit tests.
 - Preserved explicit adapter selection; unsupported sources still fail rather than using a generic parser.
 
 ## Immediate implementation order
