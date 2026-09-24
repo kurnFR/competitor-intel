@@ -26,7 +26,7 @@ Foundation
 
 **Phase 0/1 — Foundation + acquisition verification**
 
-The code already contains substantial P0 correctness work and P1 crawler foundations. The immediate gate is now executable PostgreSQL verification rather than adding more business features on top of an unverified schema.
+The code already contains substantial P0 correctness work and P1 crawler foundations. The immediate gate is now executable PostgreSQL verification, including the synthetic end-to-end pipeline, rather than adding more business features on top of an unverified schema.
 
 ### Gate criteria
 
@@ -41,7 +41,7 @@ The code already contains substantial P0 correctness work and P1 crawler foundat
 
 ### What is not yet verified
 
-The repository code has **not** been successfully executed against a clean PostgreSQL `competitor_intel` database from this development environment. The GitHub workflow added in this phase provides the missing repeatable clean-PostgreSQL gate, but production readiness remains unclaimed until that gate actually passes.
+The repository now has a repeatable clean-PostgreSQL gate plus a synthetic end-to-end pipeline gate covering crawl document persistence, entity resolution, canonical promotion upsert, observation/evidence lineage, and review-queue persistence/idempotency. These gates still require an actual successful GitHub Actions execution before they can be treated as verified.
 
 ## Phase 0/1 implementation gaps
 
@@ -54,9 +54,9 @@ These remain after the current foundation work:
 - stronger rendered/PDF/image provenance;
 - additional source adapters beyond the current retailer foundation;
 - distributed rate limiting when multiple hosts/processes are used;
-- end-to-end crawl → acquisition → extraction → resolution → canonical upsert verification against PostgreSQL;
+- CI execution of the new synthetic end-to-end crawl-document → extraction → resolution → canonical upsert → observation/evidence/review gate;
 - representative-data collision analysis before any promotion fingerprint uniqueness constraint;
-- CI execution results from the clean PostgreSQL workflow.
+- CI execution results from the clean PostgreSQL workflow (pending a successful Actions run).
 
 ## Exit rule
 
