@@ -8,7 +8,7 @@ import httpx
 from bs4 import BeautifulSoup
 import trafilatura
 from sqlalchemy.orm import Session
-from app.models.source import SourceRegistry, CrawlJob, CrawlDocument
+from app.models.source import SourceRegistry, SourceUrl, CrawlJob, CrawlDocument
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +90,13 @@ class BaseCrawler(ABC):
         now = datetime.now(timezone.utc)
         content_hash = compute_hash(text_content or raw_html) if (text_content or raw_html) else None
 
-        job_status = "SUCCESS" if (http_status == 200 and not error_message) else "FAILED"
+        unchanged = False
+        target = None
+        if source_url_id:
+            target = self.db.query(SourceUrl).filter(SourceUrl.id == source_url_id).first()
+            unchanged = bool(http_status == 200 and not error_message and content_hash and target and target.last_content_hash == content_hash)
+
+        job_status = "UNCHANGED" if unchanged else ("SUCCESS" if (http_status == 200 and not error_message) else "FAILED")
         job = CrawlJob(
             source_id=self.source.id,
             source_url_id=source_url_id,
@@ -108,7 +114,7 @@ class BaseCrawler(ABC):
         self.db.flush()
 
         doc = None
-        if http_status == 200 and text_content:
+        if http_status == 200 and text_content and not unchanged:
             doc = CrawlDocument(
                 crawl_job_id=job.id,
                 source_id=self.source.id,
@@ -128,9 +134,7 @@ class BaseCrawler(ABC):
             self.source.last_crawled_at = now
             self.source.last_success_at = now
             self.source.consecutive_failures = 0
-            if source_url_id:
-                target = self.db.query(__import__('app.models.source', fromlist=['SourceUrl']).SourceUrl).filter(__import__('app.models.source', fromlist=['SourceUrl']).SourceUrl.id == source_url_id).first()
-                if target:
+            if target:
                     target.last_crawled_at = now
                     target.last_changed_at = now if target.last_content_hash != content_hash else target.last_changed_at
                     target.last_content_hash = content_hash
@@ -139,13 +143,20 @@ class BaseCrawler(ABC):
                     from datetime import timedelta
                     target.next_crawl_at = now + timedelta(minutes=max(1, target.frequency_minutes))
             self.db.flush()
+        elif unchanged:
+            self.source.last_crawled_at = now
+            self.source.last_success_at = now
+            self.source.consecutive_failures = 0
+            if target:
+                target.last_crawled_at = now
+                target.last_http_status = http_status
+                from datetime import timedelta
+                target.next_crawl_at = now + timedelta(minutes=max(1, target.frequency_minutes))
         else:
             self.source.last_crawled_at = now
             self.source.last_error_at = now
             self.source.consecutive_failures += 1
-            if source_url_id:
-                target = self.db.query(__import__('app.models.source', fromlist=['SourceUrl']).SourceUrl).filter(__import__('app.models.source', fromlist=['SourceUrl']).SourceUrl.id == source_url_id).first()
-                if target:
+            if target:
                     target.consecutive_failures += 1
                     target.last_http_status = http_status
                     from datetime import timedelta
