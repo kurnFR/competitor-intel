@@ -31,7 +31,7 @@ class BaseCrawler(ABC):
             headers=DEFAULT_HEADERS,
             timeout=30.0,
             follow_redirects=True,
-            verify=False
+            verify=True
         )
 
     def fetch_url(self, url: str) -> Tuple[int, str, Optional[str]]:
