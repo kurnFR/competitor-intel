@@ -135,13 +135,13 @@ class BaseCrawler(ABC):
             self.source.last_success_at = now
             self.source.consecutive_failures = 0
             if target:
-                    target.last_crawled_at = now
-                    target.last_changed_at = now if target.last_content_hash != content_hash else target.last_changed_at
-                    target.last_content_hash = content_hash
-                    target.consecutive_failures = 0
-                    target.last_http_status = http_status
-                    from datetime import timedelta
-                    target.next_crawl_at = now + timedelta(minutes=max(1, target.frequency_minutes))
+                target.last_crawled_at = now
+                target.last_changed_at = now if target.last_content_hash != content_hash else target.last_changed_at
+                target.last_content_hash = content_hash
+                target.consecutive_failures = 0
+                target.last_http_status = http_status
+                from datetime import timedelta
+                target.next_crawl_at = now + timedelta(minutes=max(1, target.frequency_minutes))
             self.db.flush()
         elif unchanged:
             self.source.last_crawled_at = now
