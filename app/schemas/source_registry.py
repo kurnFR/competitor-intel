@@ -30,6 +30,7 @@ class SourceRegistryOut(BaseModel):
     domain: str
     base_url: str
     source_type: str
+    adapter_key: Optional[str] = None
     tier: str
     lifecycle_status: str
     access_mode: str
