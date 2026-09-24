@@ -6,7 +6,7 @@ database. Once the first production database exists, subsequent changes must use
 explicit forward-only Alembic migrations rather than editing this file.
 """
 
-from alembic import op
+from alembic import op\nfrom sqlalchemy import text
 from app.models import Base
 
 revision = "20260924_01"
