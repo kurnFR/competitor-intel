@@ -235,6 +235,10 @@ def seed_reference_data():
                     access_status="UNKNOWN"
                 )
                 db.add(src)
+            else:
+                src.adapter_key = s_data.get("adapter_key")
+                src.lifecycle_status = "ACTIVE" if s_data["domain"] in {"superindo.co.id", "hemat.id"} else src.lifecycle_status
+                src.is_active = s_data["domain"] in {"superindo.co.id", "hemat.id"}
 
         db.flush()
 
