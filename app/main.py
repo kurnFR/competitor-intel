@@ -1,8 +1,9 @@
 from pathlib import Path
 import logging
+import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from fastapi import BackgroundTasks, FastAPI, Request
+from fastapi import BackgroundTasks, FastAPI, Request, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,6 +18,27 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(na
 logger = logging.getLogger("App")
 pipeline_state = {"status": "idle", "started_at": None, "finished_at": None, "error": None}
 
+
+def _allowed_origins() -> list[str]:
+    raw = getattr(settings, "CORS_ALLOWED_ORIGINS", "")
+    if isinstance(raw, list):
+        return raw
+    return [item.strip() for item in str(raw).split(",") if item.strip()]
+
+
+def _admin_token_configured() -> bool:
+    return bool(getattr(settings, "ADMIN_API_TOKEN", None) or os.getenv("ADMIN_API_TOKEN"))
+
+
+def _require_admin(request: Request) -> None:
+    expected = getattr(settings, "ADMIN_API_TOKEN", None) or os.getenv("ADMIN_API_TOKEN")
+    if not expected:
+        raise HTTPException(status_code=503, detail="Administrative API is not configured")
+    supplied = request.headers.get("X-Admin-Token")
+    if not supplied or supplied != expected:
+        raise HTTPException(status_code=401, detail="Administrative authorization required")
+
+
 templates_dir = Path(__file__).resolve().parent / "ui" / "templates"
 templates = Jinja2Templates(directory=str(templates_dir))
 
@@ -24,12 +46,9 @@ templates = Jinja2Templates(directory=str(templates_dir))
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info(f"Starting {settings.APP_NAME}...")
-    # Verify DB connectivity on startup
     with engine.connect() as conn:
         res = conn.execute(text("SELECT current_database(), current_user;")).fetchone()
         logger.info(f"Connected to PostgreSQL: Database={res[0]}, User={res[1]}")
-
-    # Start background scheduler for periodic crawling & expiration checking
     start_scheduler()
     yield
     logger.info("Stopping application...")
@@ -40,18 +59,18 @@ app = FastAPI(
     title=settings.APP_NAME,
     description="FMCG Competitor Promotion Intelligence API & Dashboard",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
+origins = _allowed_origins()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=origins,
+    allow_credentials=bool(origins),
+    allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-Admin-Token"],
 )
 
-# Mount REST API
 app.include_router(api_router, prefix="/api/v1")
 
 
@@ -80,7 +99,8 @@ def _run_pipeline_job():
 
 
 @app.post("/api/v1/pipeline/run", status_code=202)
-def run_pipeline_now(background_tasks: BackgroundTasks):
+def run_pipeline_now(request: Request, background_tasks: BackgroundTasks):
+    _require_admin(request)
     if pipeline_state["status"] == "running":
         return {"status": "running", "message": "A promotion scan is already running."}
     background_tasks.add_task(_run_pipeline_job)
