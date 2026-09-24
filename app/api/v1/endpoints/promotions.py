@@ -2,10 +2,11 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional, List
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, exists
 from app.db.session import get_db
 from app.models.promotion import Promotion, PromotionEvidence
 from app.models.entity import Competitor, Brand, Retailer
+from app.models.source import CrawlDocument, SourceRegistry
 from app.schemas.promotion import Top10Response, Top10PromotionItem, PromotionDetailOut, StatsResponse
 
 router = APIRouter()
@@ -42,6 +43,15 @@ def get_top10_promotions(
             Promotion.status == "ACTIVE",
             Promotion.last_verified_at.is_not(None),
             Promotion.last_verified_at >= cutoff,
+            exists().where(
+                PromotionEvidence.promotion_id == Promotion.id,
+                PromotionEvidence.evidence_text.is_not(None),
+                PromotionEvidence.source_url.is_not(None),
+                CrawlDocument.id == PromotionEvidence.document_id,
+                SourceRegistry.id == CrawlDocument.source_id,
+                SourceRegistry.lifecycle_status == "ACTIVE",
+                SourceRegistry.is_active.is_(True),
+            ),
             (Promotion.start_date == None) | (Promotion.start_date <= now),
             (Promotion.end_date == None) | (Promotion.end_date >= now)
         )
