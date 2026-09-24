@@ -157,11 +157,11 @@ class BaseCrawler(ABC):
             self.source.last_error_at = now
             self.source.consecutive_failures += 1
             if target:
-                    target.consecutive_failures += 1
-                    target.last_http_status = http_status
-                    from datetime import timedelta
-                    backoff = min(1440, max(15, target.frequency_minutes * (2 ** min(target.consecutive_failures, 5))))
-                    target.next_crawl_at = now + timedelta(minutes=backoff)
+                target.consecutive_failures += 1
+                target.last_http_status = http_status
+                from datetime import timedelta
+                backoff = min(1440, max(15, target.frequency_minutes * (2 ** min(target.consecutive_failures, 5))))
+                target.next_crawl_at = now + timedelta(minutes=backoff)
 
         self.db.commit()
         return doc
