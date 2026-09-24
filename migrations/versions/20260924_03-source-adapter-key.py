@@ -5,6 +5,7 @@ Revises: 20260924_02
 """
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy import inspect
 
 
 revision = "20260924_03"
@@ -14,18 +15,13 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "source_registry",
-        sa.Column("adapter_key", sa.String(length=50), nullable=True),
-        schema="competitor_intel",
-    )
-    op.create_index(
-        "ix_competitor_intel_source_registry_adapter_key",
-        "source_registry",
-        ["adapter_key"],
-        unique=False,
-        schema="competitor_intel",
-    )
+    inspector = inspect(op.get_bind())
+    columns = {c["name"] for c in inspector.get_columns("source_registry", schema="competitor_intel")}
+    if "adapter_key" not in columns:
+        op.add_column("source_registry", sa.Column("adapter_key", sa.String(length=50), nullable=True), schema="competitor_intel")
+    indexes = {i["name"] for i in inspector.get_indexes("source_registry", schema="competitor_intel")}
+    if "ix_competitor_intel_source_registry_adapter_key" not in indexes:
+        op.create_index("ix_competitor_intel_source_registry_adapter_key", "source_registry", ["adapter_key"], unique=False, schema="competitor_intel")
 
 
 def downgrade() -> None:
