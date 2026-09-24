@@ -50,10 +50,10 @@ jobs:
       - name: Verify clean database migration
         run: |
           alembic upgrade head
-          PYTHONPATH=. pytest -q tests/integration/test_postgres_schema.py
+          PYTHONPATH=. pytest -q tests/integration/test_postgres_schema.py tests/integration/test_postgres_pipeline.py
           alembic downgrade base
           alembic upgrade head
-          PYTHONPATH=. pytest -q tests/integration/test_postgres_schema.py
+          PYTHONPATH=. pytest -q tests/integration/test_postgres_schema.py tests/integration/test_postgres_pipeline.py
 
       - name: Run unit tests
         run: |
