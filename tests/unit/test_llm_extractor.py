@@ -40,7 +40,7 @@ class LLMExtractorTests(unittest.TestCase):
             ']}'
         )
 
-        result = self.extract_with_metadata("catalog text", current_date=date(2026, 9, 5))
+        result = self.extractor.extract_with_metadata("catalog text", current_date=date(2026, 9, 5))
 
         self.assertEqual(len(result.items), 1)
         self.assertEqual(len(result.rejected_items), 1)
@@ -50,7 +50,7 @@ class LLMExtractorTests(unittest.TestCase):
     def test_malformed_json_is_visible_in_result(self) -> None:
         self._mock_response("not-json")
 
-        result = self.extract_with_metadata("catalog text", current_date=date(2026, 9, 5))
+        result = self.extractor.extract_with_metadata("catalog text", current_date=date(2026, 9, 5))
 
         self.assertEqual(result.parser_status, "INVALID_JSON")
         self.assertEqual(result.items, [])
