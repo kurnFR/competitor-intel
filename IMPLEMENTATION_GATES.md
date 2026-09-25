@@ -41,7 +41,7 @@ The code already contains substantial P0 correctness work and P1 crawler foundat
 
 ### What is not yet verified
 
-The repository now has a repeatable clean-PostgreSQL gate plus a synthetic end-to-end pipeline gate covering crawl document persistence, entity resolution, canonical promotion upsert, observation/evidence lineage, and review-queue persistence/idempotency. These gates still require an actual successful GitHub Actions execution before they can be treated as verified.
+The repository now has a repeatable clean-PostgreSQL gate plus a synthetic end-to-end pipeline gate covering crawl document persistence, entity resolution, canonical promotion upsert, observation/evidence lineage, and review-queue persistence/idempotency. A new schema-reconciliation migration also repairs live-schema drift observed in the 2026-09-24 PostgreSQL snapshot. These gates still require an actual successful GitHub Actions execution before they can be treated as verified.
 
 ## Phase 0/1 implementation gaps
 
