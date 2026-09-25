@@ -42,6 +42,15 @@ def make_crawler(responses, max_retries):
     return crawler
 
 
+def make_legacy_crawler(responses, max_retries):
+    """Build the pre-source-context shape to verify fetch remains source-safe."""
+    crawler = object.__new__(DummyCrawler)
+    crawler.max_retries = max_retries
+    crawler.retry_backoff_seconds = 1
+    crawler.client = FakeClient(responses)
+    return crawler
+
+
 class CrawlerBaseTests(unittest.TestCase):
     def test_canonicalize_url_removes_fragment_and_normalizes_host(self):
         self.assertEqual(
