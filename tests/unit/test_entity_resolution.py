@@ -46,9 +46,7 @@ def test_ambiguous_fuzzy_retailer_goes_to_review():
 def test_high_confidence_dominant_fuzzy_retailer_resolves():
     retailer = SimpleNamespace(id="a", name="Super Indo")
     db = MagicMock()
-    # First lookup: explicit mapping; second: normalized canonical lookup;
-    # third: final entity fetch after the fuzzy candidate is selected.
-    db.query.return_value.filter.return_value.first.side_effect = [None, retailer]
+    db.query.return_value.filter.return_value.first.side_effect = [None, None, retailer]
     db.execute.return_value.fetchall.return_value = [
         SimpleNamespace(id="a", name="Super Indo", sim=0.97),
         SimpleNamespace(id="b", name="Other", sim=0.72),
