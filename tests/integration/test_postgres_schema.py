@@ -70,6 +70,38 @@ def test_core_tables_and_foreign_keys(engine):
     }
     assert {"competitors", "brands", "products", "retailers"}.issubset(targets)
 
+    column_expectations = {
+        "crawl_jobs": {"next_retry_at", "max_retries", "last_attempt_at", "worker_id"},
+        "crawl_documents": {"raw_content_sha256", "raw_content_type", "raw_content_size_bytes", "storage_backend"},
+        "entity_mapping": {"normalized_source_value", "resolution_status", "review_queue_id"},
+        "promotion_observations": {
+            "promotion_id",
+            "extraction_model",
+            "extraction_status",
+            "extracted_at",
+            "extraction_raw_response_hash",
+            "extraction_rejected_count",
+        },
+        "promotions": {
+            "identity_fingerprint",
+            "identity_version",
+            "source_identity_fingerprint",
+            "supersedes_promotion_id",
+        },
+        "review_queue": {"candidate_entity_id", "promotion_id", "observation_id", "confidence"},
+        "promotion_change_events": {
+            "promotion_id",
+            "previous_promotion_id",
+            "observation_id",
+            "document_id",
+            "event_type",
+            "event_fingerprint",
+        },
+    }
+    for table, expected_columns in column_expectations.items():
+        actual_columns = {column["name"] for column in inspector.get_columns(table, schema=SCHEMA)}
+        assert expected_columns.issubset(actual_columns), table
+
 
 def test_migration_version_is_current(engine):
     with engine.connect() as conn:
