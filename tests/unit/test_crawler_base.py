@@ -33,21 +33,27 @@ class FakeClient:
         return response
 
 
+class FakeLimiterContext:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+
+class FakeLimiter:
+    def acquire(self, source_key, config):
+        return FakeLimiterContext()
+
+
 def make_crawler(responses, max_retries):
     crawler = object.__new__(DummyCrawler)
     crawler.source = SimpleNamespace(id="test-source")
     crawler.max_retries = max_retries
     crawler.retry_backoff_seconds = 1
     crawler.client = FakeClient(responses)
-    return crawler
-
-
-def make_legacy_crawler(responses, max_retries):
-    """Build the pre-source-context shape to verify fetch remains source-safe."""
-    crawler = object.__new__(DummyCrawler)
-    crawler.max_retries = max_retries
-    crawler.retry_backoff_seconds = 1
-    crawler.client = FakeClient(responses)
+    crawler.rate_limiter = FakeLimiter()
+    crawler.rate_limit_config = SimpleNamespace(requests_per_second=1.0, max_concurrency=1)
     return crawler
 
 
