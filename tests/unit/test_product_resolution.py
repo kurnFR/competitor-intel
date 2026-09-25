@@ -36,7 +36,9 @@ def test_ambiguous_fuzzy_product_goes_to_review():
     mapping_query.filter.return_value.first.return_value = None
     name_query = MagicMock()
     name_query.filter.return_value.first.return_value = None
-    db.query.side_effect = [mapping_query, name_query]
+    candidate_query = MagicMock()
+    candidate_query.filter.return_value.first.return_value = SimpleNamespace(id="p1")
+    db.query.side_effect = [mapping_query, name_query, candidate_query]
     db.execute.return_value.fetchall.return_value = [
         SimpleNamespace(id="p1", sim=0.84),
         SimpleNamespace(id="p2", sim=0.82),
