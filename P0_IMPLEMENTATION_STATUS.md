@@ -132,6 +132,10 @@ f6a91c3d8e52  crawl job retry state
 5d1f8a3c7b92  promotion supersession lineage
       ↓
 6e2a9b4c1d73  promotion change event history
+      ↓
+7f3a1c9e5b20  required postgres extensions
+      ↓
+a8c4e1f9d2b7  schema reconciliation
 ```
 
 ## Database safety rule
