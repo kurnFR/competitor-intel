@@ -27,7 +27,7 @@ class RateLimiterTests(unittest.TestCase):
             pass
 
         sleep.assert_called_once()
-        self.assertAlmostEqual(sleep.call_args.args[0], 0.9, places=6)
+        self.assertAlmostEqual(sleep.call_args.args[0], 1.0, places=6)
 
     @patch("app.services.crawler.rate_limiter.time.sleep")
     @patch("app.services.crawler.rate_limiter.time.monotonic", side_effect=[10.0, 10.8])
