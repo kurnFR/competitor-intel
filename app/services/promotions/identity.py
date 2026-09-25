@@ -46,7 +46,6 @@ def _normalize_datetime(value: Any) -> str | None:
 
 
 def _as_date(value: Any) -> date | None:
-    """Parse supported date/datetime values for temporal identity checks."""
     if value is None or value == "":
         return None
     if isinstance(value, datetime):
@@ -63,39 +62,24 @@ def _as_date(value: Any) -> date | None:
 
 
 def source_identity_periods_compatible(left: dict[str, Any], right: dict[str, Any]) -> bool:
-    """Return whether two source observations can represent one campaign.
-
-    The v2 fingerprint intentionally ignores dates so minor copy/date corrections
-    do not fragment a promotion. That alone would incorrectly merge recurring
-    identical campaigns, however. When both observations provide parseable date
-    ranges, require the ranges to overlap. Missing dates remain compatible because
-    absence is uncertainty, not evidence that the campaigns are different.
-    """
+    """Require overlapping periods when both observations provide dates."""
     left_start = _as_date(left.get("start_date"))
     left_end = _as_date(left.get("end_date"))
     right_start = _as_date(right.get("start_date"))
     right_end = _as_date(right.get("end_date"))
-
     if left_start is None or right_start is None:
         return True
-
     left_end = left_end or left_start
     right_end = right_end or right_start
     return max(left_start, right_start) <= min(left_end, right_end)
 
 
 def _hash_payload(payload: dict[str, Any]) -> str:
-    encoded = json.dumps(
-        payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True
-    ).encode("utf-8")
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 
 
 def _identity_payload(data: dict[str, Any]) -> dict[str, Any]:
-    """Build the legacy canonical identity payload.
-
-    Kept unchanged for backward compatibility with existing v1 fingerprints.
-    """
     return {
         "identity_version": IDENTITY_VERSION,
         "competitor_id": str(data.get("competitor_id")) if data.get("competitor_id") else None,
@@ -125,13 +109,11 @@ def _identity_payload(data: dict[str, Any]) -> dict[str, Any]:
 
 
 def _source_identity_payload(data: dict[str, Any]) -> dict[str, Any]:
-    """Build a stable commercial identity independent of mutable entity IDs.
+    """Stable campaign identity; mutable commercial values are excluded.
 
-    Entity resolution can improve after the first crawl, and marketing copy
-    can change while the same offer remains active. Therefore this identity
-    deliberately excludes canonical UUIDs, promotion title, and dates. The
-    retailer/channel/geography boundary remains part of identity so identical
-    offers at different retailers are not silently merged.
+    Price, discount/value thresholds, gift text, quantities and dates can change
+    during one campaign. Those are deliberately tracked by change detection
+    instead of creating a new canonical promotion identity.
     """
     return {
         "identity_version": SOURCE_IDENTITY_VERSION,
@@ -142,36 +124,22 @@ def _source_identity_payload(data: dict[str, Any]) -> dict[str, Any]:
         "sku": _normalize_text(data.get("sku")),
         "pack_size": _normalize_text(data.get("pack_size")),
         "promotion_type": _normalize_text(data.get("promotion_type")),
-        "buy_quantity": data.get("buy_quantity"),
-        "free_quantity": data.get("free_quantity"),
-        "bundle_quantity": data.get("bundle_quantity"),
-        "cashback_amount": _normalize_number(data.get("cashback_amount")),
-        "voucher_amount": _normalize_number(data.get("voucher_amount")),
-        "minimum_purchase_amount": _normalize_number(data.get("minimum_purchase_amount")),
-        "minimum_purchase_quantity": data.get("minimum_purchase_quantity"),
-        "gift_description": _normalize_text(data.get("gift_description")),
-        "promo_price": _normalize_number(data.get("promo_price")),
-        "currency": _normalize_text(data.get("currency")),
         "channel": _normalize_text(data.get("channel")),
         "geography": _normalize_text(data.get("geography")),
     }
 
 
 def promotion_identity_payload(data: dict[str, Any]) -> dict[str, Any]:
-    """Return the legacy payload used by the v1 fingerprint."""
     return _identity_payload(data)
 
 
 def promotion_identity_fingerprint(data: dict[str, Any]) -> str:
-    """Return the deterministic legacy v1 SHA-256 fingerprint."""
     return _hash_payload(_identity_payload(data))
 
 
 def promotion_source_identity_payload(data: dict[str, Any]) -> dict[str, Any]:
-    """Return the v2 commercial identity payload used for stable matching."""
     return _source_identity_payload(data)
 
 
 def promotion_source_identity_fingerprint(data: dict[str, Any]) -> str:
-    """Return a stable SHA-256 identity independent of canonical entity IDs."""
     return _hash_payload(_source_identity_payload(data))
