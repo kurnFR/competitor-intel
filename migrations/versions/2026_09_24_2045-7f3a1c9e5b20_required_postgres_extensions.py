@@ -17,8 +17,11 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
-    op.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"')
+    # env.py sets search_path to competitor_intel, public. Extensions are
+    # database-level resources, while the resolver explicitly calls
+    # public.similarity(). Pin both extensions to public.
+    op.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public")
+    op.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA public')
 
 
 def downgrade() -> None:
