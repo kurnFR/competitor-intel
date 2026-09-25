@@ -21,7 +21,7 @@ def test_discovery_is_bounded():
     urls = discover_pagination_urls("https://example.com/promo?page=1", links, max_pages=5)
     assert len(urls) == 5
     assert urls[0].endswith("page=1")
-    assert urls[-1].endswith("page=4")
+    assert urls[-1].endswith("page=5")
 
 
 def test_merge_discovered_urls_deduplicates_seeds_and_links():
