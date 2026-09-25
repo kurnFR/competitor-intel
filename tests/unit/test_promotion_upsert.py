@@ -108,7 +108,7 @@ def test_change_event_is_created_for_each_material_field_change():
     )
     upsert_promotion_observation(
         db, document_id=uuid4(), item=_item(promo_price=6500, discount_percentage=35),
-        raw_text="Roma Kelapa 300g Rp6.500 diskon 35%", observed_at=observed_at,
+        raw_text="Roma Kelapa 300g Rp7.000 diskon 30%; later observation Rp6.500 diskon 35%", observed_at=observed_at,
     )
 
     events = [e for e in db.rows[PromotionChangeEvent] if e.promotion_id == promotion.id]
@@ -146,7 +146,7 @@ def test_missing_discount_does_not_erase_known_canonical_discount():
 
     updated, _, created = upsert_promotion_observation(
         db, document_id=uuid4(), item=_item(regular_price=None, discount_percentage=None),
-        raw_text="Roma Kelapa 300g promo Rp7.000", observed_at=observed_at,
+        raw_text="Roma Kelapa 300g Rp7.000 diskon 30%", observed_at=observed_at,
     )
     assert created is False
     assert updated is promotion
