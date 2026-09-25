@@ -1,4 +1,5 @@
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import httpx
@@ -15,6 +16,8 @@ class FakeResponse:
     def __init__(self, status_code, text=""):
         self.status_code = status_code
         self.text = text
+        self.content = text.encode("utf-8")
+        self.headers = {"content-type": "text/html; charset=utf-8"}
 
 
 class FakeClient:
@@ -30,6 +33,15 @@ class FakeClient:
         return response
 
 
+def make_crawler(responses, max_retries):
+    crawler = object.__new__(DummyCrawler)
+    crawler.source = SimpleNamespace(id="test-source")
+    crawler.max_retries = max_retries
+    crawler.retry_backoff_seconds = 1
+    crawler.client = FakeClient(responses)
+    return crawler
+
+
 class CrawlerBaseTests(unittest.TestCase):
     def test_canonicalize_url_removes_fragment_and_normalizes_host(self):
         self.assertEqual(
@@ -42,13 +54,7 @@ class CrawlerBaseTests(unittest.TestCase):
         self.assertNotEqual(compute_hash("promo"), compute_hash("promo-2"))
 
     def test_fetch_url_retries_transient_status_then_succeeds(self):
-        crawler = object.__new__(DummyCrawler)
-        crawler.max_retries = 2
-        crawler.retry_backoff_seconds = 1
-        crawler.client = FakeClient([
-            FakeResponse(503),
-            FakeResponse(200, "ok"),
-        ])
+        crawler = make_crawler([FakeResponse(503), FakeResponse(200, "ok")], max_retries=2)
 
         with patch("app.services.crawler.base.time.sleep") as sleep:
             status, text, error = crawler.fetch_url("https://example.test/promo")
@@ -58,13 +64,10 @@ class CrawlerBaseTests(unittest.TestCase):
         sleep.assert_called_once_with(1)
 
     def test_fetch_url_retries_http_error_then_returns_error(self):
-        crawler = object.__new__(DummyCrawler)
-        crawler.max_retries = 1
-        crawler.retry_backoff_seconds = 1
-        crawler.client = FakeClient([
+        crawler = make_crawler([
             httpx.ConnectError("temporary connection failure"),
             httpx.ConnectError("temporary connection failure"),
-        ])
+        ], max_retries=1)
 
         with patch("app.services.crawler.base.time.sleep") as sleep:
             status, text, error = crawler.fetch_url("https://example.test/promo")
@@ -76,10 +79,7 @@ class CrawlerBaseTests(unittest.TestCase):
         sleep.assert_called_once_with(1)
 
     def test_fetch_url_does_not_retry_non_transient_status(self):
-        crawler = object.__new__(DummyCrawler)
-        crawler.max_retries = 3
-        crawler.retry_backoff_seconds = 1
-        crawler.client = FakeClient([FakeResponse(404, "missing")])
+        crawler = make_crawler([FakeResponse(404, "missing")], max_retries=3)
 
         with patch("app.services.crawler.base.time.sleep") as sleep:
             status, text, error = crawler.fetch_url("https://example.test/missing")
