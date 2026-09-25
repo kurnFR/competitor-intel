@@ -21,7 +21,7 @@ The repository uses Alembic with:
 script_location = migrations
 ```
 
-The current migration chain contains one initial revision:
+The current migration chain begins with one initial revision:
 
 ```text
 2026_09_02_1521-d7bd4ee90139_initial_mvp_schema.py
@@ -109,7 +109,7 @@ P0-C extraction/document processing state
 P0-D integrity/indexes
 ```
 
-The exact generated revision IDs and filenames must be created by Alembic and must reference the actual previous revision. Do not hardcode a guessed revision ID in documentation or code.
+The exact revision ID and filename for the reconciliation migration are committed as `a8c4e1f9d2b7`, with `7f3a1c9e5b20` as its parent. The migration is idempotent so it can safely repair an already-partially-migrated live schema.
 
 ## P0-A — Promotion identity and lifecycle
 
@@ -348,3 +348,4 @@ The database portion of P0 is complete only when:
 10. All migrations are reversible where safely possible.
 11. The migration chain remains linear from `d7bd4ee90139`.
 12. No `dwh_prod` dependency exists.
+13. The 2026-09-24 schema snapshot can be reconciled to the current application contract without destructive data changes.
