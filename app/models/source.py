@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 from typing import Optional, List
-from sqlalchemy import String, Text, Integer, Float, Boolean, DateTime, ForeignKey, Index
+from sqlalchemy import String, Text, Integer, BigInteger, Float, Boolean, DateTime, ForeignKey, Index
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.session import Base
@@ -62,6 +62,7 @@ class CrawlDocument(Base):
         Index("idx_crawl_documents_url", "url"),
         Index("idx_crawl_documents_content_hash", "content_hash"),
         Index("idx_crawl_documents_raw_sha256", "raw_content_sha256"),
+        Index("idx_crawl_jobs_retry_queue", "status", "next_retry_at"),
         {"schema": "competitor_intel"}
     )
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -73,8 +74,8 @@ class CrawlDocument(Base):
     title: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     raw_content_uri: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     raw_content_sha256: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
-    raw_content_type: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    raw_content_size_bytes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    raw_content_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    raw_content_size_bytes: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
     storage_backend: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
     text_content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     content_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
