@@ -35,7 +35,10 @@ class SourceRegistry(Base):
 
 class CrawlJob(Base):
     __tablename__ = "crawl_jobs"
-    __table_args__ = {"schema": "competitor_intel"}
+    __table_args__ = (
+        Index("idx_crawl_jobs_retry_queue", "status", "next_retry_at"),
+        {"schema": "competitor_intel"},
+    )
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     source_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("competitor_intel.source_registry.id", ondelete="CASCADE"), nullable=False, index=True)
     url: Mapped[str] = mapped_column(Text, nullable=False)
@@ -62,7 +65,6 @@ class CrawlDocument(Base):
         Index("idx_crawl_documents_url", "url"),
         Index("idx_crawl_documents_content_hash", "content_hash"),
         Index("idx_crawl_documents_raw_sha256", "raw_content_sha256"),
-        Index("idx_crawl_jobs_retry_queue", "status", "next_retry_at"),
         {"schema": "competitor_intel"}
     )
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
