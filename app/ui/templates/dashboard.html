@@ -259,6 +259,19 @@
     <script>
         let currentPromotions = [];
 
+        // Escape untrusted text (scraped pages / LLM output) before inserting into HTML.
+        function esc(value) {
+            return String(value ?? '').replace(/[&<>"']/g, c => (
+                {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]
+            ));
+        }
+        function safeHttpUrl(value) {
+            try {
+                const u = new URL(value);
+                return (u.protocol === 'http:' || u.protocol === 'https:') ? u.href : null;
+            } catch (e) { return null; }
+        }
+
         function updateThemeIcon() {
             const isDark = document.documentElement.classList.contains('dark');
             const icon = document.getElementById('theme-icon');
@@ -323,9 +336,16 @@
             button.disabled = true;
             button.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Scanning...';
             try {
-                const response = await fetch('/api/v1/pipeline/run', {method: 'POST'});
+                let apiKey = sessionStorage.getItem('adminApiKey');
+                if (!apiKey) {
+                    apiKey = prompt('Enter the admin API key to start a scan:');
+                    if (!apiKey) throw new Error('Scan cancelled: an admin API key is required.');
+                }
+                const response = await fetch('/api/v1/pipeline/run', {method: 'POST', headers: {'X-API-Key': apiKey}});
                 const result = await response.json();
+                if (response.status === 401) sessionStorage.removeItem('adminApiKey');
                 if (!response.ok) throw new Error(result.detail || 'Scan could not start');
+                sessionStorage.setItem('adminApiKey', apiKey);
                 pollScanStatus();
             } catch (error) {
                 button.disabled = false;
@@ -372,26 +392,26 @@
 
                 const discountBadge = p.effective_discount > 0 ? `
                     <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-400 border border-rose-200/50 dark:border-rose-900/50">
-                        ${p.effective_discount}% OFF
+                        ${esc(p.effective_discount)}% OFF
                     </span>
                 ` : '<span class="text-slate-300 dark:text-slate-600">-</span>';
 
                 return `
                     <tr class="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition">
                         <td class="py-3.5 px-4 text-center">
-                            <span class="w-6 h-6 rounded-full inline-flex items-center justify-center text-xs ${rankColor}">${p.rank}</span>
+                            <span class="w-6 h-6 rounded-full inline-flex items-center justify-center text-xs ${rankColor}">${esc(p.rank)}</span>
                         </td>
                         <td class="py-3.5 px-4">
-                            <div class="font-bold text-slate-900 dark:text-white">${p.brand || 'Competitor Brand'}</div>
-                            <div class="text-[11px] text-slate-500 dark:text-slate-400">${p.competitor || 'FMCG Manufacturer'}</div>
+                            <div class="font-bold text-slate-900 dark:text-white">${esc(p.brand || 'Competitor Brand')}</div>
+                            <div class="text-[11px] text-slate-500 dark:text-slate-400">${esc(p.competitor || 'FMCG Manufacturer')}</div>
                         </td>
                         <td class="py-3.5 px-4">
-                            <div class="font-medium text-slate-800 dark:text-slate-200">${p.product_name}</div>
-                            <div class="text-[11px] text-slate-400 dark:text-slate-500">${p.pack_size || p.category}</div>
+                            <div class="font-medium text-slate-800 dark:text-slate-200">${esc(p.product_name)}</div>
+                            <div class="text-[11px] text-slate-400 dark:text-slate-500">${esc(p.pack_size || p.category)}</div>
                         </td>
                         <td class="py-3.5 px-4">
                             <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200/60 dark:border-blue-900/60">
-                                ${p.promotion_type.replace(/_/g, ' ')}
+                                ${esc(p.promotion_type.replace(/_/g, ' '))}
                             </span>
                         </td>
                         <td class="py-3.5 px-4 text-right text-slate-400 dark:text-slate-500 line-through text-xs font-mono">
@@ -405,20 +425,20 @@
                         </td>
                         <td class="py-3.5 px-4">
                             <span class="inline-flex items-center gap-1.5 text-xs font-medium text-slate-700 dark:text-slate-300">
-                                <i class="fa-solid fa-shop text-slate-400 dark:text-slate-500 text-[10px]"></i> ${p.outlet || p.retailer || 'N/A'}
+                                <i class="fa-solid fa-shop text-slate-400 dark:text-slate-500 text-[10px]"></i> ${esc(p.outlet || p.retailer || 'N/A')}
                             </span>
                         </td>
-                        <td class="py-3.5 px-4 text-xs">${p.channel || 'N/A'}</td>
-                        <td class="py-3.5 px-4 text-xs">${p.geography || 'N/A'}</td>
+                        <td class="py-3.5 px-4 text-xs">${esc(p.channel || 'N/A')}</td>
+                        <td class="py-3.5 px-4 text-xs">${esc(p.geography || 'N/A')}</td>
                         <td class="py-3.5 px-4 text-xs text-slate-600 dark:text-slate-400 font-mono">
-                            ${p.valid_from || '-'} to ${p.valid_until || '-'}
+                            ${p.dates_stated === false ? '<span class="italic">' + esc(p.valid_until) + '</span>' : esc(p.valid_from || '-') + ' to ' + esc(p.valid_until || '-')}
                         </td>
                         <td class="py-3.5 px-4 text-center">
                             <span class="text-xs font-bold text-slate-700 dark:text-slate-300">${(p.rank_score * 100).toFixed(1)}</span>
                         </td>
                         <td class="py-3.5 px-4 text-center">
                             <button onclick="openModal(${idx})" class="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-100 hover:bg-blue-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 hover:text-blue-700 dark:hover:text-blue-300 text-[11px] transition" title="View audit evidence">
-                                <i class="fa-solid fa-magnifying-glass"></i> ${p.source_status || 'Unverified source'}
+                                <i class="fa-solid fa-magnifying-glass"></i> ${esc(p.source_status || 'Unverified source')}
                             </button>
                         </td>
                     </tr>
@@ -434,8 +454,10 @@
             document.getElementById('modal-confidence').textContent = `${(p.ai_confidence * 100).toFixed(0)}%`;
             document.getElementById('modal-reliability').textContent = `${(p.source_reliability * 100).toFixed(0)}%`;
             const modalUrl = document.getElementById('modal-url');
-            modalUrl.href = p.source_url || '#';
-            modalUrl.classList.toggle('hidden', !p.source_url);
+            const safeUrl = safeHttpUrl(p.source_url);
+            modalUrl.href = safeUrl || '#';
+            modalUrl.rel = 'noopener noreferrer';
+            modalUrl.classList.toggle('hidden', !safeUrl);
             document.getElementById('modal-url-text').textContent = p.source_url || 'Unverified source: no audit link available';
             document.getElementById('evidence-modal').classList.remove('hidden');
         }

@@ -2,6 +2,7 @@ import logging
 from apscheduler.schedulers.background import BackgroundScheduler
 from app.core.config import settings
 from app.db.session import SessionLocal
+from app.services.ranking.rescore import rescore_promotions
 from app.workers.expiration import run_expiration_check
 from scripts.run_pipeline import run_pipeline
 
@@ -13,17 +14,20 @@ def scheduled_expiration_job():
     db = SessionLocal()
     try:
         run_expiration_check(db)
+        rescore_promotions(db)
+        db.commit()
     except Exception as e:
-        logger.error(f"Error in expiration job: {e}")
+        logger.exception("Error in expiration job: %s", e)
+        db.rollback()
     finally:
         db.close()
 
 
 def scheduled_pipeline_job():
     try:
-        run_pipeline(crawl_fresh=True, max_docs=5)
-    except Exception as e:
-        logger.error(f"Error in scheduled pipeline job: {e}")
+        run_pipeline(crawl_fresh=True, max_docs=None)
+    except Exception:
+        logger.exception("Error in scheduled pipeline job")
 
 
 def start_scheduler():
@@ -42,7 +46,10 @@ def start_scheduler():
         replace_existing=True
     )
     scheduler.start()
-    logger.info("Background scheduler started (Expiration: 15m, Crawl: 30m).")
+    logger.info(
+        "Background scheduler started (Expiration: %sm, Crawl: %sm).",
+        settings.EXPIRATION_CHECK_MINUTES, settings.CRAWL_INTERVAL_MINUTES,
+    )
 
 
 def stop_scheduler():

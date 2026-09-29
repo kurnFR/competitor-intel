@@ -1,75 +1,113 @@
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List
 from fastapi import APIRouter, Depends, Query, HTTPException
-from sqlalchemy.orm import Session
-from sqlalchemy import func, or_
+from sqlalchemy.orm import Session, contains_eager
+from sqlalchemy import and_, func, or_
 from app.db.session import get_db
 from app.models.promotion import Promotion, PromotionEvidence
 from app.models.promotion_change import PromotionChangeEvent
 from app.models.entity import Competitor, Brand, Retailer
 from app.schemas.promotion import Top10Response, Top10PromotionItem, PromotionDetailOut, PromotionChangeEventOut, StatsResponse
+from app.services.channels import display_channel, normalize_channel, retailer_types_for
+from app.services.promotions.visibility import live_promotion_filter
 
 router = APIRouter()
-VERIFIED_CHANNELS = {"Retail", "Modern Trade", "General Trade", "E-commerce", "Wholesale", "Distributor", "Foodservice", "N/A"}
 
 
-def display_channel(value: Optional[str]) -> str:
-    return value if value in VERIFIED_CHANNELS else "N/A"
+def _like(value: str) -> str:
+    """Escape LIKE wildcards so user input is matched literally."""
+    escaped = value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
+
+def _ilike(column, value: str):
+    return column.ilike(_like(value), escape="\\")
+
+
+def _channel_condition(channel: str):
+    normalized = normalize_channel(channel)
+    if normalized is None:
+        # Unknown channel names can only match promotions with no known channel.
+        return and_(Promotion.channel.is_(None), Retailer.channel_type.is_(None))
+    types = retailer_types_for(normalized)
+    return or_(
+        Promotion.channel == normalized,
+        and_(Promotion.channel.is_(None), func.upper(Retailer.channel_type).in_(types)),
+    )
 
 
 @router.get("/top10", response_model=Top10Response)
 def get_top10_promotions(
     industry: str = Query("FMCG", min_length=1, description="Required industry selector; FMCG is the default"),
-    q: Optional[str] = Query(None, description="Free-text search across competitor, product, outlet, mechanic, and geography"),
-    category: Optional[str] = Query(None, description="Filter by category (e.g. BISCUIT, CRACKER, WAFER)"),
-    outlet: Optional[str] = Query(None, description="Filter by outlet name"),
-    retailer: Optional[str] = Query(None, description="Backward-compatible outlet filter"),
-    channel: Optional[str] = Query(None, description="Filter by verified channel; unknown values remain N/A"),
-    brand: Optional[str] = Query(None, description="Filter by brand name"),
-    competitor: Optional[str] = Query(None, description="Filter by competitor name"),
-    days: int = Query(90, description="Recency window in days (default 90 for 3-month rule)"),
+    q: Optional[str] = Query(None, max_length=100, description="Free-text search across competitor, product, outlet, mechanic, and geography"),
+    category: Optional[str] = Query(None, max_length=50, description="Filter by category (e.g. BISCUIT, CRACKER, WAFER)"),
+    outlet: Optional[str] = Query(None, max_length=100, description="Filter by outlet name"),
+    retailer: Optional[str] = Query(None, max_length=100, description="Backward-compatible outlet filter"),
+    channel: Optional[str] = Query(None, max_length=50, description="Filter by channel, e.g. Modern Trade or E-commerce"),
+    brand: Optional[str] = Query(None, max_length=100, description="Filter by brand name"),
+    competitor: Optional[str] = Query(None, max_length=100, description="Filter by competitor name"),
+    days: int = Query(90, ge=1, le=365, description="Recency window in days (default 90 for 3-month rule)"),
     db: Session = Depends(get_db)
 ):
     now = datetime.now(timezone.utc)
-    cutoff = now - timedelta(days=days)
     query = (
         db.query(Promotion)
         .outerjoin(Competitor, Promotion.competitor_id == Competitor.id)
         .outerjoin(Brand, Promotion.brand_id == Brand.id)
         .outerjoin(Retailer, Promotion.retailer_id == Retailer.id)
-        .filter(Promotion.status == "ACTIVE", Promotion.last_seen_at >= cutoff, (Promotion.end_date == None) | (Promotion.end_date >= now))
+        .options(contains_eager(Promotion.competitor), contains_eager(Promotion.brand), contains_eager(Promotion.retailer))
+        .filter(live_promotion_filter(now, recency_days=days))
     )
     if category:
-        query = query.filter(Promotion.category.ilike(f"%{category}%"))
+        query = query.filter(_ilike(Promotion.category, category))
     outlet_filter = outlet or retailer
     if outlet_filter:
-        query = query.filter(Retailer.name.ilike(f"%{outlet_filter}%"))
+        query = query.filter(_ilike(Retailer.name, outlet_filter))
     if channel:
-        normalized_channel = channel if channel in VERIFIED_CHANNELS else "N/A"
-        query = query.filter(Promotion.channel == normalized_channel)
+        query = query.filter(_channel_condition(channel))
     if q:
-        keyword = f"%{q}%"
-        query = query.filter(or_(Promotion.product_name.ilike(keyword), Promotion.promotion_type.ilike(keyword), Promotion.category.ilike(keyword), Promotion.channel.ilike(keyword), Promotion.geography.ilike(keyword), Retailer.name.ilike(keyword), Competitor.name.ilike(keyword), Brand.name.ilike(keyword)))
+        query = query.filter(or_(
+            _ilike(Promotion.product_name, q), _ilike(Promotion.promotion_type, q), _ilike(Promotion.category, q),
+            _ilike(Promotion.channel, q), _ilike(Promotion.geography, q), _ilike(Retailer.name, q),
+            _ilike(Competitor.name, q), _ilike(Brand.name, q),
+        ))
     if brand:
-        query = query.filter(Brand.name.ilike(f"%{brand}%"))
+        query = query.filter(_ilike(Brand.name, brand))
     if competitor:
-        query = query.filter(Competitor.name.ilike(f"%{competitor}%"))
+        query = query.filter(_ilike(Competitor.name, competitor))
     results = query.order_by(Promotion.rank_score.desc(), Promotion.last_seen_at.desc()).limit(10).all()
+
+    # One query for the latest evidence of all results (instead of one per row).
+    evidence_by_promo = {}
+    if results:
+        rows = (
+            db.query(PromotionEvidence)
+            .filter(PromotionEvidence.promotion_id.in_([p.id for p in results]))
+            .order_by(PromotionEvidence.captured_at.desc())
+            .all()
+        )
+        for e in rows:  # newest first, so setdefault keeps the latest per promotion
+            evidence_by_promo.setdefault(e.promotion_id, e)
 
     items = []
     for idx, p in enumerate(results, start=1):
-        latest_evidence = (
-            db.query(PromotionEvidence).filter(PromotionEvidence.promotion_id == p.id).order_by(PromotionEvidence.captured_at.desc()).first()
-        )
+        latest_evidence = evidence_by_promo.get(p.id)
+        dates_stated = p.start_date is not None or p.end_date is not None
+        if p.end_date:
+            valid_until = p.end_date.strftime("%Y-%m-%d")
+        else:
+            valid_until = "No end date stated" if dates_stated else "Dates not stated"
         items.append(Top10PromotionItem(
             id=p.id, rank=idx, product_name=p.product_name, brand=p.brand.name if p.brand else None,
             competitor=p.competitor.name if p.competitor else None, category=p.category, pack_size=p.pack_size,
             retailer=p.retailer.name if p.retailer else None, outlet=p.retailer.name if p.retailer else None,
-            channel=display_channel(p.channel), geography=p.geography, promotion_type=p.promotion_type,
+            channel=display_channel(p.channel, p.retailer.channel_type if p.retailer else None),
+            geography=p.geography, promotion_type=p.promotion_type,
             buy_quantity=p.buy_quantity, free_quantity=p.free_quantity, regular_price=p.regular_price,
             promo_price=p.promo_price, discount_percentage=p.discount_percentage, effective_discount=p.discount_percentage,
-            valid_until=p.end_date.strftime("%Y-%m-%d") if p.end_date else "Ongoing / Recent",
-            valid_from=p.start_date.strftime("%Y-%m-%d") if p.start_date else None, rank_score=p.rank_score,
+            valid_until=valid_until,
+            valid_from=p.start_date.strftime("%Y-%m-%d") if p.start_date else None,
+            dates_stated=dates_stated, rank_score=p.rank_score,
             ai_confidence=p.ai_confidence, source_reliability=p.source_reliability,
             evidence_quote=latest_evidence.evidence_text if latest_evidence else None,
             source_url=latest_evidence.source_url if latest_evidence else None,
@@ -109,7 +147,8 @@ def get_promotion_detail(promotion_id: str, db: Session = Depends(get_db)):
     return PromotionDetailOut(
         id=p.id, product_name=p.product_name, brand=p.brand.name if p.brand else None,
         competitor=p.competitor.name if p.competitor else None, category=p.category, pack_size=p.pack_size,
-        retailer=p.retailer.name if p.retailer else None, channel=p.channel, promotion_type=p.promotion_type,
+        retailer=p.retailer.name if p.retailer else None,
+        channel=display_channel(p.channel, p.retailer.channel_type if p.retailer else None), promotion_type=p.promotion_type,
         buy_quantity=p.buy_quantity, free_quantity=p.free_quantity, regular_price=p.regular_price,
         promo_price=p.promo_price, discount_percentage=p.discount_percentage, start_date=p.start_date,
         end_date=p.end_date, status=p.status, supersedes_promotion_id=p.supersedes_promotion_id,

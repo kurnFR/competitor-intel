@@ -236,6 +236,23 @@ Workflow for users discovering new source websites:
 
 ---
 
+## Security & Operations
+
+* **Admin key.** `POST /api/v1/pipeline/run` (and the dashboard "Scan now" button) require the header
+  `X-API-Key` matching `ADMIN_API_KEY`. If the variable is empty the endpoint is disabled. Generate a key with
+  `python -c "import secrets; print(secrets.token_urlsafe(32))"`.
+* **CORS.** Same-origin only by default; list extra origins in `CORS_ORIGINS` (comma-separated).
+* **Crawler etiquette.** The crawler identifies itself with `CRAWLER_USER_AGENT` (add a contact URL/e-mail) and
+  honours each site's `robots.txt` (`CRAWLER_RESPECT_ROBOTS=true`). Review each retailer's terms of use before
+  enabling a source.
+* **One scan at a time.** A PostgreSQL advisory lock stops the scheduler, manual scans and extra workers from
+  overlapping. Scan status is tracked per process, so run a single uvicorn worker (`scripts/start_server.sh`).
+* **Unchanged pages** are not re-sent to the LLM; their promotions are simply marked as still seen. Use
+  `run_pipeline(force=True)` to re-extract.
+* **Undated promotions.** Catalog pages often omit validity dates. Such promotions are still shown (flagged
+  "Dates not stated", ranked slightly lower) for `UNDATED_PROMO_MAX_AGE_DAYS` after they were last seen.
+* **Rankings** are recalculated every `EXPIRATION_CHECK_MINUTES`, so freshness decays even without a re-crawl.
+
 ## Automated Background Jobs
 * **Crawl & Extraction Pipeline**: Runs automatically every 30 minutes via APScheduler.
 * **Expiration Worker**: Runs every 15 minutes to transition promotions past their end date from `ACTIVE` to `EXPIRED`, and stale records (>7 days without end date) to `UNKNOWN`.

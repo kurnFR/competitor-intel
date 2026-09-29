@@ -6,6 +6,7 @@ from app.db.session import get_db
 from app.models.promotion import Promotion
 from app.models.entity import Competitor, Brand, Retailer
 from app.schemas.promotion import StatsResponse
+from app.services.promotions.visibility import live_promotion_filter
 
 router = APIRouter()
 
@@ -15,7 +16,8 @@ def get_stats(db: Session = Depends(get_db)):
     now = datetime.now(timezone.utc)
     seven_days = now + timedelta(days=7)
 
-    active_count = db.query(Promotion).filter(Promotion.status == "ACTIVE").count()
+    live = live_promotion_filter(now, recency_days=90)
+    active_count = db.query(Promotion).filter(live).count()
     comp_count = db.query(Competitor).filter(Competitor.is_active == True).count()
     brand_count = db.query(Brand).count()
     ret_count = db.query(Retailer).count()
@@ -34,7 +36,7 @@ def get_stats(db: Session = Depends(get_db)):
     # By promotion type
     type_counts = dict(
         db.query(Promotion.promotion_type, func.count(Promotion.id))
-        .filter(Promotion.status == "ACTIVE")
+        .filter(live)
         .group_by(Promotion.promotion_type)
         .all()
     )
@@ -43,7 +45,7 @@ def get_stats(db: Session = Depends(get_db)):
     ret_query = (
         db.query(Retailer.name, func.count(Promotion.id))
         .join(Promotion, Promotion.retailer_id == Retailer.id)
-        .filter(Promotion.status == "ACTIVE")
+        .filter(live)
         .group_by(Retailer.name)
         .all()
     )

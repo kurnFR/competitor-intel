@@ -3,6 +3,7 @@ from app.services.validation.validator import PromotionValidator
 
 
 def _item(evidence_quote: str, **kwargs) -> ExtractedPromotionItem:
+    kwargs.setdefault("category", "BISCUIT")  # a missing category is no longer guessed
     return ExtractedPromotionItem(
         product_name="Roma Kelapa 300g",
         evidence_quote=evidence_quote,

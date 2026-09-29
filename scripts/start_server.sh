@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -e
-cd /home/BIS/competitor-intel
-source venv/bin/activate
+cd "$(dirname "$0")/.."
+[ -f venv/bin/activate ] && source venv/bin/activate
 export PYTHONPATH=.
-echo "Starting Competitor Promotion Intelligence Platform on http://0.0.0.0:8000..."
-exec uvicorn app.main:app --host 0.0.0.0 --port 8000
+echo "Starting Competitor Promotion Intelligence Platform on http://${HOST:-127.0.0.1}:${PORT:-8000}..."
+# Keep a single worker: scan status and the scheduler live inside the process.
+exec uvicorn app.main:app --host "${HOST:-127.0.0.1}" --port "${PORT:-8000}" --workers 1

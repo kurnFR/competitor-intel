@@ -1,7 +1,6 @@
-from app.db import Base, engine
-from app.models import Company, Brand, Product, Location, Retailer, Promotion, CompanyActivity
-
+"""Create/upgrade the database schema by running the Alembic migrations."""
+import subprocess
+import sys
 
 if __name__ == "__main__":
-    Base.metadata.create_all(bind=engine)
-    print("Database tables created successfully.")
+    sys.exit(subprocess.call(["alembic", "upgrade", "head"]))

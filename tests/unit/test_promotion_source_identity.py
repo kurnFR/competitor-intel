@@ -76,10 +76,11 @@ class PromotionSourceIdentityTests(unittest.TestCase):
             promotion_source_identity_fingerprint(changed),
         )
 
-    def test_material_mechanic_change_changes_identity(self) -> None:
+    def test_price_change_keeps_campaign_identity(self) -> None:
+        """Mutable values (price) are tracked as changes, not as a new promotion."""
         changed = dict(self.source)
         changed["promo_price"] = 7000
-        self.assertNotEqual(
+        self.assertEqual(
             promotion_source_identity_fingerprint(self.source),
             promotion_source_identity_fingerprint(changed),
         )

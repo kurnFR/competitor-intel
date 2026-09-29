@@ -19,7 +19,7 @@ class ExtractedPromotionItem(BaseModel):
     product_name: str = Field(min_length=1, description="Normalized product name, e.g. Nissin Wafer Cokelat 110g")
     brand: Optional[str] = Field(default=None, description="Brand name, e.g. Nissin, Roma, Oreo, Beng Beng")
     competitor: Optional[str] = Field(default=None, description="Manufacturer / Competitor, e.g. Mayora, Khong Guan, Mondelez")
-    category: PromotionCategory = Field(default="BISCUIT", description="Category: BISCUIT, CRACKER, COOKIE, WAFER, SNACK, or OTHER")
+    category: PromotionCategory = Field(default="OTHER", description="Category: BISCUIT, CRACKER, COOKIE, WAFER, SNACK, or OTHER")
     variant: Optional[str] = Field(default=None, description="Flavor or variant, e.g. Cokelat, Keju, Strawberry")
     pack_size: Optional[str] = Field(default=None, description="Pack size, e.g. 110 gr, 200g")
     regular_price: Optional[float] = Field(default=None, ge=0, description="Normal regular price in IDR without symbols")

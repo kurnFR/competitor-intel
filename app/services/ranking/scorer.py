@@ -2,6 +2,9 @@ from datetime import datetime, timezone
 from typing import Optional, Sequence, Mapping, Any
 
 
+UNDATED_PENALTY = 0.85
+
+
 class PromotionScorer:
     @staticmethod
     def _bounded(value: Optional[float], default: float = 0.0) -> float:
@@ -106,6 +109,7 @@ class PromotionScorer:
         ai_confidence: float,
         *,
         change_impact: float = 0.0,
+        dates_known: bool = True,
         now: Optional[datetime] = None,
     ) -> float:
         strength = cls.calculate_promotion_strength(promotion_type, discount_percentage)
@@ -129,4 +133,7 @@ class PromotionScorer:
             + 0.10 * confidence
             + 0.15 * change
         )
+        if not dates_known:
+            # Validity period could not be confirmed on the source; rank slightly lower.
+            score *= UNDATED_PENALTY
         return round(min(1.0, max(0.0, score)), 4)

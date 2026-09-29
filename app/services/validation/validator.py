@@ -1,3 +1,4 @@
+import re
 import logging
 from datetime import date, datetime, time, timezone
 from typing import Tuple, Optional
@@ -6,6 +7,10 @@ from app.schemas.ai import ExtractedPromotionItem
 logger = logging.getLogger(__name__)
 
 VALID_CATEGORIES = {"BISCUIT", "CRACKER", "COOKIE", "WAFER", "SNACK"}
+# Whole-word match so e.g. "pie" does not match "piece" or "spies".
+_SNACK_KEYWORDS = re.compile(
+    r"\b(?:biskuit|biscuit|biscuits|cracker|crackers|kraker|malkist|wafer|cookie|cookies|kukis|soes|pie|creme)\b"
+)
 VALID_PROMOTION_TYPES = {
     "DISCOUNT", "BUY_X_GET_Y", "MULTIBUY", "CASHBACK", "VOUCHER",
     "MEMBER_PRICE", "BUNDLE", "OTHER",
@@ -57,12 +62,12 @@ class PromotionValidator:
         if not item.product_name or len(item.product_name.strip()) < 2:
             return False, "Missing product name", None, None, None
 
-        category = (item.category or "BISCUIT").strip().upper()
+        # A missing category is never guessed; it is treated as OTHER and must be
+        # confirmed by a snack keyword (or resolved to a known product upstream).
+        category = (item.category or "OTHER").strip().upper()
         if category not in VALID_CATEGORIES:
             txt = f"{item.product_name} {item.brand or ''}".lower()
-            if category != "OTHER" or not any(k in txt for k in [
-                "biskuit", "biscuit", "cracker", "kraker", "malkist", "wafer", "cookie", "kukis", "soes", "pie", "creme",
-            ]):
+            if category != "OTHER" or not _SNACK_KEYWORDS.search(txt):
                 return False, f"Category '{category}' outside core snack/biscuit scope", None, None, None
 
         promotion_type = (item.promotion_type or "DISCOUNT").strip().upper()

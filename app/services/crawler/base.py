@@ -3,6 +3,8 @@ import logging
 import mimetypes
 import os
 import time
+import threading
+from urllib.robotparser import RobotFileParser
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any, Tuple, List
@@ -13,13 +15,18 @@ from bs4 import BeautifulSoup
 import trafilatura
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.models.source import SourceRegistry, CrawlJob, CrawlDocument
 from app.services.crawler.content import detect_document_type
 from app.services.crawler.rate_limiter import RateLimitConfig, get_source_rate_limiter
 from app.services.storage import get_raw_document_store
 
 logger = logging.getLogger(__name__)
-DEFAULT_HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8", "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7"}
+DEFAULT_HEADERS = {"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8", "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7"}
+ROBOTS_TTL_SECONDS = 24 * 3600
+ROBOTS_DISALLOWED = "ROBOTS_DISALLOWED"
+_robots_cache: Dict[str, Tuple[float, Optional[RobotFileParser]]] = {}
+_robots_lock = threading.Lock()
 RETRYABLE_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
 INITIAL_RETRY_DELAY_SECONDS = 60
 DEFAULT_MAX_RETRIES = 3
@@ -61,9 +68,40 @@ class BaseCrawler(ABC):
         self.rate_limit_config = RateLimitConfig(requests_per_second=requests_per_second, max_concurrency=max_concurrency)
         self.rate_limiter = get_source_rate_limiter()
         self.raw_store = get_raw_document_store()
-        self.client = httpx.Client(headers=DEFAULT_HEADERS, timeout=30.0, follow_redirects=True, verify=True)
+        self.client = httpx.Client(headers={**DEFAULT_HEADERS, "User-Agent": settings.CRAWLER_USER_AGENT}, timeout=30.0, follow_redirects=True, verify=True)
+
+    def robots_allows(self, url: str) -> bool:
+        """Honour robots.txt (cached per host for 24h). Fails open if it cannot be read."""
+        if not settings.CRAWLER_RESPECT_ROBOTS:
+            return True
+        parts = urlsplit(url)
+        origin = f"{parts.scheme}://{parts.netloc}"
+        now = time.monotonic()
+        with _robots_lock:
+            cached = _robots_cache.get(origin)
+        if cached is None or now - cached[0] > ROBOTS_TTL_SECONDS:
+            parser: Optional[RobotFileParser] = None
+            try:
+                resp = self.client.get(f"{origin}/robots.txt")
+                if resp.status_code == 200:
+                    parser = RobotFileParser()
+                    parser.parse(resp.text.splitlines())
+                # 4xx (no robots.txt) and 5xx both mean "no usable rules": allow.
+            except httpx.HTTPError as exc:
+                logger.warning("Could not read robots.txt for %s: %s", origin, exc)
+            cached = (now, parser)
+            with _robots_lock:
+                _robots_cache[origin] = cached
+        parser = cached[1]
+        if parser is None:
+            return True
+        token = settings.CRAWLER_USER_AGENT.split("/")[0].split()[0]
+        return parser.can_fetch(token, url)
 
     def fetch_content(self, url: str) -> Tuple[int, bytes, str, Optional[str]]:
+        if not self.robots_allows(url):
+            logger.warning("robots.txt disallows %s for our user agent; skipping.", url)
+            return 403, b"", "", ROBOTS_DISALLOWED
         last_status = 0
         last_error: Optional[str] = None
         source_key = str(self.source.id)

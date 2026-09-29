@@ -12,7 +12,22 @@ class FakeQuery:
         self.rows = rows
 
     def filter(self, *args, **kwargs):
-        return self
+        """Apply simple ``Model.column == value`` / ``column.in_([...])`` conditions."""
+        rows = self.rows
+        for cond in args:
+            left = getattr(cond, "left", None)
+            right = getattr(cond, "right", None)
+            key = getattr(left, "key", None)
+            if key is None or right is None:
+                continue
+            op = getattr(getattr(cond, "operator", None), "__name__", "")
+            if op == "eq":
+                value = getattr(right, "value", None)
+                rows = [r for r in rows if getattr(r, key, None) == value]
+            elif op == "in_op":
+                values = list(getattr(right, "value", []) or [])
+                rows = [r for r in rows if getattr(r, key, None) in values]
+        return FakeQuery(rows)
 
     def order_by(self, *args, **kwargs):
         return self

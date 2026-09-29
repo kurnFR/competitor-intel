@@ -102,7 +102,8 @@ def upsert_promotion_observation(db: Session, *, document_id, item: Any, resolve
     metadata = extraction_metadata or {}
 
     promotion = (db.query(Promotion).filter(
-        Promotion.identity_fingerprint == fingerprint, Promotion.identity_version == IDENTITY_VERSION,
+        Promotion.identity_fingerprint == fingerprint,
+        Promotion.identity_version.in_([IDENTITY_VERSION, SOURCE_IDENTITY_VERSION]),
     ).one_or_none())
     if promotion is None:
         source_candidates = (db.query(Promotion).filter(
@@ -164,6 +165,7 @@ def upsert_promotion_observation(db: Session, *, document_id, item: Any, resolve
         promotion_type=promotion.promotion_type, discount_percentage=promotion.discount_percentage,
         source_reliability=promotion.source_reliability, last_seen_at=now, category=promotion.category,
         competitor_importance=competitor_importance, ai_confidence=promotion.ai_confidence, change_impact=change_impact,
+        dates_known=promotion.start_date is not None or promotion.end_date is not None,
     )
     promotion.last_seen_at = max(promotion.last_seen_at, now)
     promotion.updated_at = now

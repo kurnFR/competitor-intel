@@ -17,7 +17,7 @@ def get_crawler_for_source(db: Session, source: SourceRegistry) -> BaseCrawler:
         return SuperindoCrawler(db, source)
     if "indomaret" in domain:
         return RetailerPromotionCrawler(db, source, "indomaret")
-    if "alfamart" in domain:
+    if "alfamart" in domain or "alfagift" in domain:
         return RetailerPromotionCrawler(db, source, "alfamart")
     if "hemat.id" in domain or source.source_type == "PROMOTION_AGGREGATOR":
         return AggregatorCrawler(db, source)

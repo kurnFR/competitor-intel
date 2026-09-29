@@ -2,12 +2,13 @@ from pathlib import Path
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from fastapi import BackgroundTasks, FastAPI, Request
+from fastapi import BackgroundTasks, Depends, FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from app.core.config import settings
+from app.core.security import require_admin_key
 from app.db.session import engine
 from app.api.v1.api import api_router
 from app.workers.scheduler import start_scheduler, stop_scheduler
@@ -43,12 +44,13 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# The bundled dashboard is same-origin. Extra origins must be listed explicitly.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=settings.cors_origin_list,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "X-API-Key"],
 )
 
 # Mount REST API
@@ -70,23 +72,31 @@ def health_check():
 def _run_pipeline_job():
     pipeline_state.update(status="running", started_at=datetime.now(timezone.utc).isoformat(), finished_at=None, error=None)
     try:
-        run_pipeline(crawl_fresh=True, max_docs=5)
-        pipeline_state["status"] = "completed"
-    except Exception as exc:
+        # A fresh crawl processes every document it produced (max_docs=None).
+        result = run_pipeline(crawl_fresh=True, max_docs=None)
+        if result.get("status") == "busy":
+            pipeline_state.update(status="completed", error="Another scan was already running; nothing new was started.")
+        else:
+            pipeline_state["status"] = "completed"
+            pipeline_state["summary"] = result
+    except Exception:
+        # Details stay in the server log; the public status endpoint must not leak internals.
         logger.exception("Manual pipeline failed")
-        pipeline_state.update(status="failed", error=str(exc))
+        pipeline_state.update(status="failed", error="Scan failed. See server logs for details.")
     finally:
         pipeline_state["finished_at"] = datetime.now(timezone.utc).isoformat()
 
 
-@app.post("/api/v1/pipeline/run", status_code=202)
+@app.post("/api/v1/pipeline/run", status_code=202, dependencies=[Depends(require_admin_key)])
 def run_pipeline_now(background_tasks: BackgroundTasks):
-    if pipeline_state["status"] == "running":
-        return {"status": "running", "message": "A promotion scan is already running."}
+    if pipeline_state["status"] in ("running", "queued"):
+        return {"status": pipeline_state["status"], "message": "A promotion scan is already running."}
+    pipeline_state.update(status="queued", started_at=None, finished_at=None, error=None)
     background_tasks.add_task(_run_pipeline_job)
     return {"status": "queued", "message": "Promotion scan queued. Use /api/v1/pipeline/status to monitor it."}
 
 
 @app.get("/api/v1/pipeline/status")
 def pipeline_status():
+    # Status is tracked per process; run a single uvicorn worker (see scripts/start_server.sh).
     return pipeline_state
