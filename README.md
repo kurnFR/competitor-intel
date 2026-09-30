@@ -236,11 +236,45 @@ Workflow for users discovering new source websites:
 
 ---
 
+## Login, roles and first-time setup
+
+Everything (dashboard and API) requires a login. There are no default accounts.
+
+1. Run the migrations: `alembic upgrade head` (creates the `users`, `user_sessions` and `audit_log` tables).
+2. Create the first administrator (the password is typed at a hidden prompt):
+   `python -m scripts.create_user --username yourname --role ADMIN`
+3. Sign in at `/login`. Administrators add other users at **Admin** and choose a role:
+
+| Role | Can do |
+|------|--------|
+| **Viewer** | See the dashboard, Insights (weekly digest, trends), promotion details |
+| **Analyst** | Viewer + export CSV/Excel + confirm uncertain matches on **Review** |
+| **Admin** | Analyst + start scans, manage users, read the security log |
+
+How it is protected:
+* Passwords are hashed with Argon2id; minimum 12 characters, common passwords rejected. New and reset accounts must change the temporary password at first sign-in.
+* Sessions are server-side; the browser cookie is `HttpOnly`, `SameSite=Strict` and (in production) `Secure`. Only a hash of the token is stored. Sessions expire after 12 hours, or 2 hours idle, and changing a password signs the user out everywhere else.
+* Every state-changing request needs a CSRF token, and every role is checked on the server.
+* 5 wrong passwords lock the account for 15 minutes, and too many failures from one IP are throttled. Failed logins give one generic message so usernames cannot be guessed.
+* Logins, failures, lockouts, password and user changes are recorded in the security log (Admin page).
+* **Run it behind HTTPS** and set `APP_ENV=production` (turns on the `Secure` cookie, HSTS and hides `/docs`). Only set `TRUST_PROXY=true` behind your own reverse proxy.
+* The page sends security headers. A full Content-Security-Policy is delivered in *report-only* mode because the UI loads Tailwind and Font Awesome from CDNs; check the browser console, then tighten it (or self-host those files).
+
+## Marketing features
+
+* **Insights** (`/insights`): weekly digest of new promotions, price/mechanic changes and promotions ending within 7 days, plus a per-competitor activity heat-map.
+* **Export** (analyst+): CSV or Excel of the current filtered view. Cells that could run as spreadsheet formulas are neutralised.
+* **Review** (analyst+): approve or reject uncertain product/brand/retailer matches; approval links the promotion to the suggested entity.
+* **Weekly e-mail digest** (optional): set `SMTP_HOST`, `SMTP_FROM`, `DIGEST_RECIPIENTS`; sent on `DIGEST_DAY_OF_WEEK` at `DIGEST_HOUR`. Test now with `python -m scripts.send_digest`.
+* **JavaScript-only retailer pages** need a browser: `pip install -r requirements-browser.txt && playwright install chromium`. Without it the crawler logs a warning and those pages yield nothing.
+
+## Automatic tests on GitHub
+
+Copy `docs/ci.yml.example` to `.github/workflows/ci.yml` (done in the GitHub web UI or with a login that has the `workflow` permission). It runs the full test suite against PostgreSQL on every push and pull request.
+
 ## Security & Operations
 
-* **Admin key.** `POST /api/v1/pipeline/run` (and the dashboard "Scan now" button) require the header
-  `X-API-Key` matching `ADMIN_API_KEY`. If the variable is empty the endpoint is disabled. Generate a key with
-  `python -c "import secrets; print(secrets.token_urlsafe(32))"`.
+* **Automation key.** `ADMIN_API_KEY` is optional; it lets a cron job or CI call `POST /api/v1/pipeline/run` (header `X-API-Key`) without a login. If empty, only signed-in administrators can start scans.
 * **CORS.** Same-origin only by default; list extra origins in `CORS_ORIGINS` (comma-separated).
 * **Crawler etiquette.** The crawler identifies itself with `CRAWLER_USER_AGENT` (add a contact URL/e-mail) and
   honours each site's `robots.txt` (`CRAWLER_RESPECT_ROBOTS=true`). Review each retailer's terms of use before

@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><title>Administration - {{ app_name }}</title>{% include "_head.html" %}</head>
+<body class="bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 min-h-screen">
+{% include "_nav.html" %}
+<main class="max-w-7xl mx-auto px-4 py-6 space-y-8">
+    <div id="msg" role="alert" class="hidden rounded-md px-3 py-2 text-sm"></div>
+    <section>
+        <h2 class="text-lg font-bold mb-3">Users</h2>
+        <div class="overflow-x-auto bg-white dark:bg-slate-800 rounded-xl shadow mb-4">
+            <table class="min-w-full text-sm"><thead class="bg-slate-100 dark:bg-slate-700"><tr>
+                <th class="p-3 text-left">Username</th><th class="p-3 text-left">Role</th><th class="p-3 text-left">Status</th>
+                <th class="p-3 text-left">Last login</th><th class="p-3"></th></tr></thead><tbody id="users"></tbody></table>
+        </div>
+        <form id="new-user" class="bg-white dark:bg-slate-800 rounded-xl shadow p-4 grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
+            <label class="text-xs font-medium">Username<input name="username" required maxlength="64" class="mt-1 w-full rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-700 px-2 py-1.5 text-sm"></label>
+            <label class="text-xs font-medium">Temporary password (12+)<input name="password" type="password" required minlength="12" autocomplete="new-password" class="mt-1 w-full rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-700 px-2 py-1.5 text-sm"></label>
+            <label class="text-xs font-medium">Role<select name="role" class="mt-1 w-full rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-700 px-2 py-1.5 text-sm">
+                <option value="VIEWER">Viewer (read only)</option><option value="ANALYST">Analyst (+ export, review)</option><option value="ADMIN">Admin</option></select></label>
+            <label class="text-xs font-medium">Display name<input name="display_name" maxlength="120" class="mt-1 w-full rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-700 px-2 py-1.5 text-sm"></label>
+            <button class="rounded bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold py-2">Add user</button>
+        </form>
+        <p class="text-xs text-slate-500 mt-2">New users must change their temporary password at first sign-in.</p>
+    </section>
+    <section>
+        <h2 class="text-lg font-bold mb-3">Recent security events</h2>
+        <div class="overflow-x-auto bg-white dark:bg-slate-800 rounded-xl shadow"><table class="min-w-full text-xs"><thead class="bg-slate-100 dark:bg-slate-700"><tr>
+            <th class="p-2 text-left">Time</th><th class="p-2 text-left">User</th><th class="p-2 text-left">Event</th><th class="p-2 text-left">IP</th><th class="p-2 text-left">Detail</th></tr></thead><tbody id="audit"></tbody></table></div>
+    </section>
+</main>
+<script>
+    const msg = document.getElementById('msg');
+    function flash(text, ok) { msg.textContent = text; msg.className = 'rounded-md px-3 py-2 text-sm ' + (ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'); }
+    const me = "{{ user.username }}";
+    async function loadUsers() {
+        const users = await (await api('/api/v1/auth/users')).json();
+        document.getElementById('users').innerHTML = users.map(u => `<tr class="border-t border-slate-100 dark:border-slate-700">
+            <td class="p-3 font-medium">${esc(u.username)}${u.display_name ? ' <span class="text-slate-400 font-normal">(' + esc(u.display_name) + ')</span>' : ''}</td>
+            <td class="p-3"><select onchange="update('${esc(u.id)}', {role: this.value})" class="rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-700 text-xs px-1 py-1">
+                ${['VIEWER','ANALYST','ADMIN'].map(r => `<option ${r === u.role ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
+            <td class="p-3 text-xs">${u.is_active ? '<span class="text-emerald-600">Active</span>' : '<span class="text-rose-600">Disabled</span>'}${u.locked ? ' · <span class="text-amber-600">Locked</span>' : ''}${u.must_change_password ? ' · <span class="text-slate-500">Must change password</span>' : ''}</td>
+            <td class="p-3 text-xs text-slate-500">${esc(u.last_login_at ? u.last_login_at.slice(0, 16).replace('T', ' ') : 'never')}</td>
+            <td class="p-3 whitespace-nowrap text-xs">
+                <button onclick="update('${esc(u.id)}', {is_active: ${!u.is_active}})" class="px-2 py-1 rounded bg-slate-500 text-white">${u.is_active ? 'Disable' : 'Enable'}</button>
+                ${u.locked ? `<button onclick="unlock('${esc(u.id)}')" class="px-2 py-1 rounded bg-amber-600 text-white">Unlock</button>` : ''}
+                <button onclick="resetPw('${esc(u.id)}', '${esc(u.username)}')" class="px-2 py-1 rounded bg-sky-600 text-white">Reset password</button></td></tr>`).join('');
+    }
+    async function loadAudit() {
+        const rows = await (await api('/api/v1/auth/audit?limit=50')).json();
+        document.getElementById('audit').innerHTML = rows.map(a => `<tr class="border-t border-slate-100 dark:border-slate-700 ${a.success ? '' : 'text-rose-600'}">
+            <td class="p-2 whitespace-nowrap">${esc(a.occurred_at.slice(0, 19).replace('T', ' '))}</td><td class="p-2">${esc(a.username || '-')}</td>
+            <td class="p-2">${esc(a.action)}</td><td class="p-2">${esc(a.ip || '')}</td><td class="p-2 text-slate-500">${esc(a.detail ? JSON.stringify(a.detail) : '')}</td></tr>`).join('');
+    }
+    async function update(id, body) {
+        const r = await api('/api/v1/auth/users/' + id, {method: 'PATCH', json: body});
+        flash(r.ok ? 'User updated.' : await errText(r), r.ok); loadUsers(); loadAudit();
+    }
+    async function unlock(id) { const r = await api(`/api/v1/auth/users/${id}/unlock`, {method: 'POST'}); flash(r.ok ? 'Account unlocked.' : await errText(r), r.ok); loadUsers(); loadAudit(); }
+    async function resetPw(id, name) {
+        const pw = prompt('New temporary password for ' + name + ' (12+ characters). They must change it at next sign-in:');
+        if (!pw) return;
+        const r = await api(`/api/v1/auth/users/${id}/reset-password`, {method: 'POST', json: {new_password: pw}});
+        flash(r.ok ? 'Password reset. Tell the user their temporary password through a secure channel.' : await errText(r), r.ok); loadUsers(); loadAudit();
+    }
+    document.getElementById('new-user').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const f = e.target;
+        const r = await api('/api/v1/auth/users', {method: 'POST', json: {username: f.username.value, password: f.password.value, role: f.role.value, display_name: f.display_name.value || null}});
+        flash(r.ok ? 'User created.' : await errText(r), r.ok);
+        if (r.ok) f.reset();
+        loadUsers(); loadAudit();
+    });
+    loadSession().then(() => { loadUsers(); loadAudit(); });
+</script>
+</body>
+</html>

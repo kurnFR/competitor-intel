@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><title>Review queue - {{ app_name }}</title>{% include "_head.html" %}</head>
+<body class="bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 min-h-screen">
+{% include "_nav.html" %}
+<main class="max-w-7xl mx-auto px-4 py-6">
+    <h2 class="text-lg font-bold mb-1">Matches to confirm</h2>
+    <p class="text-sm text-slate-500 dark:text-slate-400 mb-4">The system was unsure about these matches. Approve the suggested match to link the promotion to it, or reject to leave it unchanged.</p>
+    <div id="msg" role="alert" class="hidden mb-3 rounded-md px-3 py-2 text-sm"></div>
+    <div class="overflow-x-auto bg-white dark:bg-slate-800 rounded-xl shadow">
+        <table class="min-w-full text-sm"><thead class="bg-slate-100 dark:bg-slate-700"><tr>
+            <th class="p-3 text-left">Type</th><th class="p-3 text-left">Promotion</th><th class="p-3 text-left">Current</th>
+            <th class="p-3 text-left">Suggested</th><th class="p-3 text-left">Why</th><th class="p-3">Confidence</th><th class="p-3"></th></tr></thead>
+            <tbody id="rows"></tbody></table>
+    </div>
+</main>
+<script>
+    const msg = document.getElementById('msg');
+    function flash(text, ok) { msg.textContent = text; msg.className = 'mb-3 rounded-md px-3 py-2 text-sm ' + (ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'); }
+    async function load() {
+        const r = await api('/api/v1/review/');
+        const items = await r.json();
+        document.getElementById('rows').innerHTML = items.map(i => `<tr class="border-t border-slate-100 dark:border-slate-700">
+            <td class="p-3 font-medium">${esc(i.entity_type)}</td>
+            <td class="p-3">${esc(i.promotion_product || '-')}<div class="text-xs text-slate-500">${esc(i.promotion_competitor || '')}</div></td>
+            <td class="p-3">${esc(i.current_match || '-')}</td><td class="p-3">${esc(i.suggested_match || '-')}</td>
+            <td class="p-3 text-xs text-slate-500 max-w-xs">${esc(i.reason)}</td>
+            <td class="p-3 text-center">${i.confidence != null ? esc(Math.round(i.confidence * 100)) + '%' : '-'}</td>
+            <td class="p-3 whitespace-nowrap">
+                <button ${i.can_approve ? '' : 'disabled title="No suggested match"'} onclick="resolve('${esc(i.id)}','APPROVED')" class="px-2 py-1 rounded bg-emerald-600 text-white text-xs disabled:opacity-40">Approve</button>
+                <button onclick="resolve('${esc(i.id)}','REJECTED')" class="px-2 py-1 rounded bg-slate-500 text-white text-xs">Reject</button></td></tr>`).join('')
+            || '<tr><td colspan="7" class="p-6 text-center text-slate-400">Nothing waiting for review.</td></tr>';
+    }
+    async function resolve(id, decision) {
+        const r = await api(`/api/v1/review/${id}/resolve`, {method: 'POST', json: {decision}});
+        if (!r.ok) return flash(await errText(r), false);
+        flash(decision === 'APPROVED' ? 'Match approved.' : 'Match rejected.', true);
+        load();
+    }
+    loadSession().then(load);
+</script>
+</body>
+</html>

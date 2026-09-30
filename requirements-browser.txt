@@ -1,0 +1,2 @@
+# Optional: render JavaScript-only retailer pages
+playwright>=1.44.0

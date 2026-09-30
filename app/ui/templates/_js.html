@@ -1,0 +1,31 @@
+<script>
+    // Shared helpers: escaping untrusted text, and API calls with the CSRF token.
+    function esc(v) {
+        return String(v ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+    }
+    let CSRF = null;
+    async function loadSession() {
+        const r = await fetch('/api/v1/auth/me', {credentials: 'same-origin'});
+        if (r.status === 401) { location.href = '/login'; throw new Error('login required'); }
+        const data = await r.json();
+        CSRF = data.csrf_token;
+        return data.user;
+    }
+    async function api(path, opts = {}) {
+        const method = (opts.method || 'GET').toUpperCase();
+        const headers = Object.assign({}, opts.headers || {});
+        if (opts.json !== undefined) { headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(opts.json); }
+        if (method !== 'GET' && CSRF) headers['X-CSRF-Token'] = CSRF;
+        const r = await fetch(path, Object.assign({}, opts, {method, headers, credentials: 'same-origin'}));
+        if (r.status === 401) { location.href = '/login'; throw new Error('login required'); }
+        if (r.status === 403 && (await r.clone().text()).includes('PASSWORD_CHANGE_REQUIRED')) { location.href = '/account'; throw new Error('password change required'); }
+        return r;
+    }
+    async function errText(r) {
+        try { const j = await r.json(); return typeof j.detail === 'string' ? j.detail : JSON.stringify(j.detail); } catch (e) { return 'Request failed (' + r.status + ')'; }
+    }
+    async function logout() {
+        await api('/api/v1/auth/logout', {method: 'POST'}).catch(() => {});
+        location.href = '/login';
+    }
+</script>

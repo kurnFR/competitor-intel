@@ -3,10 +3,8 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
-from fastapi import HTTPException
 
 from app.core.config import settings
-from app.core.security import require_admin_key
 from app.schemas.ai import ExtractedPromotionItem
 from app.services.channels import display_channel, normalize_channel, retailer_types_for
 from app.services.crawler.base import BaseCrawler, ROBOTS_DISALLOWED, _robots_cache
@@ -123,19 +121,3 @@ def test_missing_robots_txt_allows(monkeypatch):
 def test_crawler_identifies_itself_honestly():
     crawler = _RobotsCrawler(None, SimpleNamespace(id="s1", domain="shop.test"))
     assert "Mozilla" not in crawler.client.headers["User-Agent"]
-
-
-# --- admin auth -----------------------------------------------------------
-def test_admin_key_required(monkeypatch):
-    monkeypatch.setattr(settings, "ADMIN_API_KEY", "")
-    with pytest.raises(HTTPException) as e:
-        require_admin_key("anything")
-    assert e.value.status_code == 503
-
-    monkeypatch.setattr(settings, "ADMIN_API_KEY", "s3cret")
-    with pytest.raises(HTTPException) as e:
-        require_admin_key(None)
-    assert e.value.status_code == 401
-    with pytest.raises(HTTPException):
-        require_admin_key("wrong")
-    assert require_admin_key("s3cret") is None

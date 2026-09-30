@@ -1,0 +1,13 @@
+<header class="bg-gradient-to-r from-blue-900 to-sky-600 text-white shadow">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+        <a href="/" class="font-bold tracking-tight"><i class="fa-solid fa-chart-line text-amber-300 mr-2"></i>{{ app_name }}</a>
+        <nav class="flex flex-wrap items-center gap-2 text-xs font-medium">
+            <a href="/" class="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20">Dashboard</a>
+            <a href="/insights" class="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20">Insights</a>
+            {% if user.role in ('ANALYST', 'ADMIN') %}<a href="/review" class="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20">Review</a>{% endif %}
+            {% if user.role == 'ADMIN' %}<a href="/admin" class="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20">Admin</a>{% endif %}
+            <a href="/account" class="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20"><i class="fa-solid fa-user"></i> {{ user.username }}</a>
+            <button onclick="logout()" class="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20" title="Sign out"><i class="fa-solid fa-right-from-bracket"></i></button>
+        </nav>
+    </div>
+</header>

@@ -8,6 +8,10 @@ from app.models.promotion import Promotion, PromotionEvidence
 from app.models.promotion_change import PromotionChangeEvent
 from app.models.entity import Competitor, Brand, Retailer
 from app.schemas.promotion import Top10Response, Top10PromotionItem, PromotionDetailOut, PromotionChangeEventOut, StatsResponse
+from fastapi.responses import Response
+from app.core.deps import require_role
+from app.services.digest import build_digest
+from app.services.exporting import EXPORT_HEADERS, build_export
 from app.services.channels import display_channel, normalize_channel, retailer_types_for
 from app.services.promotions.visibility import live_promotion_filter
 
@@ -36,6 +40,51 @@ def _channel_condition(channel: str):
     )
 
 
+def _filtered_query(db: Session, now: datetime, *, days: int, q=None, category=None, outlet=None, channel=None,
+                    brand=None, competitor=None):
+    query = (
+        db.query(Promotion)
+        .outerjoin(Competitor, Promotion.competitor_id == Competitor.id)
+        .outerjoin(Brand, Promotion.brand_id == Brand.id)
+        .outerjoin(Retailer, Promotion.retailer_id == Retailer.id)
+        .options(contains_eager(Promotion.competitor), contains_eager(Promotion.brand), contains_eager(Promotion.retailer))
+        .filter(live_promotion_filter(now, recency_days=days))
+    )
+    if category:
+        query = query.filter(_ilike(Promotion.category, category))
+    if outlet:
+        query = query.filter(_ilike(Retailer.name, outlet))
+    if channel:
+        query = query.filter(_channel_condition(channel))
+    if q:
+        query = query.filter(or_(
+            _ilike(Promotion.product_name, q), _ilike(Promotion.promotion_type, q), _ilike(Promotion.category, q),
+            _ilike(Promotion.channel, q), _ilike(Promotion.geography, q), _ilike(Retailer.name, q),
+            _ilike(Competitor.name, q), _ilike(Brand.name, q),
+        ))
+    if brand:
+        query = query.filter(_ilike(Brand.name, brand))
+    if competitor:
+        query = query.filter(_ilike(Competitor.name, competitor))
+    return query
+
+
+def _latest_evidence(db: Session, promotions) -> dict:
+    """Latest evidence per promotion in a single query."""
+    if not promotions:
+        return {}
+    rows = (
+        db.query(PromotionEvidence)
+        .filter(PromotionEvidence.promotion_id.in_([p.id for p in promotions]))
+        .order_by(PromotionEvidence.captured_at.desc())
+        .all()
+    )
+    out = {}
+    for e in rows:  # newest first
+        out.setdefault(e.promotion_id, e)
+    return out
+
+
 @router.get("/top10", response_model=Top10Response)
 def get_top10_promotions(
     industry: str = Query("FMCG", min_length=1, description="Required industry selector; FMCG is the default"),
@@ -50,44 +99,11 @@ def get_top10_promotions(
     db: Session = Depends(get_db)
 ):
     now = datetime.now(timezone.utc)
-    query = (
-        db.query(Promotion)
-        .outerjoin(Competitor, Promotion.competitor_id == Competitor.id)
-        .outerjoin(Brand, Promotion.brand_id == Brand.id)
-        .outerjoin(Retailer, Promotion.retailer_id == Retailer.id)
-        .options(contains_eager(Promotion.competitor), contains_eager(Promotion.brand), contains_eager(Promotion.retailer))
-        .filter(live_promotion_filter(now, recency_days=days))
-    )
-    if category:
-        query = query.filter(_ilike(Promotion.category, category))
-    outlet_filter = outlet or retailer
-    if outlet_filter:
-        query = query.filter(_ilike(Retailer.name, outlet_filter))
-    if channel:
-        query = query.filter(_channel_condition(channel))
-    if q:
-        query = query.filter(or_(
-            _ilike(Promotion.product_name, q), _ilike(Promotion.promotion_type, q), _ilike(Promotion.category, q),
-            _ilike(Promotion.channel, q), _ilike(Promotion.geography, q), _ilike(Retailer.name, q),
-            _ilike(Competitor.name, q), _ilike(Brand.name, q),
-        ))
-    if brand:
-        query = query.filter(_ilike(Brand.name, brand))
-    if competitor:
-        query = query.filter(_ilike(Competitor.name, competitor))
+    query = _filtered_query(db, now, days=days, q=q, category=category, outlet=outlet or retailer,
+                            channel=channel, brand=brand, competitor=competitor)
     results = query.order_by(Promotion.rank_score.desc(), Promotion.last_seen_at.desc()).limit(10).all()
 
-    # One query for the latest evidence of all results (instead of one per row).
-    evidence_by_promo = {}
-    if results:
-        rows = (
-            db.query(PromotionEvidence)
-            .filter(PromotionEvidence.promotion_id.in_([p.id for p in results]))
-            .order_by(PromotionEvidence.captured_at.desc())
-            .all()
-        )
-        for e in rows:  # newest first, so setdefault keeps the latest per promotion
-            evidence_by_promo.setdefault(e.promotion_id, e)
+    evidence_by_promo = _latest_evidence(db, results)
 
     items = []
     for idx, p in enumerate(results, start=1):
@@ -115,6 +131,62 @@ def get_top10_promotions(
             last_verified=p.last_seen_at,
         ))
     return Top10Response(generated_at=now.isoformat(), count=len(items), promotions=items)
+
+
+
+
+def _export_rows(db: Session, promotions) -> list:
+    evidence = _latest_evidence(db, promotions)
+    rows = []
+    for idx, p in enumerate(promotions, start=1):
+        ev = evidence.get(p.id)
+        dates_stated = p.start_date is not None or p.end_date is not None
+        rows.append({
+            "rank": idx, "product": p.product_name, "brand": p.brand.name if p.brand else None,
+            "competitor": p.competitor.name if p.competitor else None, "category": p.category, "pack_size": p.pack_size,
+            "outlet": p.retailer.name if p.retailer else None,
+            "channel": display_channel(p.channel, p.retailer.channel_type if p.retailer else None),
+            "promotion_type": p.promotion_type, "regular_price": p.regular_price, "promo_price": p.promo_price,
+            "discount": p.discount_percentage,
+            "valid_from": p.start_date.strftime("%Y-%m-%d") if p.start_date else None,
+            "valid_until": p.end_date.strftime("%Y-%m-%d") if p.end_date else None,
+            "dates_stated": "Yes" if dates_stated else "No", "score": p.rank_score, "confidence": p.ai_confidence,
+            "source_url": ev.source_url if ev else None, "evidence": ev.evidence_text if ev else None,
+            "last_verified": p.last_seen_at.strftime("%Y-%m-%d %H:%M") if p.last_seen_at else None,
+        })
+    return rows
+
+
+@router.get("/export", dependencies=[Depends(require_role("ANALYST"))])
+def export_promotions(
+    format: str = Query("csv", pattern="^(csv|xlsx)$"),
+    q: Optional[str] = Query(None, max_length=100),
+    category: Optional[str] = Query(None, max_length=50),
+    outlet: Optional[str] = Query(None, max_length=100),
+    channel: Optional[str] = Query(None, max_length=50),
+    brand: Optional[str] = Query(None, max_length=100),
+    competitor: Optional[str] = Query(None, max_length=100),
+    days: int = Query(90, ge=1, le=365),
+    limit: int = Query(500, ge=1, le=2000),
+    db: Session = Depends(get_db),
+):
+    """Download current promotions (same filters as the dashboard) for spreadsheets."""
+    now = datetime.now(timezone.utc)
+    promotions = (
+        _filtered_query(db, now, days=days, q=q, category=category, outlet=outlet, channel=channel,
+                        brand=brand, competitor=competitor)
+        .order_by(Promotion.rank_score.desc(), Promotion.last_seen_at.desc()).limit(limit).all()
+    )
+    content, media_type, ext = build_export(_export_rows(db, promotions), format)
+    filename = f"competitor-promotions-{now.strftime('%Y%m%d')}.{ext}"
+    return Response(content=content, media_type=media_type,
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"', "Cache-Control": "no-store"})
+
+
+@router.get("/digest")
+def promotion_digest(days: int = Query(7, ge=1, le=60), db: Session = Depends(get_db)):
+    """What is new, what changed and what ends soon."""
+    return build_digest(db, days=days)
 
 
 @router.get("/{promotion_id}/changes", response_model=List[PromotionChangeEventOut])

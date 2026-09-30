@@ -24,6 +24,7 @@
             background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
         }
     </style>
+    {% include "_js.html" %}
     <script>
         // Init dark mode immediately to avoid flash
         if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
@@ -56,13 +57,24 @@
                     <i id="theme-icon" class="fa-solid fa-moon"></i>
                 </button>
 
+                <a href="/insights" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-xs font-medium rounded-lg border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-chart-column"></i> Insights</a>
+                {% if user.role in ('ANALYST', 'ADMIN') %}
+                <a href="/review" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-xs font-medium rounded-lg border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-list-check"></i> Review</a>
+                <button onclick="exportData('csv')" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-xs font-medium rounded-lg border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-file-csv"></i> CSV</button>
+                <button onclick="exportData('xlsx')" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-xs font-medium rounded-lg border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-file-excel"></i> Excel</button>
+                {% endif %}
+                {% if user.role == 'ADMIN' %}
+                <a href="/admin" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-xs font-medium rounded-lg border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-user-shield"></i> Admin</a>
                 <button onclick="scanNow()" id="scan-button" class="px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 text-xs font-medium rounded-lg transition border border-emerald-400/30 flex items-center gap-1.5">
                     <i class="fa-solid fa-satellite-dish"></i> Scan now
                 </button>
+                {% endif %}
 
                 <button onclick="fetchTop10(); fetchStats();" title="Reload promotions already stored in the database" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-medium rounded-lg transition border border-white/20 dark:border-slate-700 flex items-center gap-1.5">
                     <i class="fa-solid fa-arrows-rotate"></i> Refresh
                 </button>
+                <a href="/account" title="My account" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-xs font-medium rounded-lg border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-user"></i> {{ user.username }}</a>
+                <button onclick="logout()" title="Sign out" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-xs font-medium rounded-lg border border-white/20"><i class="fa-solid fa-right-from-bracket"></i></button>
             </div>
         </div>
     </header>
@@ -259,12 +271,6 @@
     <script>
         let currentPromotions = [];
 
-        // Escape untrusted text (scraped pages / LLM output) before inserting into HTML.
-        function esc(value) {
-            return String(value ?? '').replace(/[&<>"']/g, c => (
-                {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]
-            ));
-        }
         function safeHttpUrl(value) {
             try {
                 const u = new URL(value);
@@ -290,7 +296,7 @@
 
         async function fetchStats() {
             try {
-                const res = await fetch('/api/v1/stats/');
+                const res = await api('/api/v1/stats/');
                 const data = await res.json();
                 document.getElementById('stat-active').textContent = data.active_promotions;
                 document.getElementById('stat-competitors').textContent = data.competitors_tracked;
@@ -300,6 +306,20 @@
             } catch (e) {
                 console.error("Error fetching stats:", e);
             }
+        }
+
+        function currentFilterQuery() {
+            const params = new URLSearchParams();
+            const map = {category: 'filter-category', outlet: 'filter-outlet', channel: 'filter-channel', q: 'filter-search'};
+            for (const [key, id] of Object.entries(map)) {
+                const v = document.getElementById(id).value.trim();
+                if (v) params.set(key, v);
+            }
+            return params.toString();
+        }
+        function exportData(format) {
+            // Same-origin GET with the session cookie; the server sends the file as a download.
+            window.location.href = `/api/v1/promotions/export?format=${format}&${currentFilterQuery()}`;
         }
 
         async function fetchTop10() {
@@ -316,7 +336,7 @@
             if (search) url += `q=${encodeURIComponent(search)}&`;
 
             try {
-                const res = await fetch(url);
+                const res = await api(url);
                 const data = await res.json();
                 currentPromotions = data.promotions || [];
                 renderTable(currentPromotions);
@@ -336,16 +356,9 @@
             button.disabled = true;
             button.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Scanning...';
             try {
-                let apiKey = sessionStorage.getItem('adminApiKey');
-                if (!apiKey) {
-                    apiKey = prompt('Enter the admin API key to start a scan:');
-                    if (!apiKey) throw new Error('Scan cancelled: an admin API key is required.');
-                }
-                const response = await fetch('/api/v1/pipeline/run', {method: 'POST', headers: {'X-API-Key': apiKey}});
+                const response = await api('/api/v1/pipeline/run', {method: 'POST'});
                 const result = await response.json();
-                if (response.status === 401) sessionStorage.removeItem('adminApiKey');
-                if (!response.ok) throw new Error(result.detail || 'Scan could not start');
-                sessionStorage.setItem('adminApiKey', apiKey);
+                if (!response.ok) throw new Error(typeof result.detail === 'string' ? result.detail : 'Scan could not start');
                 pollScanStatus();
             } catch (error) {
                 button.disabled = false;
@@ -355,7 +368,7 @@
         }
 
         async function pollScanStatus() {
-            const response = await fetch('/api/v1/pipeline/status');
+            const response = await api('/api/v1/pipeline/status');
             const status = await response.json();
             if (status.status === 'running' || status.status === 'queued') {
                 setTimeout(pollScanStatus, 2000);
@@ -468,8 +481,7 @@
 
         // Initialize on load
         updateThemeIcon();
-        fetchStats();
-        fetchTop10();
+        loadSession().then(() => { fetchStats(); fetchTop10(); });
     </script>
 </body>
 </html>

@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>My account - {{ app_name }}</title>
+    {% include "_head.html" %}
+</head>
+<body class="min-h-screen bg-slate-100 dark:bg-slate-900 flex items-center justify-center p-4">
+    <main class="w-full max-w-md bg-white dark:bg-slate-800 rounded-xl shadow-lg p-8">
+        <h1 class="text-lg font-bold text-slate-800 dark:text-slate-100 mb-1">My account</h1>
+        <p class="text-sm text-slate-500 dark:text-slate-400 mb-4">Signed in as <strong>{{ user.username }}</strong> ({{ user.role }})</p>
+        {% if user.must_change_password %}
+        <div class="mb-4 rounded-md bg-amber-50 text-amber-800 text-sm px-3 py-2">You must choose a new password before continuing.</div>
+        {% endif %}
+        <div id="msg" role="alert" class="hidden mb-4 rounded-md text-sm px-3 py-2"></div>
+        <form id="pw-form" class="space-y-4">
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-200">Current password
+                <input name="current" type="password" autocomplete="current-password" required class="mt-1 w-full rounded-md border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 px-3 py-2">
+            </label>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-200">New password (12+ characters)
+                <input name="next" type="password" autocomplete="new-password" required minlength="12" class="mt-1 w-full rounded-md border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 px-3 py-2">
+            </label>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-200">Repeat new password
+                <input name="again" type="password" autocomplete="new-password" required minlength="12" class="mt-1 w-full rounded-md border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 px-3 py-2">
+            </label>
+            <button class="w-full rounded-md bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2">Change password</button>
+        </form>
+        <div class="mt-4 flex justify-between text-sm">
+            {% if not user.must_change_password %}<a class="text-blue-600 hover:underline" href="/">Back to dashboard</a>{% else %}<span></span>{% endif %}
+            <button onclick="logout()" class="text-slate-500 hover:underline">Sign out</button>
+        </div>
+    </main>
+    <script>
+        const form = document.getElementById('pw-form');
+        const msg = document.getElementById('msg');
+        function show(text, ok) {
+            msg.textContent = text;
+            msg.className = 'mb-4 rounded-md text-sm px-3 py-2 ' + (ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700');
+        }
+        loadSession().then(() => {
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                if (form.next.value !== form.again.value) return show('The new passwords do not match.', false);
+                const r = await api('/api/v1/auth/change-password', {method: 'POST', json: {current_password: form.current.value, new_password: form.next.value}});
+                if (!r.ok) return show(await errText(r), false);
+                show('Password changed. Redirecting...', true);
+                setTimeout(() => location.href = '/', 800);
+            });
+        });
+    </script>
+</body>
+</html>

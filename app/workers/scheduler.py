@@ -2,6 +2,8 @@ import logging
 from apscheduler.schedulers.background import BackgroundScheduler
 from app.core.config import settings
 from app.db.session import SessionLocal
+from app.services.auth import purge_expired_sessions
+from app.services.digest import digest_email_configured, send_digest_email
 from app.services.ranking.rescore import rescore_promotions
 from app.workers.expiration import run_expiration_check
 from scripts.run_pipeline import run_pipeline
@@ -16,6 +18,7 @@ def scheduled_expiration_job():
         run_expiration_check(db)
         rescore_promotions(db)
         db.commit()
+        purge_expired_sessions(db)
     except Exception as e:
         logger.exception("Error in expiration job: %s", e)
         db.rollback()
@@ -28,6 +31,16 @@ def scheduled_pipeline_job():
         run_pipeline(crawl_fresh=True, max_docs=None)
     except Exception:
         logger.exception("Error in scheduled pipeline job")
+
+
+def scheduled_digest_job():
+    db = SessionLocal()
+    try:
+        send_digest_email(db)
+    except Exception:
+        logger.exception("Error sending digest e-mail")
+    finally:
+        db.close()
 
 
 def start_scheduler():
@@ -45,6 +58,12 @@ def start_scheduler():
         id="pipeline_runner",
         replace_existing=True
     )
+    if digest_email_configured():
+        scheduler.add_job(
+            scheduled_digest_job, "cron", day_of_week=settings.DIGEST_DAY_OF_WEEK, hour=settings.DIGEST_HOUR,
+            id="weekly_digest", replace_existing=True,
+        )
+        logger.info("Weekly digest e-mail scheduled (%s at %02d:00).", settings.DIGEST_DAY_OF_WEEK, settings.DIGEST_HOUR)
     scheduler.start()
     logger.info(
         "Background scheduler started (Expiration: %sm, Crawl: %sm).",

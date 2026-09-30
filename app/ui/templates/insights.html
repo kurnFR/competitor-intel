@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><title>Insights - {{ app_name }}</title>{% include "_head.html" %}</head>
+<body class="bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 min-h-screen">
+{% include "_nav.html" %}
+<main class="max-w-7xl mx-auto px-4 py-6 space-y-8">
+    <section>
+        <div class="flex items-center justify-between mb-3">
+            <h2 class="text-lg font-bold">What happened in the last
+                <select id="days" class="ml-1 rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-800 text-sm px-2 py-1">
+                    <option value="7">7 days</option><option value="14">14 days</option><option value="30">30 days</option>
+                </select>
+            </h2>
+        </div>
+        <div id="summary" class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6"></div>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div><h3 class="font-semibold mb-2"><i class="fa-solid fa-star text-amber-500"></i> New promotions</h3><ul id="new" class="space-y-2 text-sm"></ul></div>
+            <div><h3 class="font-semibold mb-2"><i class="fa-solid fa-pen text-sky-500"></i> Changed promotions</h3><ul id="changes" class="space-y-2 text-sm"></ul></div>
+            <div><h3 class="font-semibold mb-2"><i class="fa-solid fa-hourglass-end text-rose-500"></i> Ending within 7 days</h3><ul id="ending" class="space-y-2 text-sm"></ul></div>
+        </div>
+    </section>
+    <section>
+        <h2 class="text-lg font-bold mb-1">Promotion activity by competitor</h2>
+        <p class="text-sm text-slate-500 dark:text-slate-400 mb-3">New promotions detected per week (average discount in brackets).</p>
+        <div class="overflow-x-auto bg-white dark:bg-slate-800 rounded-xl shadow"><table id="trends" class="min-w-full text-sm"></table></div>
+    </section>
+</main>
+<script>
+    const card = (label, value, icon, color) => `<div class="bg-white dark:bg-slate-800 rounded-xl shadow p-4 flex items-center gap-4">
+        <div class="text-2xl ${color}"><i class="fa-solid ${icon}"></i></div><div><div class="text-2xl font-bold">${esc(value)}</div><div class="text-sm text-slate-500">${esc(label)}</div></div></div>`;
+    const empty = '<li class="text-slate-400">Nothing to report.</li>';
+    const promoLine = p => `<li class="bg-white dark:bg-slate-800 rounded-lg shadow-sm p-3"><div class="font-medium">${esc(p.product)}</div>
+        <div class="text-xs text-slate-500">${esc(p.competitor || p.brand || '')} · ${esc(p.outlet || 'n/a')}${p.discount ? ' · ' + esc(p.discount) + '% off' : ''}${p.valid_until ? ' · until ' + esc(p.valid_until) : ''}</div></li>`;
+    async function loadDigest() {
+        const r = await api('/api/v1/promotions/digest?days=' + document.getElementById('days').value);
+        const d = await r.json();
+        document.getElementById('summary').innerHTML =
+            card('New promotions', d.summary.new, 'fa-star', 'text-amber-500') +
+            card('Changed promotions', d.summary.changed, 'fa-pen', 'text-sky-500') +
+            card('Ending within 7 days', d.summary.ending_soon, 'fa-hourglass-end', 'text-rose-500');
+        document.getElementById('new').innerHTML = d.new_promotions.map(promoLine).join('') || empty;
+        document.getElementById('ending').innerHTML = d.ending_soon.map(promoLine).join('') || empty;
+        document.getElementById('changes').innerHTML = d.changes.map(c => `<li class="bg-white dark:bg-slate-800 rounded-lg shadow-sm p-3">
+            <div class="font-medium">${esc(c.product)}</div><div class="text-xs text-slate-500">${esc(c.competitor || '')} · ${esc(c.field || c.event)}: ${esc(JSON.stringify(c.previous))} → ${esc(JSON.stringify(c.new))}</div></li>`).join('') || empty;
+    }
+    async function loadTrends() {
+        const r = await api('/api/v1/stats/trends?weeks=8');
+        const t = await r.json();
+        if (!t.competitors.length) { document.getElementById('trends').innerHTML = '<tr><td class="p-4 text-slate-400">No data yet.</td></tr>'; return; }
+        const max = Math.max(1, ...t.competitors.flatMap(c => c.counts));
+        const head = '<thead class="bg-slate-100 dark:bg-slate-700"><tr><th class="text-left p-3">Competitor</th>' + t.weeks.map(w => `<th class="p-3 text-center whitespace-nowrap">${esc(w.slice(5))}</th>`).join('') + '<th class="p-3">Total</th></tr></thead>';
+        const body = t.competitors.map(c => '<tr class="border-t border-slate-100 dark:border-slate-700"><td class="p-3 font-medium">' + esc(c.competitor) + '</td>' +
+            c.counts.map((n, i) => `<td class="p-3 text-center" style="background: rgba(14,165,233,${(n / max * 0.45).toFixed(2)})">${n || ''}${n && c.avg_discount[i] != null ? ' <span class="text-xs text-slate-500">(' + esc(c.avg_discount[i]) + '%)</span>' : ''}</td>`).join('') +
+            `<td class="p-3 text-center font-semibold">${esc(c.total)}</td></tr>`).join('');
+        document.getElementById('trends').innerHTML = head + '<tbody>' + body + '</tbody>';
+    }
+    loadSession().then(() => { loadDigest(); loadTrends(); document.getElementById('days').addEventListener('change', loadDigest); });
+</script>
+</body>
+</html>

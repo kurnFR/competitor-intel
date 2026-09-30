@@ -7,6 +7,7 @@ ordinary HTML when PDF/OCR/browser dependencies are not installed.
 from __future__ import annotations
 
 import io
+import logging
 import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Tuple
@@ -90,6 +91,10 @@ def extract_non_html(url: str, content_type: str, content: bytes) -> AcquiredCon
             return AcquiredContent(200, content, content_type, "IMAGE", metadata={"ocr_error": str(exc)}, error=str(exc))
     return AcquiredContent(200, content, content_type, document_type, error="Unsupported non-HTML content type")
 
+logger = logging.getLogger(__name__)
+
+_WARNED_NO_BROWSER = False
+
 
 def looks_dynamic_html(html: str) -> bool:
     """Heuristic for pages where static HTML contains little useful content."""
@@ -107,6 +112,13 @@ def render_dynamic_page(url: str) -> Optional[Tuple[bytes, Dict[str, Any]]]:
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
+        global _WARNED_NO_BROWSER
+        if not _WARNED_NO_BROWSER:
+            _WARNED_NO_BROWSER = True
+            logger.warning(
+                "A JavaScript-only page was found but Playwright is not installed, so its promotions cannot be read. "
+                "Install with: pip install -r requirements-browser.txt && playwright install chromium"
+            )
         return None
 
     with sync_playwright() as playwright:

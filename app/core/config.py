@@ -22,15 +22,34 @@ class Settings(BaseSettings):
     DATABASE_URL_ADMIN: Optional[str] = None
     DATABASE_SCHEMA: str = "competitor_intel"
 
-    # Redis
-    REDIS_URL: str = "redis://localhost:6379/0"
-
     # LLM (9router)
     LLM_BASE_URL: str = "http://localhost:20128/v1"
     LLM_API_KEY: str = ""
     LLM_MODEL: str = "auto/best-fast"
 
-    # Security
+    # Security / login
+    # Cookie "Secure" flag. Unset = automatic (on when APP_ENV=production). Serve over HTTPS in production.
+    SESSION_COOKIE_SECURE: Optional[bool] = None
+    SESSION_ABSOLUTE_HOURS: int = 12
+    SESSION_IDLE_MINUTES: int = 120
+    LOGIN_MAX_FAILURES: int = 5          # per account before a temporary lock
+    LOGIN_LOCK_MINUTES: int = 15
+    LOGIN_IP_MAX_FAILURES: int = 20      # per client IP within LOGIN_IP_WINDOW_MINUTES
+    LOGIN_IP_WINDOW_MINUTES: int = 10
+    PASSWORD_MIN_LENGTH: int = 12
+    # Only enable behind a reverse proxy you control; trusts X-Forwarded-For for the client IP.
+    TRUST_PROXY: bool = False
+
+    # Weekly e-mail digest (optional). Needs SMTP_HOST and DIGEST_RECIPIENTS.
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM: str = ""
+    DIGEST_RECIPIENTS: str = ""          # comma-separated
+    DIGEST_DAY_OF_WEEK: str = "mon"
+    DIGEST_HOUR: int = 8
+
     # Required for privileged endpoints (POST /api/v1/pipeline/run). If empty the
     # endpoint is disabled. Generate one with:
     #   python -c "import secrets; print(secrets.token_urlsafe(32))"
@@ -54,6 +73,16 @@ class Settings(BaseSettings):
     # Extraction limits per crawled document.
     MAX_CARDS_PER_DOCUMENT: int = 300
     CARDS_PER_LLM_BATCH: int = 6
+
+    @property
+    def session_cookie_secure(self) -> bool:
+        if self.SESSION_COOKIE_SECURE is not None:
+            return self.SESSION_COOKIE_SECURE
+        return self.APP_ENV.lower() == "production"
+
+    @property
+    def digest_recipient_list(self) -> list[str]:
+        return [r.strip() for r in self.DIGEST_RECIPIENTS.split(",") if r.strip()]
 
     @property
     def cors_origin_list(self) -> list[str]:
