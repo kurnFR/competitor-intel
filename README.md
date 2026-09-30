@@ -270,7 +270,7 @@ How it is protected:
 
 ## Automatic tests on GitHub
 
-Copy `docs/ci.yml.example` to `.github/workflows/ci.yml` (done in the GitHub web UI or with a login that has the `workflow` permission). It runs the full test suite against PostgreSQL on every push and pull request.
+`.github/workflows/ci.yml` runs the full test suite against PostgreSQL on every push and pull request.
 
 ## Security & Operations
 
