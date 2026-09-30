@@ -59,6 +59,7 @@
 
                 <a href="/insights" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-xs font-medium rounded-lg border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-chart-column"></i> Insights</a>
                 {% if user.role in ('ANALYST', 'ADMIN') %}
+                <a href="/compare" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-xs font-medium rounded-lg border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-scale-balanced"></i> Prices</a>
                 <a href="/review" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-xs font-medium rounded-lg border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-list-check"></i> Review</a>
                 <button onclick="exportData('csv')" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-xs font-medium rounded-lg border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-file-csv"></i> CSV</button>
                 <button onclick="exportData('xlsx')" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-xs font-medium rounded-lg border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-file-excel"></i> Excel</button>

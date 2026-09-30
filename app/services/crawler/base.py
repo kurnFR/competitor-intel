@@ -16,6 +16,7 @@ import trafilatura
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.services.sources import guard_request_url
 from app.models.source import SourceRegistry, CrawlJob, CrawlDocument
 from app.services.crawler.content import detect_document_type
 from app.services.crawler.rate_limiter import RateLimitConfig, get_source_rate_limiter
@@ -23,6 +24,14 @@ from app.services.storage import get_raw_document_store
 
 logger = logging.getLogger(__name__)
 DEFAULT_HEADERS = {"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8", "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7"}
+def _block_internal_requests(request: httpx.Request) -> None:
+    """httpx request hook: runs for the first request and for every redirect."""
+    try:
+        guard_request_url(str(request.url))
+    except ValueError as exc:
+        raise httpx.UnsupportedProtocol(str(exc))
+
+
 ROBOTS_TTL_SECONDS = 24 * 3600
 ROBOTS_DISALLOWED = "ROBOTS_DISALLOWED"
 _robots_cache: Dict[str, Tuple[float, Optional[RobotFileParser]]] = {}
@@ -68,7 +77,8 @@ class BaseCrawler(ABC):
         self.rate_limit_config = RateLimitConfig(requests_per_second=requests_per_second, max_concurrency=max_concurrency)
         self.rate_limiter = get_source_rate_limiter()
         self.raw_store = get_raw_document_store()
-        self.client = httpx.Client(headers={**DEFAULT_HEADERS, "User-Agent": settings.CRAWLER_USER_AGENT}, timeout=30.0, follow_redirects=True, verify=True)
+        self.client = httpx.Client(headers={**DEFAULT_HEADERS, "User-Agent": settings.CRAWLER_USER_AGENT}, timeout=30.0, follow_redirects=True, verify=True,
+                                   event_hooks={"request": [_block_internal_requests]})
 
     def robots_allows(self, url: str) -> bool:
         """Honour robots.txt (cached per host for 24h). Fails open if it cannot be read."""

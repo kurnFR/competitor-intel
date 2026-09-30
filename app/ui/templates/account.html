@@ -24,6 +24,39 @@
             </label>
             <button class="w-full rounded-md bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2">Change password</button>
         </form>
+        <hr class="my-6 border-slate-200 dark:border-slate-700">
+        <h2 class="text-base font-bold text-slate-800 dark:text-slate-100 mb-1">Two-factor sign-in</h2>
+        <div id="mfa-required" class="hidden mb-3 rounded-md bg-amber-50 text-amber-800 text-sm px-3 py-2">Administrators must turn on two-factor sign-in before continuing.</div>
+        <div id="mfa-msg" role="alert" class="hidden mb-3 rounded-md text-sm px-3 py-2"></div>
+        <div id="mfa-off" class="hidden">
+            <p class="text-sm text-slate-500 dark:text-slate-400 mb-3">Adds a 6-digit code from an authenticator app (Google Authenticator, Microsoft Authenticator, Authy, ...) to your password.</p>
+            <button id="mfa-start" class="rounded-md bg-slate-700 hover:bg-slate-800 text-white text-sm font-semibold px-4 py-2">Set up two-factor</button>
+        </div>
+        <div id="mfa-enroll" class="hidden space-y-3">
+            <p class="text-sm text-slate-600 dark:text-slate-300">1. Scan this QR code with your authenticator app (or type the key by hand).</p>
+            <img id="mfa-qr" alt="QR code" class="mx-auto bg-white p-2 rounded w-44 h-44">
+            <p class="text-xs text-center text-slate-500">Key: <code id="mfa-secret" class="select-all break-all"></code></p>
+            <p class="text-sm text-slate-600 dark:text-slate-300">2. Enter the 6-digit code it shows.</p>
+            <form id="mfa-enable-form" class="flex gap-2">
+                <input name="code" inputmode="numeric" autocomplete="one-time-code" required maxlength="8" class="flex-1 rounded-md border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 px-3 py-2 tracking-widest text-center">
+                <button class="rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4">Turn on</button>
+            </form>
+        </div>
+        <div id="mfa-codes" class="hidden space-y-2">
+            <p class="text-sm font-semibold text-emerald-700">Two-factor sign-in is on.</p>
+            <p class="text-sm text-slate-600 dark:text-slate-300">Save these recovery codes somewhere safe (password manager or printed). Each works once if you lose your phone. <strong>They will not be shown again.</strong></p>
+            <pre id="mfa-code-list" class="bg-slate-100 dark:bg-slate-900 rounded p-3 text-sm select-all"></pre>
+            <a href="/" class="inline-block text-blue-600 hover:underline text-sm">Continue to the dashboard</a>
+        </div>
+        <div id="mfa-on" class="hidden">
+            <p class="text-sm text-emerald-700 mb-3"><i class="fa-solid fa-shield-halved"></i> Two-factor sign-in is on.</p>
+            <details class="text-sm"><summary class="cursor-pointer text-slate-500">Turn it off</summary>
+                <form id="mfa-disable-form" class="mt-3 space-y-2">
+                    <input name="password" type="password" placeholder="Password" autocomplete="current-password" required class="w-full rounded-md border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 px-3 py-2">
+                    <input name="code" placeholder="Authenticator or recovery code" required maxlength="32" class="w-full rounded-md border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 px-3 py-2">
+                    <button class="rounded-md bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold px-4 py-2">Turn off</button>
+                </form></details>
+        </div>
         <div class="mt-4 flex justify-between text-sm">
             {% if not user.must_change_password %}<a class="text-blue-600 hover:underline" href="/">Back to dashboard</a>{% else %}<span></span>{% endif %}
             <button onclick="logout()" class="text-slate-500 hover:underline">Sign out</button>
@@ -36,11 +69,43 @@
             msg.textContent = text;
             msg.className = 'mb-4 rounded-md text-sm px-3 py-2 ' + (ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700');
         }
+        const showEl = id => document.getElementById(id).classList.remove('hidden');
+        const hideEl = id => document.getElementById(id).classList.add('hidden');
+        function mfaFlash(text, ok) { const m = document.getElementById('mfa-msg'); m.textContent = text; m.className = 'mb-3 rounded-md text-sm px-3 py-2 ' + (ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'); }
+        function renderMfa(user) {
+            ['mfa-off', 'mfa-on', 'mfa-enroll', 'mfa-codes'].forEach(hideEl);
+            user.mfa_enabled ? showEl('mfa-on') : showEl('mfa-off');
+            if (user.mfa_setup_required) showEl('mfa-required');
+        }
+        loadSession().then(user => {
+            renderMfa(user);
+            document.getElementById('mfa-start').addEventListener('click', async () => {
+                const r = await api('/api/v1/auth/mfa/setup', {method: 'POST'});
+                if (!r.ok) return mfaFlash(await errText(r), false);
+                const d = await r.json();
+                document.getElementById('mfa-qr').src = d.qr;
+                document.getElementById('mfa-secret').textContent = d.secret;
+                hideEl('mfa-off'); showEl('mfa-enroll');
+            });
+            document.getElementById('mfa-enable-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const r = await api('/api/v1/auth/mfa/enable', {method: 'POST', json: {code: e.target.elements['code'].value}});
+                if (!r.ok) return mfaFlash(await errText(r), false);
+                document.getElementById('mfa-code-list').textContent = (await r.json()).recovery_codes.join('\n');
+                hideEl('mfa-enroll'); hideEl('mfa-required'); showEl('mfa-codes');
+            });
+            document.getElementById('mfa-disable-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const r = await api('/api/v1/auth/mfa/disable', {method: 'POST', json: {password: e.target.elements['password'].value, code: e.target.elements['code'].value}});
+                if (!r.ok) return mfaFlash(await errText(r), false);
+                mfaFlash('Two-factor sign-in turned off.', true); hideEl('mfa-on'); showEl('mfa-off'); e.target.reset();
+            });
+        });
         loadSession().then(() => {
             form.addEventListener('submit', async (e) => {
                 e.preventDefault();
-                if (form.next.value !== form.again.value) return show('The new passwords do not match.', false);
-                const r = await api('/api/v1/auth/change-password', {method: 'POST', json: {current_password: form.current.value, new_password: form.next.value}});
+                if (form.elements['next'].value !== form.elements['again'].value) return show('The new passwords do not match.', false);
+                const r = await api('/api/v1/auth/change-password', {method: 'POST', json: {current_password: form.elements['current'].value, new_password: form.elements['next'].value}});
                 if (!r.ok) return show(await errText(r), false);
                 show('Password changed. Redirecting...', true);
                 setTimeout(() => location.href = '/', 800);

@@ -23,6 +23,21 @@
         <p class="text-xs text-slate-500 mt-2">New users must change their temporary password at first sign-in.</p>
     </section>
     <section>
+        <h2 class="text-lg font-bold mb-1">Websites we scan</h2>
+        <p class="text-sm text-slate-500 dark:text-slate-400 mb-3">Add a retailer or promotion catalog page. Unknown sites use the generic reader; check the results on the Review page and with <code>python -m scripts.try_extract</code>. Scans obey each site's robots.txt.</p>
+        <div class="overflow-x-auto bg-white dark:bg-slate-800 rounded-xl shadow mb-4">
+            <table class="min-w-full text-sm"><thead class="bg-slate-100 dark:bg-slate-700"><tr>
+                <th class="p-3 text-left">Name</th><th class="p-3 text-left">Address</th><th class="p-3 text-left">Health</th>
+                <th class="p-3 text-left">Last success</th><th class="p-3"></th></tr></thead><tbody id="sources"></tbody></table>
+        </div>
+        <form id="new-source" class="bg-white dark:bg-slate-800 rounded-xl shadow p-4 grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
+            <label class="text-xs font-medium">Name<input name="name" required maxlength="255" class="mt-1 w-full rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-700 px-2 py-1.5 text-sm"></label>
+            <label class="text-xs font-medium md:col-span-2">Promotion page address<input name="base_url" type="url" required placeholder="https://www.example.com/promo" class="mt-1 w-full rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-700 px-2 py-1.5 text-sm"></label>
+            <label class="text-xs font-medium">Type<select name="source_type" class="mt-1 w-full rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-700 px-2 py-1.5 text-sm"><option value="RETAILER">Retailer</option><option value="PROMOTION_AGGREGATOR">Promotion catalog site</option></select></label>
+            <button class="rounded bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold py-2">Add website</button>
+        </form>
+    </section>
+    <section>
         <h2 class="text-lg font-bold mb-3">Recent security events</h2>
         <div class="overflow-x-auto bg-white dark:bg-slate-800 rounded-xl shadow"><table class="min-w-full text-xs"><thead class="bg-slate-100 dark:bg-slate-700"><tr>
             <th class="p-2 text-left">Time</th><th class="p-2 text-left">User</th><th class="p-2 text-left">Event</th><th class="p-2 text-left">IP</th><th class="p-2 text-left">Detail</th></tr></thead><tbody id="audit"></tbody></table></div>
@@ -38,11 +53,12 @@
             <td class="p-3 font-medium">${esc(u.username)}${u.display_name ? ' <span class="text-slate-400 font-normal">(' + esc(u.display_name) + ')</span>' : ''}</td>
             <td class="p-3"><select onchange="update('${esc(u.id)}', {role: this.value})" class="rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-700 text-xs px-1 py-1">
                 ${['VIEWER','ANALYST','ADMIN'].map(r => `<option ${r === u.role ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
-            <td class="p-3 text-xs">${u.is_active ? '<span class="text-emerald-600">Active</span>' : '<span class="text-rose-600">Disabled</span>'}${u.locked ? ' · <span class="text-amber-600">Locked</span>' : ''}${u.must_change_password ? ' · <span class="text-slate-500">Must change password</span>' : ''}</td>
+            <td class="p-3 text-xs">${u.is_active ? '<span class="text-emerald-600">Active</span>' : '<span class="text-rose-600">Disabled</span>'}${u.locked ? ' · <span class="text-amber-600">Locked</span>' : ''}${u.must_change_password ? ' · <span class="text-slate-500">Must change password</span>' : ''}${u.mfa_enabled ? ' · <span class="text-emerald-600"><i class="fa-solid fa-shield-halved"></i> 2FA</span>' : ''}</td>
             <td class="p-3 text-xs text-slate-500">${esc(u.last_login_at ? u.last_login_at.slice(0, 16).replace('T', ' ') : 'never')}</td>
             <td class="p-3 whitespace-nowrap text-xs">
                 <button onclick="update('${esc(u.id)}', {is_active: ${!u.is_active}})" class="px-2 py-1 rounded bg-slate-500 text-white">${u.is_active ? 'Disable' : 'Enable'}</button>
                 ${u.locked ? `<button onclick="unlock('${esc(u.id)}')" class="px-2 py-1 rounded bg-amber-600 text-white">Unlock</button>` : ''}
+                ${u.mfa_enabled ? `<button onclick="resetMfa('${esc(u.id)}', '${esc(u.username)}')" class="px-2 py-1 rounded bg-violet-600 text-white">Reset 2FA</button>` : ''}
                 <button onclick="resetPw('${esc(u.id)}', '${esc(u.username)}')" class="px-2 py-1 rounded bg-sky-600 text-white">Reset password</button></td></tr>`).join('');
     }
     async function loadAudit() {
@@ -56,6 +72,11 @@
         flash(r.ok ? 'User updated.' : await errText(r), r.ok); loadUsers(); loadAudit();
     }
     async function unlock(id) { const r = await api(`/api/v1/auth/users/${id}/unlock`, {method: 'POST'}); flash(r.ok ? 'Account unlocked.' : await errText(r), r.ok); loadUsers(); loadAudit(); }
+    async function resetMfa(id, name) {
+        if (!confirm('Remove two-factor sign-in for ' + name + '? Only do this after confirming their identity (for example, they lost their phone and recovery codes).')) return;
+        const r = await api(`/api/v1/auth/users/${id}/reset-mfa`, {method: 'POST'});
+        flash(r.ok ? 'Two-factor reset. They should set it up again after signing in.' : await errText(r), r.ok); loadUsers(); loadAudit();
+    }
     async function resetPw(id, name) {
         const pw = prompt('New temporary password for ' + name + ' (12+ characters). They must change it at next sign-in:');
         if (!pw) return;
@@ -65,12 +86,31 @@
     document.getElementById('new-user').addEventListener('submit', async (e) => {
         e.preventDefault();
         const f = e.target;
-        const r = await api('/api/v1/auth/users', {method: 'POST', json: {username: f.username.value, password: f.password.value, role: f.role.value, display_name: f.display_name.value || null}});
+        const r = await api('/api/v1/auth/users', {method: 'POST', json: {username: f.elements['username'].value, password: f.elements['password'].value, role: f.elements['role'].value, display_name: f.elements['display_name'].value || null}});
         flash(r.ok ? 'User created.' : await errText(r), r.ok);
         if (r.ok) f.reset();
         loadUsers(); loadAudit();
     });
-    loadSession().then(() => { loadUsers(); loadAudit(); });
+    const HEALTH = {OK: 'text-emerald-600', FAILING: 'text-rose-600', STALE: 'text-amber-600', NEVER_SCANNED: 'text-slate-500', DISABLED: 'text-slate-400'};
+    async function loadSources() {
+        const rows = await (await api('/api/v1/sources/')).json();
+        document.getElementById('sources').innerHTML = rows.map(s => `<tr class="border-t border-slate-100 dark:border-slate-700">
+            <td class="p-3 font-medium">${esc(s.name)}</td><td class="p-3 text-xs text-slate-500 max-w-xs truncate" title="${esc(s.base_url)}">${esc(s.domain)}</td>
+            <td class="p-3 text-xs font-semibold ${HEALTH[s.health] || ''}">${esc(s.health.replace('_', ' '))}</td>
+            <td class="p-3 text-xs text-slate-500">${esc(s.last_success_at ? s.last_success_at.slice(0, 16).replace('T', ' ') : 'never')}</td>
+            <td class="p-3 text-xs"><button onclick="toggleSource('${esc(s.id)}', ${!s.is_active})" class="px-2 py-1 rounded bg-slate-500 text-white">${s.is_active ? 'Pause' : 'Resume'}</button></td></tr>`).join('');
+    }
+    async function toggleSource(id, active) {
+        const r = await api('/api/v1/sources/' + id, {method: 'PATCH', json: {is_active: active}});
+        flash(r.ok ? 'Website updated.' : await errText(r), r.ok); loadSources(); loadAudit();
+    }
+    document.getElementById('new-source').addEventListener('submit', async (e) => {
+        e.preventDefault(); const f = e.target;
+        const r = await api('/api/v1/sources/', {method: 'POST', json: {name: f.elements['name'].value, base_url: f.elements['base_url'].value, source_type: f.elements['source_type'].value}});
+        flash(r.ok ? 'Website added. It will be included in the next scan.' : await errText(r), r.ok);
+        if (r.ok) f.reset(); loadSources(); loadAudit();
+    });
+    loadSession().then(() => { loadUsers(); loadSources(); loadAudit(); });
 </script>
 </body>
 </html>

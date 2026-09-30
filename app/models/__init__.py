@@ -5,6 +5,7 @@ from app.models.promotion import PromotionObservation, Promotion, PromotionEvide
 from app.models.promotion_change import PromotionChangeEvent
 from app.models.resolution import EntityMapping, ReviewQueue
 from app.models.auth import User, UserSession, AuditLog
+from app.models.own_product import OwnProduct
 
 __all__ = [
     "Base",
@@ -24,4 +25,5 @@ __all__ = [
     "User",
     "UserSession",
     "AuditLog",
+    "OwnProduct",
 ]

@@ -1,0 +1,36 @@
+# Production-style stack: the app + PostgreSQL. Put an HTTPS reverse proxy (see docs/DEPLOYMENT.md) in front.
+# Usage:  cp .env.example .env   (edit it)   then   docker compose up -d --build
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: competitor_intel
+      POSTGRES_USER: competitor_intel
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U competitor_intel -d competitor_intel"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://competitor_intel:${POSTGRES_PASSWORD}@db:5432/competitor_intel
+      DATABASE_URL_ADMIN: postgresql+psycopg://competitor_intel:${POSTGRES_PASSWORD}@db:5432/competitor_intel
+      APP_ENV: production
+      HOST: 0.0.0.0
+      TRUST_PROXY: "true"          # the reverse proxy in front sets X-Forwarded-For
+    ports:
+      - "127.0.0.1:8000:8000"      # reachable only from this machine; expose it through the HTTPS proxy
+
+volumes:
+  pgdata:

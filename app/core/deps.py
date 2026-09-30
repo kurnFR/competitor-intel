@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.db.session import get_db
 from app.models.auth import User, UserSession
+from app.services import mfa as mfa_service
 from app.services.auth import resolve_session, role_allows
 
 SESSION_COOKIE = "ci_session"
@@ -51,6 +52,8 @@ def require_role(minimum: str = "VIEWER", *, allow_password_change_pending: bool
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Login required.")
         if principal.user.must_change_password and not allow_password_change_pending:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "PASSWORD_CHANGE_REQUIRED")
+        if mfa_service.setup_required(principal.user) and not allow_password_change_pending:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "MFA_SETUP_REQUIRED")
         if not role_allows(principal.user, minimum):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission for this action.")
         _check_csrf(request, principal)

@@ -119,7 +119,9 @@ def test_export_csv_is_safe_and_role_protected(env):
     assert analyst.get("/api/v1/promotions/export?format=pdf").status_code == 422
 
 
-def test_digest_lists_new_changed_and_ending(env):
+def test_digest_lists_new_changed_and_ending(env, monkeypatch):
+    from app.services import digest as digest_service
+    monkeypatch.setattr(digest_service, "LIMIT", 10_000)      # other rows in a shared database must not crowd ours out
     new = env.promo("Brand new")
     ending = env.promo("Ending soon", first_seen_at=env.now - timedelta(days=30),
                        start_date=env.now - timedelta(days=10), end_date=env.now + timedelta(days=2))
@@ -161,8 +163,8 @@ def test_trends_shape(env):
 def test_review_queue_approve_reject_and_permissions(env):
     p = env.promo("Needs review")
     approve = ReviewQueue(entity_type="BRAND", entity_id=env.brands[0].id, candidate_entity_id=env.brands[1].id,
-                          promotion_id=p.id, reason="Fuzzy match", confidence=0.7, priority=2, status="PENDING")
-    no_candidate = ReviewQueue(entity_type="BRAND", promotion_id=p.id, reason="Unknown brand", confidence=0.3, status="PENDING")
+                          promotion_id=p.id, reason="Fuzzy match", confidence=0.7, priority=1000, status="PENDING")
+    no_candidate = ReviewQueue(entity_type="BRAND", promotion_id=p.id, reason="Unknown brand", confidence=0.3, priority=1000, status="PENDING")
     env.db.add_all([approve, no_candidate])
     env.db.commit()
 
@@ -171,7 +173,7 @@ def test_review_queue_approve_reject_and_permissions(env):
 
     c, csrf = env.login("ANALYST")
     hdr = {"X-CSRF-Token": csrf}
-    listed = {i["id"]: i for i in c.get("/api/v1/review/").json()}
+    listed = {i["id"]: i for i in c.get("/api/v1/review/?limit=200").json()}
     assert listed[str(approve.id)]["can_approve"] is True and listed[str(no_candidate.id)]["can_approve"] is False
 
     assert c.post(f"/api/v1/review/{approve.id}/resolve", json={"decision": "APPROVED"}).status_code == 403  # CSRF
@@ -183,3 +185,30 @@ def test_review_queue_approve_reject_and_permissions(env):
     assert env.db.get(Promotion, p.id).brand_id == env.brands[1].id            # promotion linked to confirmed brand
     assert c.post(f"/api/v1/review/{approve.id}/resolve", json={"decision": "REJECTED"}, headers=hdr).status_code == 409
     assert c.post(f"/api/v1/review/{no_candidate.id}/resolve", json={"decision": "REJECTED"}, headers=hdr).status_code == 200
+
+
+def test_digest_webhook_posts_json_and_survives_failures(env, monkeypatch):
+    import httpx
+    from app.core.config import settings
+    from app.services import digest as digest_service
+
+    env.promo("Webhook item")
+    env.db.commit()
+    sent = {}
+
+    def fake_post(url, json=None, timeout=None, follow_redirects=None):
+        sent.update(url=url, json=json, follow=follow_redirects)
+        return httpx.Response(200, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    monkeypatch.setattr(settings, "DIGEST_WEBHOOK_URL", "http://insecure.example/hook")
+    assert digest_service.webhook_configured() is False                     # plain http refused
+    monkeypatch.setattr(settings, "DIGEST_WEBHOOK_URL", "https://hooks.example/abc")
+    assert digest_service.send_digest_webhook(env.db) is True
+    assert sent["url"] == "https://hooks.example/abc" and "text" in sent["json"] and sent["follow"] is False
+    assert len(sent["json"]["text"]) <= 3600
+
+    def boom(*a, **k):
+        raise httpx.ConnectError("down")
+    monkeypatch.setattr(httpx, "post", boom)
+    assert digest_service.send_digest(env.db) == {"email": False, "webhook": False}   # failure is contained

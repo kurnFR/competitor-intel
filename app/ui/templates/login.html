@@ -23,29 +23,63 @@
             </label>
             <button id="submit" type="submit" class="w-full rounded-md bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 disabled:opacity-60">Sign in</button>
         </form>
+        <form id="mfa-form" class="space-y-4 hidden" autocomplete="off">
+            <p class="text-sm text-slate-600 dark:text-slate-300">Enter the 6-digit code from your authenticator app, or one of your recovery codes.</p>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-200">Code
+                <input id="mfa-code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" required maxlength="32"
+                       class="mt-1 w-full rounded-md border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 px-3 py-2 tracking-widest text-center focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </label>
+            <button id="mfa-submit" type="submit" class="w-full rounded-md bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 disabled:opacity-60">Verify</button>
+            <button type="button" onclick="location.reload()" class="w-full text-xs text-slate-500 hover:underline">Start over</button>
+        </form>
         <p class="mt-6 text-xs text-slate-400 text-center">Access is logged. Contact an administrator if you need an account.</p>
     </main>
     <script>
         const form = document.getElementById('login-form');
         const errorBox = document.getElementById('error');
+        const mfaForm = document.getElementById('mfa-form');
+        let challenge = null;
+        function fail(message, btn) {
+            errorBox.textContent = message;
+            errorBox.classList.remove('hidden');
+            btn.disabled = false;
+        }
+        function finish(data) { location.href = (data.user.must_change_password || data.user.mfa_setup_required) ? '/account' : '/'; }
+        async function post(url, payload) {
+            const r = await fetch(url, {method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)});
+            if (!r.ok) throw new Error(await errText(r));
+            return r.json();
+        }
         form.addEventListener('submit', async (event) => {
             event.preventDefault();
             errorBox.classList.add('hidden');
             const btn = document.getElementById('submit');
             btn.disabled = true;
             try {
-                const r = await fetch('/api/v1/auth/login', {
-                    method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({username: form.username.value, password: form.password.value}),
-                });
-                if (!r.ok) throw new Error(await errText(r));
-                const data = await r.json();
-                location.href = data.user.must_change_password ? '/account' : '/';
+                const data = await post('/api/v1/auth/login', {username: form.elements['username'].value, password: form.elements['password'].value});
+                if (data.mfa_required) {
+                    challenge = data.challenge;
+                    form.classList.add('hidden');
+                    mfaForm.classList.remove('hidden');
+                    document.getElementById('mfa-code').focus();
+                    return;
+                }
+                finish(data);
             } catch (e) {
-                errorBox.textContent = e.message;
-                errorBox.classList.remove('hidden');
-                form.password.value = '';
-                btn.disabled = false;
+                form.elements['password'].value = '';
+                fail(e.message, btn);
+            }
+        });
+        mfaForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            errorBox.classList.add('hidden');
+            const btn = document.getElementById('mfa-submit');
+            btn.disabled = true;
+            try {
+                finish(await post('/api/v1/auth/login/mfa', {challenge, code: mfaForm.elements['code'].value}));
+            } catch (e) {
+                mfaForm.elements['code'].value = '';
+                fail(e.message, btn);
             }
         });
     </script>

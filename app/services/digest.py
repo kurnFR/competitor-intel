@@ -132,6 +132,39 @@ def digest_email_configured() -> bool:
     return bool(settings.SMTP_HOST and settings.digest_recipient_list and (settings.SMTP_FROM or settings.SMTP_USER))
 
 
+def webhook_configured() -> bool:
+    return settings.DIGEST_WEBHOOK_URL.lower().startswith("https://")
+
+
+def digest_configured() -> bool:
+    return digest_email_configured() or webhook_configured()
+
+
+def send_digest_webhook(db: Session, *, days: int = 7) -> bool:
+    if not webhook_configured():
+        return False
+    import httpx
+    _, text, _ = render_digest(build_digest(db, days=days))
+    if len(text) > 3500:
+        text = text[:3500].rsplit("\n", 1)[0] + "\n... (truncated, see the dashboard)"
+    resp = httpx.post(settings.DIGEST_WEBHOOK_URL, json={"text": text}, timeout=15.0, follow_redirects=False)
+    resp.raise_for_status()
+    logger.info("Digest posted to webhook.")
+    return True
+
+
+def send_digest(db: Session, *, days: int = 7) -> dict:
+    """Send the digest on every configured channel; one failing channel does not stop the other."""
+    results = {}
+    for name, func in (("email", send_digest_email), ("webhook", send_digest_webhook)):
+        try:
+            results[name] = func(db, days=days)
+        except Exception:
+            logger.exception("Digest %s delivery failed", name)
+            results[name] = False
+    return results
+
+
 def send_digest_email(db: Session, *, days: int = 7) -> bool:
     if not digest_email_configured():
         logger.info("Digest e-mail skipped: SMTP_HOST / DIGEST_RECIPIENTS / SMTP_FROM not configured.")

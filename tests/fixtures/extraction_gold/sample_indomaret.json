@@ -1,0 +1,4 @@
+[
+  {"product_name": "Biskuit Roma Kelapa 300g", "regular_price": 10000, "promo_price": 7000, "discount_percentage": 30, "promotion_type": "DISCOUNT"},
+  {"product_name": "Malkist Abon 250g", "promo_price": 9000, "promotion_type": "BUY_X_GET_Y"}
+]

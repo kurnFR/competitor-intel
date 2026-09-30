@@ -11,7 +11,9 @@ from app.core.config import settings
 from app.core.deps import SESSION_COOKIE, Principal, client_ip, get_principal_optional, require_role
 from app.db.session import get_db
 from app.models.auth import AuditLog, ROLES, User
+from app.core import crypto
 from app.services import auth as auth_service
+from app.services import mfa as mfa_service
 from app.services.auth import AuthError
 
 router = APIRouter()
@@ -31,13 +33,37 @@ class UserOut(BaseModel):
     must_change_password: bool
     locked: bool = False
     last_login_at: Optional[datetime] = None
+    mfa_enabled: bool = Field(default=False, validation_alias="totp_enabled")
+    mfa_setup_required: bool = False
 
-    model_config = {"from_attributes": True}
+    model_config = {"from_attributes": True, "populate_by_name": True}
 
 
 class SessionOut(BaseModel):
     user: UserOut
     csrf_token: str
+
+
+class LoginOut(BaseModel):
+    """Either a finished login (user + csrf_token) or a request for the second factor (mfa_required + challenge)."""
+    mfa_required: bool = False
+    challenge: Optional[str] = None
+    user: Optional[UserOut] = None
+    csrf_token: Optional[str] = None
+
+
+class MfaLoginIn(BaseModel):
+    challenge: str = Field(max_length=300)
+    code: str = Field(max_length=32)
+
+
+class MfaCodeIn(BaseModel):
+    code: str = Field(max_length=32)
+
+
+class MfaDisableIn(BaseModel):
+    password: str = Field(max_length=256)
+    code: str = Field(max_length=32)
 
 
 class ChangePasswordIn(BaseModel):
@@ -75,6 +101,7 @@ class AuditOut(BaseModel):
 
 def _user_out(user: User) -> UserOut:
     out = UserOut.model_validate(user)
+    out.mfa_setup_required = mfa_service.setup_required(user)
     out.locked = bool(user.locked_until and user.locked_until > datetime.now(user.locked_until.tzinfo))
     return out
 
@@ -90,17 +117,32 @@ def _set_cookie(response: Response, token: str) -> None:
     )
 
 
-@router.post("/login", response_model=SessionOut)
+@router.post("/login", response_model=LoginOut)
 def login(body: LoginIn, request: Request, response: Response, db: Session = Depends(get_db)):
+    ip, ua = client_ip(request), request.headers.get("user-agent", "")
+    response.headers["Cache-Control"] = "no-store"
     try:
-        user, token, session = auth_service.authenticate(
-            db, body.username, body.password, ip=client_ip(request), user_agent=request.headers.get("user-agent", ""),
-        )
+        user = auth_service.verify_credentials(db, body.username, body.password, ip=ip)
+        if user.totp_enabled and mfa_service.available():
+            # Password is right; a session is only opened after the second factor.
+            return LoginOut(mfa_required=True, challenge=crypto.sign_challenge(str(user.id), settings.MFA_CHALLENGE_SECONDS))
+        token, session = auth_service.complete_login(db, user, ip=ip, user_agent=ua)
     except AuthError as exc:
         raise _fail(exc)
     _set_cookie(response, token)
+    return LoginOut(user=_user_out(user), csrf_token=session.csrf_token)
+
+
+@router.post("/login/mfa", response_model=LoginOut)
+def login_mfa(body: MfaLoginIn, request: Request, response: Response, db: Session = Depends(get_db)):
     response.headers["Cache-Control"] = "no-store"
-    return SessionOut(user=_user_out(user), csrf_token=session.csrf_token)
+    try:
+        user, token, session = auth_service.mfa_login(db, body.challenge, body.code, ip=client_ip(request),
+                                                     user_agent=request.headers.get("user-agent", ""))
+    except AuthError as exc:
+        raise _fail(exc)
+    _set_cookie(response, token)
+    return LoginOut(user=_user_out(user), csrf_token=session.csrf_token)
 
 
 @router.post("/logout", status_code=204)
@@ -135,6 +177,59 @@ def change_password(body: ChangePasswordIn, request: Request,
     except AuthError as exc:
         raise _fail(exc)
     auth_service.audit(db, "password_changed", username=user.username, ip=client_ip(request))
+    db.commit()
+
+
+# ---- two-factor ------------------------------------------------------------
+_account = Depends(require_role("VIEWER", allow_password_change_pending=True))
+
+
+def _require_mfa_available():
+    if not mfa_service.available():
+        raise HTTPException(status_code=503, detail="Two-factor login is not available: SECRET_KEY is not configured on the server.")
+
+
+@router.post("/mfa/setup")
+def mfa_setup(principal: Principal = _account, db: Session = Depends(get_db)):
+    """Start enrolment: returns the secret and a QR code. Nothing is active until /mfa/enable succeeds."""
+    _require_mfa_available()
+    user = principal.user
+    if user.totp_enabled:
+        raise HTTPException(status_code=409, detail="Two-factor login is already on. Turn it off first to set it up again.")
+    data = mfa_service.begin_enrollment(user)
+    db.commit()
+    return data
+
+
+@router.post("/mfa/enable")
+def mfa_enable(body: MfaCodeIn, request: Request, principal: Principal = _account, db: Session = Depends(get_db)):
+    _require_mfa_available()
+    user = principal.user
+    codes = mfa_service.confirm_enrollment(user, body.code)
+    if codes is None:
+        auth_service.audit(db, "mfa_enable_failed", username=user.username, success=False, ip=client_ip(request))
+        db.commit()
+        raise HTTPException(status_code=400, detail="That code is not correct. Check the time on your phone and try again.")
+    auth_service.revoke_user_sessions(db, user.id, except_session_id=principal.session.id)
+    auth_service.audit(db, "mfa_enabled", username=user.username, ip=client_ip(request))
+    db.commit()
+    return {"recovery_codes": codes}
+
+
+@router.post("/mfa/disable", status_code=204)
+def mfa_disable(body: MfaDisableIn, request: Request, principal: Principal = _account, db: Session = Depends(get_db)):
+    user = principal.user
+    if not user.totp_enabled:
+        raise HTTPException(status_code=409, detail="Two-factor login is not on.")
+    if settings.MFA_REQUIRED_FOR_ADMINS and user.role == "ADMIN":
+        raise HTTPException(status_code=409, detail="Administrators must keep two-factor login on.")
+    if not auth_service.verify_password(user.password_hash, body.password) or not mfa_service.check_second_factor(user, body.code):
+        auth_service.audit(db, "mfa_disable_failed", username=user.username, success=False, ip=client_ip(request))
+        db.commit()
+        raise HTTPException(status_code=400, detail="Password or code is incorrect.")
+    mfa_service.disable(user)
+    auth_service.revoke_user_sessions(db, user.id, except_session_id=principal.session.id)
+    auth_service.audit(db, "mfa_disabled", username=user.username, ip=client_ip(request))
     db.commit()
 
 
@@ -210,6 +305,18 @@ def reset_password(user_id: UUID, body: ResetPasswordIn, request: Request,
     except AuthError as exc:
         raise _fail(exc)
     auth_service.audit(db, "password_reset", username=principal.user.username, ip=client_ip(request),
+                       detail={"target": user.username})
+    db.commit()
+
+
+@router.post("/users/{user_id}/reset-mfa", status_code=204)
+def reset_mfa(user_id: UUID, request: Request, principal: Principal = Depends(require_role("ADMIN")),
+              db: Session = Depends(get_db)):
+    """For a user who lost their phone and recovery codes. They sign in with their password and set 2FA up again."""
+    user = _target(db, user_id)
+    mfa_service.disable(user)
+    auth_service.revoke_user_sessions(db, user.id, except_session_id=principal.session.id if user.id == principal.user.id else None)
+    auth_service.audit(db, "mfa_reset", username=principal.user.username, ip=client_ip(request),
                        detail={"target": user.username})
     db.commit()
 

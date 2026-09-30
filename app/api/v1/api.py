@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 
-from app.api.v1.endpoints import auth, promotions, review, stats
+from app.api.v1.endpoints import auth, compare, promotions, review, sources, stats
 from app.core.deps import require_role
 
 api_router = APIRouter()
@@ -12,3 +12,7 @@ api_router.include_router(stats.router, prefix="/stats", tags=["Stats"],
                           dependencies=[Depends(require_role("VIEWER"))])
 api_router.include_router(review.router, prefix="/review", tags=["Review"],
                           dependencies=[Depends(require_role("ANALYST"))])
+api_router.include_router(compare.router, prefix="/compare", tags=["Price comparison"],
+                          dependencies=[Depends(require_role("ANALYST"))])
+api_router.include_router(sources.router, prefix="/sources", tags=["Sources"],
+                          dependencies=[Depends(require_role("ADMIN"))])

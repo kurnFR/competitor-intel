@@ -254,6 +254,7 @@ Everything (dashboard and API) requires a login. There are no default accounts.
 How it is protected:
 * Passwords are hashed with Argon2id; minimum 12 characters, common passwords rejected. New and reset accounts must change the temporary password at first sign-in.
 * Sessions are server-side; the browser cookie is `HttpOnly`, `SameSite=Strict` and (in production) `Secure`. Only a hash of the token is stored. Sessions expire after 12 hours, or 2 hours idle, and changing a password signs the user out everywhere else.
+* **Two-factor sign-in (optional, recommended):** any user can add a 6-digit authenticator-app code on their **Account** page (QR code + 10 one-time recovery codes). Set `SECRET_KEY` to enable it (it encrypts the stored authenticator secrets - keep it safe and never change it). Set `MFA_REQUIRED_FOR_ADMINS=true` to make it mandatory for administrators. A code cannot be used twice, wrong codes count toward the lockout, and an administrator can reset a user who lost their phone and recovery codes.
 * Every state-changing request needs a CSRF token, and every role is checked on the server.
 * 5 wrong passwords lock the account for 15 minutes, and too many failures from one IP are throttled. Failed logins give one generic message so usernames cannot be guessed.
 * Logins, failures, lockouts, password and user changes are recorded in the security log (Admin page).
@@ -267,6 +268,27 @@ How it is protected:
 * **Review** (analyst+): approve or reject uncertain product/brand/retailer matches; approval links the promotion to the suggested entity.
 * **Weekly e-mail digest** (optional): set `SMTP_HOST`, `SMTP_FROM`, `DIGEST_RECIPIENTS`; sent on `DIGEST_DAY_OF_WEEK` at `DIGEST_HOUR`. Test now with `python -m scripts.send_digest`.
 * **JavaScript-only retailer pages** need a browser: `pip install -r requirements-browser.txt && playwright install chromium`. Without it the crawler logs a warning and those pages yield nothing.
+
+* **Price comparison** (`/compare`, analyst+): enter your own products (or import a CSV), and see how competitor promotions compare per 100 g, with the biggest undercuts first. Buy-X-get-Y offers are converted to an effective price; only promotions with a computable price and a similar pack size are compared.
+* **Websites we scan** (Admin page): add, pause or resume sources without touching code, and see each source's health (OK / failing / stale). Addresses pointing at private or internal networks are refused, and the crawler refuses to follow redirects into them.
+* **Chat digest** (optional): set `DIGEST_WEBHOOK_URL` (Slack, Google Chat, Mattermost) to post the weekly digest to a channel.
+
+## Measuring extraction quality
+
+The LLM decides what counts as a promotion, so measure it on your real sources:
+
+```bash
+python -m scripts.try_extract page.txt          # see accepted / rejected items for one page
+python -m scripts.eval_extraction --min-f1 0.8  # score against labelled pages in tests/fixtures/extraction_gold/
+```
+
+Label 15-30 real pages (`name.txt` + `name.json`, see the sample). Re-run after changing the model or prompt.
+
+## More documentation
+
+* `docs/DEPLOYMENT.md` - Docker Compose / server setup, HTTPS, backups, upgrade, troubleshooting
+* `docs/HANDOVER.md` - what is built, what you still need to do, and how to operate it
+* `tests/ui/README.md` - the click-through UI test
 
 ## Automatic tests on GitHub
 

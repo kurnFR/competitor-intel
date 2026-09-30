@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><title>Price comparison - {{ app_name }}</title>{% include "_head.html" %}</head>
+<body class="bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 min-h-screen">
+{% include "_nav.html" %}
+<main class="max-w-7xl mx-auto px-4 py-6 space-y-8">
+    <div id="msg" role="alert" class="hidden rounded-md px-3 py-2 text-sm"></div>
+    <section>
+        <h2 class="text-lg font-bold mb-1">Our prices vs competitor promotions</h2>
+        <p class="text-sm text-slate-500 dark:text-slate-400 mb-4">Compared per 100 g so different pack sizes are fair. Only promotions with a computable price and a pack size within half to double of ours are shown. A negative gap means the competitor is cheaper than us.</p>
+        <div id="summary" class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4"></div>
+        <div id="results" class="space-y-3"></div>
+    </section>
+    <section>
+        <h2 class="text-lg font-bold mb-3">Our products</h2>
+        <form id="add-form" class="bg-white dark:bg-slate-800 rounded-xl shadow p-4 grid grid-cols-2 md:grid-cols-6 gap-3 items-end mb-4">
+            <label class="text-xs font-medium col-span-2">Name<input name="name" required maxlength="255" class="mt-1 w-full rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-700 px-2 py-1.5 text-sm"></label>
+            <label class="text-xs font-medium">Category<select name="category" class="mt-1 w-full rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-700 px-2 py-1.5 text-sm"><option>BISCUIT</option><option>CRACKER</option><option>COOKIE</option><option>WAFER</option><option>SNACK</option></select></label>
+            <label class="text-xs font-medium">Pack size (e.g. 300g)<input name="pack_size" maxlength="50" class="mt-1 w-full rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-700 px-2 py-1.5 text-sm"></label>
+            <label class="text-xs font-medium">Shelf price (Rp)<input name="regular_price" type="number" min="1" step="any" required class="mt-1 w-full rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-700 px-2 py-1.5 text-sm"></label>
+            <button class="rounded bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold py-2">Add</button>
+        </form>
+        <div class="flex flex-wrap items-center gap-3 mb-4 text-sm">
+            <label class="px-3 py-1.5 rounded bg-slate-200 dark:bg-slate-700 cursor-pointer"><i class="fa-solid fa-file-arrow-up"></i> Import CSV
+                <input id="csv-file" type="file" accept=".csv,text/csv" class="hidden"></label>
+            <button onclick="downloadTemplate()" class="text-blue-600 hover:underline">Download CSV template</button>
+        </div>
+        <div class="overflow-x-auto bg-white dark:bg-slate-800 rounded-xl shadow"><table class="min-w-full text-sm"><thead class="bg-slate-100 dark:bg-slate-700"><tr>
+            <th class="p-3 text-left">Product</th><th class="p-3 text-left">Category</th><th class="p-3 text-left">Pack</th><th class="p-3 text-right">Price</th><th class="p-3"></th></tr></thead><tbody id="products"></tbody></table></div>
+    </section>
+</main>
+<script>
+    const msg = document.getElementById('msg');
+    function flash(text, ok) { msg.textContent = text; msg.className = 'rounded-md px-3 py-2 text-sm ' + (ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'); }
+    const rp = n => n == null ? '-' : 'Rp' + Number(n).toLocaleString('id-ID', {maximumFractionDigits: 0});
+    const card = (label, value, color) => `<div class="bg-white dark:bg-slate-800 rounded-xl shadow p-4"><div class="text-2xl font-bold ${color}">${esc(value)}</div><div class="text-sm text-slate-500">${esc(label)}</div></div>`;
+
+    async function loadComparison() {
+        const d = await (await api('/api/v1/compare/')).json();
+        document.getElementById('summary').innerHTML = card('Our products', d.summary.own_products, '') +
+            card('Undercut by a competitor promotion', d.summary.under_pressure, 'text-rose-600') +
+            card('Need a pack size to compare', d.summary.not_comparable, 'text-amber-600');
+        document.getElementById('results').innerHTML = d.products.map(p => {
+            const rows = p.comparable.map(m => `<tr class="border-t border-slate-100 dark:border-slate-700 ${m.undercuts_us ? 'bg-rose-50/60 dark:bg-rose-900/10' : ''}">
+                <td class="p-2">${esc(m.competitor || m.brand || '-')}</td><td class="p-2">${esc(m.product)}<div class="text-xs text-slate-500">${esc(m.pack_size)} · ${esc(m.outlet || 'n/a')}${m.dates_stated ? '' : ' · dates not stated'}</div></td>
+                <td class="p-2 text-right">${rp(m.effective_pack_price)}</td><td class="p-2 text-right">${rp(m.price_per_100g)}</td>
+                <td class="p-2 text-right font-semibold ${m.gap_pct < 0 ? 'text-rose-600' : 'text-emerald-600'}">${m.gap_pct > 0 ? '+' : ''}${esc(m.gap_pct)}%</td></tr>`).join('');
+            const body = p.note ? `<p class="text-sm text-amber-600 p-3">${esc(p.note)}</p>` :
+                (rows ? `<table class="min-w-full text-sm"><thead class="text-xs text-slate-500"><tr><th class="p-2 text-left">Competitor</th><th class="p-2 text-left">Promotion</th><th class="p-2 text-right">Pack price</th><th class="p-2 text-right">Per 100 g</th><th class="p-2 text-right">Gap vs us</th></tr></thead><tbody>${rows}</tbody></table>` : '<p class="text-sm text-slate-400 p-3">No comparable competitor promotion right now.</p>');
+            return `<div class="bg-white dark:bg-slate-800 rounded-xl shadow overflow-hidden"><div class="p-3 flex flex-wrap justify-between gap-2 border-b border-slate-100 dark:border-slate-700">
+                <div><span class="font-semibold">${esc(p.name)}</span> <span class="text-xs text-slate-500">${esc(p.pack_size || '')} · ${esc(p.category)}</span></div>
+                <div class="text-sm">${rp(p.regular_price)}${p.price_per_100g != null ? ' · ' + rp(p.price_per_100g) + ' /100 g' : ''}${p.undercut_count ? ` · <span class="text-rose-600 font-semibold">${esc(p.undercut_count)} cheaper</span>` : ''}</div></div>${body}</div>`;
+        }).join('') || '<p class="text-slate-400">Add your products below to start comparing.</p>';
+    }
+    async function loadProducts() {
+        const items = await (await api('/api/v1/compare/products')).json();
+        document.getElementById('products').innerHTML = items.map(p => `<tr class="border-t border-slate-100 dark:border-slate-700">
+            <td class="p-3">${esc(p.name)}${p.sku ? ' <span class="text-xs text-slate-400">' + esc(p.sku) + '</span>' : ''}</td><td class="p-3">${esc(p.category)}</td><td class="p-3">${esc(p.pack_size || '-')}</td>
+            <td class="p-3 text-right"><input value="${esc(p.regular_price)}" type="number" min="1" step="any" onchange="patch('${esc(p.id)}', {regular_price: parseFloat(this.value)})" class="w-28 text-right rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-700 px-2 py-1"></td>
+            <td class="p-3 text-right"><button onclick="removeProduct('${esc(p.id)}')" class="text-rose-600 text-xs hover:underline">Delete</button></td></tr>`).join('') ||
+            '<tr><td colspan="5" class="p-6 text-center text-slate-400">No products yet.</td></tr>';
+    }
+    async function refresh() { await Promise.all([loadComparison(), loadProducts()]); }
+    async function patch(id, body) { const r = await api('/api/v1/compare/products/' + id, {method: 'PATCH', json: body}); flash(r.ok ? 'Saved.' : await errText(r), r.ok); refresh(); }
+    async function removeProduct(id) { if (!confirm('Delete this product?')) return; const r = await api('/api/v1/compare/products/' + id, {method: 'DELETE'}); flash(r.ok ? 'Deleted.' : await errText(r), r.ok); refresh(); }
+    function downloadTemplate() {
+        const csv = 'name,brand,category,pack_size,regular_price,sku\nBiskuit Kelapa,MyBrand,BISCUIT,300g,10500,SKU-001\n';
+        const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], {type: 'text/csv'})); a.download = 'own-products-template.csv'; a.click();
+    }
+    document.getElementById('add-form').addEventListener('submit', async (e) => {
+        e.preventDefault(); const f = e.target;
+        const r = await api('/api/v1/compare/products', {method: 'POST', json: {name: f.elements['name'].value, category: f.elements['category'].value, pack_size: f.elements['pack_size'].value || null, regular_price: parseFloat(f.elements['regular_price'].value)}});
+        flash(r.ok ? 'Product added.' : await errText(r), r.ok); if (r.ok) f.reset(); refresh();
+    });
+    document.getElementById('csv-file').addEventListener('change', async (e) => {
+        const file = e.target.files[0]; if (!file) return;
+        const form = new FormData(); form.append('file', file);
+        const r = await api('/api/v1/compare/products/import', {method: 'POST', body: form});
+        if (r.ok) { const j = await r.json(); flash(`Imported: ${j.created} added, ${j.updated} updated.`, true); }
+        else { let d = 'Import failed'; try { const j = await r.json(); d = typeof j.detail === 'string' ? j.detail : (j.detail.message + ' ' + j.detail.errors.map(x => `Line ${x.line}: ${x.error}`).join('; ')); } catch (x) {} flash(d, false); }
+        e.target.value = ''; refresh();
+    });
+    loadSession().then(refresh);
+</script>
+</body>
+</html>

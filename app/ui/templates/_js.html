@@ -18,7 +18,7 @@
         if (method !== 'GET' && CSRF) headers['X-CSRF-Token'] = CSRF;
         const r = await fetch(path, Object.assign({}, opts, {method, headers, credentials: 'same-origin'}));
         if (r.status === 401) { location.href = '/login'; throw new Error('login required'); }
-        if (r.status === 403 && (await r.clone().text()).includes('PASSWORD_CHANGE_REQUIRED')) { location.href = '/account'; throw new Error('password change required'); }
+        if (r.status === 403 && /PASSWORD_CHANGE_REQUIRED|MFA_SETUP_REQUIRED/.test(await r.clone().text())) { location.href = '/account'; throw new Error('account setup required'); }
         return r;
     }
     async function errText(r) {

@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     LOGIN_IP_MAX_FAILURES: int = 20      # per client IP within LOGIN_IP_WINDOW_MINUTES
     LOGIN_IP_WINDOW_MINUTES: int = 10
     PASSWORD_MIN_LENGTH: int = 12
+    # Two-factor authentication. SECRET_KEY encrypts the stored authenticator secrets and signs
+    # login challenges; without it 2FA is unavailable. Generate once and keep it safe (changing it
+    # invalidates enrolled authenticators):  python -c "import secrets; print(secrets.token_urlsafe(48))"
+    SECRET_KEY: str = ""
+    MFA_REQUIRED_FOR_ADMINS: bool = False
+    MFA_CHALLENGE_SECONDS: int = 300
     # Only enable behind a reverse proxy you control; trusts X-Forwarded-For for the client IP.
     TRUST_PROXY: bool = False
 
@@ -47,6 +53,8 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = ""
     SMTP_FROM: str = ""
     DIGEST_RECIPIENTS: str = ""          # comma-separated
+    # Optional chat webhook (Slack, Google Chat, Mattermost: JSON {"text": ...}). Must be https.
+    DIGEST_WEBHOOK_URL: str = ""
     DIGEST_DAY_OF_WEEK: str = "mon"
     DIGEST_HOUR: int = 8
 

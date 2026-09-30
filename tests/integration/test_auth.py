@@ -221,7 +221,8 @@ def test_audit_log_records_events_without_passwords(env):
     env.login(c, name)
     rows = env.db.query(AuditLog).filter(AuditLog.username == name).all()
     assert {"login_failed", "login"} <= {r.action for r in rows}
-    assert all("password" not in str(r.detail).lower().replace("bad_password", "") for r in rows)
+    logged = " ".join(str(r.detail) for r in rows)
+    assert PASSWORD not in logged and "bad-password-000" not in logged      # secrets are never written to the log
 
 
 def test_security_headers_present(env):
@@ -237,10 +238,38 @@ def test_all_pages_render_for_the_right_roles(env):
     a, v = env.client(), env.client()
     env.login(a, admin)
     env.login(v, viewer)
-    for path in ("/", "/insights", "/review", "/admin", "/account"):
+    for path in ("/", "/insights", "/compare", "/review", "/admin", "/account"):
         r = a.get(path)
         assert r.status_code == 200 and "text/html" in r.headers["content-type"], path
     assert 'id="scan-button"' in a.get("/").text and "/admin" in a.get("/").text
     assert 'id="scan-button"' not in v.get("/").text                    # viewers do not see admin controls
     assert v.get("/insights").status_code == 200
     assert v.get("/review").status_code == 303 and v.get("/admin").status_code == 303
+
+
+def test_sources_admin_api(env, monkeypatch):
+    from app.models.source import SourceRegistry
+    monkeypatch.setattr("app.api.v1.endpoints.sources.validate_source_url",
+                        lambda url: __import__("app.services.sources", fromlist=["x"]).validate_source_url(url, resolve=False))
+    admin, viewer = env.make("ADMIN"), env.make("VIEWER")
+    v, a = env.client(), env.client()
+    env.login(v, viewer)
+    assert v.get("/api/v1/sources/").status_code == 403
+    csrf = env.login(a, admin).json()["csrf_token"]
+    hdr = {"X-CSRF-Token": csrf}
+    tag = uuid.uuid4().hex[:8]
+    url = f"https://93.184.216.34/promo-{tag}"
+    try:
+        r = a.post("/api/v1/sources/", json={"name": f"Test {tag}", "base_url": url, "source_type": "RETAILER"}, headers=hdr)
+        assert r.status_code == 201 and r.json()["health"] == "NEVER_SCANNED"
+        sid = r.json()["id"]
+        assert a.post("/api/v1/sources/", json={"name": "Dup", "base_url": url}, headers=hdr).status_code == 409
+        for bad in ("http://169.254.169.254/x", "http://localhost/x", "ftp://x.example.com/a"):
+            assert a.post("/api/v1/sources/", json={"name": "Bad", "base_url": bad}, headers=hdr).status_code == 422
+        assert a.post("/api/v1/sources/", json={"name": "T", "base_url": url + "2", "source_type": "WEIRD"}, headers=hdr).status_code == 422
+        off = a.patch(f"/api/v1/sources/{sid}", json={"is_active": False}, headers=hdr)
+        assert off.status_code == 200 and off.json()["health"] == "DISABLED"
+        assert a.patch(f"/api/v1/sources/{sid}", json={"reliability_score": 5}, headers=hdr).status_code == 422
+    finally:
+        env.db.query(SourceRegistry).filter(SourceRegistry.base_url.like(f"%promo-{tag}%")).delete(synchronize_session=False)
+        env.db.commit()

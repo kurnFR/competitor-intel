@@ -101,7 +101,8 @@ def _protected_page(request: Request, name: str, principal: Optional[Principal],
     from app.services.auth import role_allows
     if principal is None:
         return RedirectResponse("/login", status_code=303)
-    if principal.user.must_change_password and name != "account.html":
+    from app.services import mfa as mfa_service
+    if (principal.user.must_change_password or mfa_service.setup_required(principal.user)) and name != "account.html":
         return RedirectResponse("/account", status_code=303)
     if not role_allows(principal.user, minimum):
         return RedirectResponse("/", status_code=303)
@@ -128,6 +129,11 @@ def account_page(request: Request, principal: Optional[Principal] = Depends(get_
 @app.get("/insights", response_class=HTMLResponse)
 def insights_page(request: Request, principal: Optional[Principal] = Depends(get_principal_optional)):
     return _protected_page(request, "insights.html", principal)
+
+
+@app.get("/compare", response_class=HTMLResponse)
+def compare_page(request: Request, principal: Optional[Principal] = Depends(get_principal_optional)):
+    return _protected_page(request, "compare.html", principal, minimum="ANALYST")
 
 
 @app.get("/review", response_class=HTMLResponse)
