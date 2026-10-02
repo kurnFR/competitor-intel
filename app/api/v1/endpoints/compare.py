@@ -143,7 +143,7 @@ async def import_products(request: Request, file: UploadFile = File(...),
     try:
         text = raw.decode("utf-8-sig")
     except UnicodeDecodeError:
-        raise HTTPException(status_code=422, detail="File must be UTF-8 encoded CSV.")
+        raise HTTPException(status_code=422, detail="File must be UTF-8 encoded CSV.") from None
     reader = csv.DictReader(io.StringIO(text))
     fields = {(f or "").strip().lower() for f in (reader.fieldnames or [])}
     if not {"name", "regular_price"} <= fields:

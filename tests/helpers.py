@@ -2,6 +2,7 @@
 import uuid
 from datetime import datetime, timezone
 
+from app.models.entity import Competitor
 from app.models.promotion import Promotion, PromotionEvidence
 from app.models.source import SourceRegistry
 
@@ -19,7 +20,12 @@ def make_source(db, tag, *, approved=True, active=True, adapter="generic_catalog
 def add_promotion(db, source, *, evidence=True, now=None, **fields):
     """A promotion that satisfies every eligibility gate unless a field says otherwise."""
     now = now or datetime.now(timezone.utc)
-    base = dict(category="BISCUIT", promotion_type="DISCOUNT", status="ACTIVE", last_seen_at=now, last_verified_at=now,
+    competitor = db.query(Competitor).first()
+    if competitor is None:
+        competitor = Competitor(name="Zz Test Competitor", normalized_name="zztestcompetitor")
+        db.add(competitor)
+        db.flush()
+    base = dict(competitor_id=competitor.id, category="BISCUIT", promotion_type="DISCOUNT", status="ACTIVE", last_seen_at=now, last_verified_at=now,
                 first_seen_at=now, rank_score=0.5, source_id=source.id if source else None)
     base.update(fields)
     promo = Promotion(**base)

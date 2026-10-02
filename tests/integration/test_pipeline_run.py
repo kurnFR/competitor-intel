@@ -68,7 +68,7 @@ class FakeExtractor:
 def _patch(monkeypatch, ctx):
     FakeExtractor.calls, FakeExtractor.status = 0, "SUCCESS"
     monkeypatch.setattr(rp, "LLMExtractor", lambda: FakeExtractor(ctx))
-    monkeypatch.setattr(rp, "run_all_crawlers", lambda db: [db.get(CrawlDocument, ctx["doc"].id)])
+    monkeypatch.setattr(rp, "run_all_crawlers", lambda db, **kw: [db.get(CrawlDocument, ctx["doc"].id)])
 
 
 def _promo(ctx):
@@ -83,6 +83,10 @@ def test_undated_promo_is_stored_visible_and_channel_filled(monkeypatch, synthet
     promo = _promo(synthetic_doc)
     assert promo.status == "UNKNOWN" and promo.start_date is None and promo.end_date is None
     assert promo.channel == "Modern Trade"  # derived from the retailer, not left as N/A
+    assert promo.source_id == synthetic_doc["source"].id             # promotion is linked to its source
+    assert promo.geography is None and promo.geography_region == "UNKNOWN"   # nothing stated -> unknown, not nationwide
+    synthetic_doc["db"].refresh(synthetic_doc["source"])
+    assert synthetic_doc["source"].last_processed_at is not None      # fully processed -> counts as a successful check
 
 
 def test_unchanged_page_skips_llm_but_keeps_promotion_fresh(monkeypatch, synthetic_doc):
@@ -94,7 +98,8 @@ def test_unchanged_page_skips_llm_but_keeps_promotion_fresh(monkeypatch, synthet
     summary = rp.run_pipeline(crawl_fresh=True, max_docs=None)
     assert FakeExtractor.calls == 1  # no second LLM call for an identical page
     assert summary["documents_skipped_unchanged"] == 1
-    assert _promo(synthetic_doc).last_seen_at > first_seen
+    again = _promo(synthetic_doc)
+    assert again.last_seen_at > first_seen and again.last_verified_at > first_seen   # re-confirmed by the unchanged page
 
     rp.run_pipeline(crawl_fresh=True, max_docs=None, force=True)
     assert FakeExtractor.calls == 2
@@ -105,13 +110,17 @@ def test_failed_extraction_is_retried_next_run(monkeypatch, synthetic_doc):
     FakeExtractor.status = "ERROR"
     summary = rp.run_pipeline(crawl_fresh=True, max_docs=None)
     assert summary["documents_failed"] == 1
+    synthetic_doc["db"].refresh(synthetic_doc["source"])
+    assert synthetic_doc["source"].last_processed_at is None          # a failed extraction is NOT a successful check of the source
     FakeExtractor.status = "SUCCESS"
     summary = rp.run_pipeline(crawl_fresh=True, max_docs=None)
     assert summary["documents_skipped_unchanged"] == 0 and summary["observations"] == 1
+    synthetic_doc["db"].refresh(synthetic_doc["source"])
+    assert synthetic_doc["source"].last_processed_at is not None      # recovered on the retry
 
 
 def test_pipeline_errors_are_raised_not_swallowed(monkeypatch, synthetic_doc):
-    def boom(db):
+    def boom(db, **kw):
         raise RuntimeError("crawler exploded")
     monkeypatch.setattr(rp, "run_all_crawlers", boom)
     with pytest.raises(RuntimeError):
@@ -127,3 +136,22 @@ def test_concurrent_run_is_refused(monkeypatch, synthetic_doc):
         finally:
             other.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": rp._PIPELINE_LOCK_KEY})
             other.commit()
+
+
+def test_geography_is_kept_only_when_the_page_states_it(monkeypatch, synthetic_doc):
+    _patch(monkeypatch, synthetic_doc)
+
+    class GeoExtractor(FakeExtractor):
+        wording = "Jawa"
+
+        def extract_with_metadata(self, chunk):
+            result = super().extract_with_metadata(chunk)
+            result.items[0].geography = GeoExtractor.wording
+            return result
+
+    monkeypatch.setattr(rp, "LLMExtractor", lambda: GeoExtractor(synthetic_doc))
+    GeoExtractor.wording = "Papua"                       # the page does not mention Papua -> invented, must be dropped
+    summary = rp.run_pipeline(crawl_fresh=True, max_docs=None)
+    assert summary["geography_dropped"] == 1
+    promo = _promo(synthetic_doc)
+    assert promo.geography is None and promo.geography_region == "UNKNOWN"

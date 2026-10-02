@@ -219,3 +219,37 @@ def test_region_filter_and_display_in_the_api(env):
     assert all_items["Unknown"]["geography"] == "Not stated" and all_items["Unknown"]["geography_region"] == "UNKNOWN"
     only = c.get(f"/api/v1/promotions/top10?q=Zz{env.tag}&region=jawa").json()["promotions"]
     assert [i["product_name"].split(" ", 1)[1] for i in only] == ["Java"]
+
+
+def test_regional_prices_endpoint_and_page(env):
+    src = env.source()
+    n = f"Zz{env.tag} Roma"
+    add_promotion(env.db, src, product_name=n, pack_size="300g", promo_price=7900, geography="Jawa", geography_region="JAWA")
+    add_promotion(env.db, src, product_name=n, pack_size="300g", promo_price=9500, geography="Kalimantan", geography_region="KALIMANTAN")
+    add_promotion(env.db, src, product_name=n, pack_size="300g", promo_price=7000)                       # region not stated
+    add_promotion(env.db, src, product_name=n + " noprice", pack_size="300g")                           # no price -> omitted
+    env.db.commit()
+    c = env.client()
+    data = c.get(f"/api/v1/promotions/regional-prices?q=Zz{env.tag}").json()
+    (product,) = data["products"]
+    assert {r: v["min_price"] for r, v in product["cells"].items()} == {"JAWA": 7900, "KALIMANTAN": 9500, "UNKNOWN": 7000}
+    assert product["spread_pct"] == 20.3 and product["differs_by_region"]
+    assert c.get("/regional").status_code == 200
+    assert TestClient(app).get("/api/v1/promotions/regional-prices").status_code == 401
+
+
+def test_identity_and_optional_geography_gates(env, monkeypatch):
+    src = env.source()
+    n = lambda label: f"Zz{env.tag} {label}"
+    add_promotion(env.db, src, product_name=n("Resolved"), geography="Jawa", geography_region="JAWA")
+    add_promotion(env.db, src, product_name=n("Unresolved"), competitor_id=None, brand_id=None)
+    add_promotion(env.db, src, product_name=n("Region unstated"))
+    env.db.commit()
+    c = env.client()
+    assert env.visible(c) == {"Resolved", "Region unstated"}              # identity gate on by default
+
+    monkeypatch.setattr(settings, "TOP10_REQUIRE_RESOLVED_IDENTITY", False)
+    assert env.visible(c) == {"Resolved", "Unresolved", "Region unstated"}
+
+    monkeypatch.setattr(settings, "TOP10_REQUIRE_KNOWN_GEOGRAPHY", True)   # strict reading of "geography understood"
+    assert env.visible(c) == {"Resolved"}

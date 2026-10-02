@@ -8,7 +8,7 @@ prevents a catalog crawler from turning into an unbounded site crawler.
 from __future__ import annotations
 
 from typing import Iterable, List, Optional
-from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
+from urllib.parse import parse_qsl, urljoin, urlparse, urlunparse
 
 from bs4 import BeautifulSoup
 

@@ -7,11 +7,12 @@ from app.db.session import get_db
 from app.models.promotion import Promotion, PromotionEvidence
 from app.models.promotion_change import PromotionChangeEvent
 from app.models.entity import Competitor, Brand, Retailer
-from app.schemas.promotion import Top10Response, Top10PromotionItem, PromotionDetailOut, PromotionChangeEventOut, StatsResponse
+from app.schemas.promotion import Top10Response, Top10PromotionItem, PromotionDetailOut, PromotionChangeEventOut
 from fastapi.responses import Response
 from app.core.deps import require_role
 from app.services.digest import build_digest
-from app.services.exporting import EXPORT_HEADERS, build_export
+from app.services.regional import build_regional_prices
+from app.services.exporting import build_export
 from app.services.geography import REGION_LABELS, UNKNOWN
 from app.services.channels import display_channel, normalize_channel, retailer_types_for
 from app.services.promotions.visibility import live_promotion_filter
@@ -193,6 +194,20 @@ def export_promotions(
 def promotion_digest(days: int = Query(7, ge=1, le=60), db: Session = Depends(get_db)):
     """What is new, what changed and what ends soon."""
     return build_digest(db, days=days)
+
+
+@router.get("/regional-prices")
+def regional_prices(
+    category: Optional[str] = Query(None, max_length=50),
+    competitor: Optional[str] = Query(None, max_length=100),
+    q: Optional[str] = Query(None, max_length=100),
+    days: int = Query(90, ge=1, le=365),
+    db: Session = Depends(get_db),
+):
+    """Price of each eligible product per stated region. Unstated regions stay separate, never 'nationwide'."""
+    now = datetime.now(timezone.utc)
+    promotions = _filtered_query(db, now, days=days, q=q, category=category, competitor=competitor).limit(5000).all()
+    return build_regional_prices(promotions)
 
 
 @router.get("/{promotion_id}/changes", response_model=List[PromotionChangeEventOut])

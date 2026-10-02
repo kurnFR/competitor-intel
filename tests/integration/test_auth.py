@@ -132,7 +132,7 @@ def test_roles_are_enforced(env):
 
 def test_admin_can_start_scan_with_session_or_api_key(env, monkeypatch):
     import app.main as main
-    monkeypatch.setattr(main, "_run_pipeline_job", lambda: None)
+    monkeypatch.setattr(main, "_run_pipeline_job", lambda *a, **k: None)
     main.pipeline_state.update(status="idle")
     admin = env.make("ADMIN")
     c = env.client()
@@ -238,7 +238,7 @@ def test_all_pages_render_for_the_right_roles(env):
     a, v = env.client(), env.client()
     env.login(a, admin)
     env.login(v, viewer)
-    for path in ("/", "/insights", "/compare", "/review", "/admin", "/account"):
+    for path in ("/", "/insights", "/regional", "/compare", "/review", "/admin", "/account"):
         r = a.get(path)
         assert r.status_code == 200 and "text/html" in r.headers["content-type"], path
     assert 'id="scan-button"' in a.get("/").text and "/admin" in a.get("/").text
@@ -261,15 +261,31 @@ def test_sources_admin_api(env, monkeypatch):
     url = f"https://93.184.216.34/promo-{tag}"
     try:
         r = a.post("/api/v1/sources/", json={"name": f"Test {tag}", "base_url": url, "source_type": "RETAILER"}, headers=hdr)
-        assert r.status_code == 201 and r.json()["health"] == "NEVER_SCANNED"
-        sid = r.json()["id"]
+        assert r.status_code == 201
+        body = r.json()
+        assert body["approval_status"] == "CANDIDATE" and body["is_active"] is False and body["health"] == "AWAITING_APPROVAL"
+        assert body["adapter_key"] == "generic_catalog"
+        sid = body["id"]
         assert a.post("/api/v1/sources/", json={"name": "Dup", "base_url": url}, headers=hdr).status_code == 409
         for bad in ("http://169.254.169.254/x", "http://localhost/x", "ftp://x.example.com/a"):
             assert a.post("/api/v1/sources/", json={"name": "Bad", "base_url": bad}, headers=hdr).status_code == 422
         assert a.post("/api/v1/sources/", json={"name": "T", "base_url": url + "2", "source_type": "WEIRD"}, headers=hdr).status_code == 422
+        assert a.post("/api/v1/sources/", json={"name": "T", "base_url": url + "3", "adapter_key": "magic"}, headers=hdr).status_code == 422
+        # cannot be resumed or approved with a bogus adapter before approval
+        assert a.patch(f"/api/v1/sources/{sid}", json={"is_active": True}, headers=hdr).status_code == 409
+        assert a.post(f"/api/v1/sources/{sid}/approve", json={"adapter_key": "magic"}, headers=hdr).status_code == 422
+        ok = a.post(f"/api/v1/sources/{sid}/approve", json={"adapter_key": "indomaret"}, headers=hdr)
+        assert ok.status_code == 200 and ok.json()["approval_status"] == "APPROVED" and ok.json()["adapter_key"] == "indomaret"
+        assert ok.json()["is_active"] is True
         off = a.patch(f"/api/v1/sources/{sid}", json={"is_active": False}, headers=hdr)
         assert off.status_code == 200 and off.json()["health"] == "DISABLED"
+        assert a.patch(f"/api/v1/sources/{sid}", json={"crawl_frequency_minutes": 5}, headers=hdr).status_code == 422
+        assert a.patch(f"/api/v1/sources/{sid}", json={"crawl_frequency_minutes": 360}, headers=hdr).json()["crawl_frequency_minutes"] == 360
         assert a.patch(f"/api/v1/sources/{sid}", json={"reliability_score": 5}, headers=hdr).status_code == 422
+        rej = a.post(f"/api/v1/sources/{sid}/reject", headers=hdr)
+        assert rej.json()["approval_status"] == "REJECTED" and rej.json()["is_active"] is False
+        assert a.patch(f"/api/v1/sources/{sid}", json={"is_active": True}, headers=hdr).status_code == 409   # rejected stays off
+        assert {x["key"] for x in a.get("/api/v1/sources/adapters").json()} >= {"superindo", "indomaret", "alfamart", "generic_catalog"}
     finally:
         env.db.query(SourceRegistry).filter(SourceRegistry.base_url.like(f"%promo-{tag}%")).delete(synchronize_session=False)
         env.db.commit()

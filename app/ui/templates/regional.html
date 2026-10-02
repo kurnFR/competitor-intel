@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><title>Regional pricing - {{ app_name }}</title>{% include "_head.html" %}</head>
+<body class="bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 min-h-screen">
+{% include "_nav.html" %}
+<main class="max-w-7xl mx-auto px-4 py-6">
+    <h2 class="text-lg font-bold mb-1">Regional pricing</h2>
+    <p class="text-sm text-slate-500 dark:text-slate-400 mb-4">The same product, region by region. Prices are never merged: if a promotion's page does not say where it is valid, it appears under <em>Not stated</em> and is never treated as nationwide. Only live, evidence-backed promotions from approved sources are shown.</p>
+    <div class="flex flex-wrap gap-3 mb-4 text-sm">
+        <input id="q" placeholder="Search product..." class="rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-3 py-1.5">
+        <select id="category" class="rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-3 py-1.5"><option value="">All categories</option><option>BISCUIT</option><option>CRACKER</option><option>COOKIE</option><option>WAFER</option><option>SNACK</option></select>
+        <label class="flex items-center gap-2"><input id="only-diff" type="checkbox"> Only products priced differently by region</label>
+    </div>
+    <div id="summary" class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4"></div>
+    <div class="overflow-x-auto bg-white dark:bg-slate-800 rounded-xl shadow"><table id="grid" class="min-w-full text-sm"></table></div>
+</main>
+<script>
+    const rp = n => n == null ? '' : 'Rp' + Number(n).toLocaleString('id-ID', {maximumFractionDigits: 0});
+    const card = (label, value, color) => `<div class="bg-white dark:bg-slate-800 rounded-xl shadow p-4"><div class="text-2xl font-bold ${color}">${esc(value)}</div><div class="text-sm text-slate-500">${esc(label)}</div></div>`;
+    let DATA = null;
+    function cell(c) {
+        if (!c) return '<td class="p-3 text-center text-slate-300">-</td>';
+        const range = c.min_price === c.max_price ? rp(c.min_price) : rp(c.min_price) + '-' + rp(c.max_price);
+        const title = [c.outlets.join(', '), c.wording.join('; ')].filter(Boolean).join(' · ');
+        return `<td class="p-3 text-center" title="${esc(title)}"><div class="font-semibold">${range}</div><div class="text-xs text-slate-500">${esc(c.count)} promo${c.count > 1 ? 's' : ''}${c.outlets.length ? ' · ' + esc(c.outlets[0]) + (c.outlets.length > 1 ? ' +' + (c.outlets.length - 1) : '') : ''}</div></td>`;
+    }
+    function render() {
+        const onlyDiff = document.getElementById('only-diff').checked;
+        const rows = DATA.products.filter(p => !onlyDiff || p.differs_by_region);
+        const cols = DATA.regions;
+        document.getElementById('summary').innerHTML = card('Products with a price', DATA.summary.products, '') +
+            card('Priced differently by region', DATA.summary.differ_by_region, 'text-rose-600') +
+            card('With a region not stated', DATA.summary.with_unstated_region, 'text-amber-600');
+        if (!rows.length) { document.getElementById('grid').innerHTML = '<tbody><tr><td class="p-6 text-center text-slate-400">No matching promotions with a price yet.</td></tr></tbody>'; return; }
+        const head = '<thead class="bg-slate-100 dark:bg-slate-700"><tr><th class="p-3 text-left">Product</th>' + cols.map(c => `<th class="p-3 text-center whitespace-nowrap">${esc(c.label)}</th>`).join('') + '<th class="p-3 text-center text-amber-700">Not stated</th><th class="p-3 text-center">Gap</th></tr></thead>';
+        const body = rows.map(p => `<tr class="border-t border-slate-100 dark:border-slate-700">
+            <td class="p-3"><div class="font-medium">${esc(p.product)}</div><div class="text-xs text-slate-500">${esc(p.competitor || p.brand || '')} · ${esc(p.pack_size || '')}</div></td>
+            ${cols.map(c => cell(p.cells[c.code])).join('')}${cell(p.cells.UNKNOWN)}
+            <td class="p-3 text-center">${p.spread_pct == null ? '<span class="text-slate-300">-</span>' : `<span class="font-semibold ${p.spread_pct > 0 ? 'text-rose-600' : 'text-slate-500'}">${esc(p.spread_pct)}%</span>`}</td></tr>`).join('');
+        document.getElementById('grid').innerHTML = head + '<tbody>' + body + '</tbody>';
+    }
+    async function load() {
+        const params = new URLSearchParams();
+        for (const [k, id] of [['q', 'q'], ['category', 'category']]) { const v = document.getElementById(id).value.trim(); if (v) params.set(k, v); }
+        DATA = await (await api('/api/v1/promotions/regional-prices?' + params)).json();
+        render();
+    }
+    loadSession().then(() => {
+        load();
+        document.getElementById('only-diff').addEventListener('change', render);
+        document.getElementById('category').addEventListener('change', load);
+        let t; document.getElementById('q').addEventListener('input', () => { clearTimeout(t); t = setTimeout(load, 350); });
+    });
+</script>
+</body>
+</html>

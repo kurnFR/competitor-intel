@@ -156,9 +156,9 @@ def send_digest_webhook(db: Session, *, days: int = 7) -> bool:
 def send_digest(db: Session, *, days: int = 7) -> dict:
     """Send the digest on every configured channel; one failing channel does not stop the other."""
     results = {}
-    for name, func in (("email", send_digest_email), ("webhook", send_digest_webhook)):
+    for name, sender in (("email", send_digest_email), ("webhook", send_digest_webhook)):
         try:
-            results[name] = func(db, days=days)
+            results[name] = sender(db, days=days)
         except Exception:
             logger.exception("Digest %s delivery failed", name)
             results[name] = False

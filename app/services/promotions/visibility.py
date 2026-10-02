@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import and_, exists, func, or_
 
+from app.core.config import settings
 from app.models.promotion import Promotion, PromotionEvidence
 from app.models.source import SourceRegistry
 
@@ -16,7 +17,9 @@ def live_promotion_filter(now: datetime, *, recency_days: int):
     * commercially active: ACTIVE and not past its end date, or UNKNOWN with no dates stated (flagged in the UI);
     * recently VERIFIED (last_verified_at, not merely seen) within the freshness window;
     * backed by stored evidence text;
-    * from a source that is approved and active.
+    * from a source that is approved and active;
+    * identity resolved (a competitor or brand is linked; unresolved matches wait on the Review page);
+    * optionally (TOP10_REQUIRE_KNOWN_GEOGRAPHY) a stated region.
 
     Whether an undated promotion is still listed is decided by the expiration worker (it becomes NOT_LISTED only
     when its source was successfully processed later and no longer lists it), not by a timer here.
@@ -36,4 +39,9 @@ def live_promotion_filter(now: datetime, *, recency_days: int):
         SourceRegistry.is_active.is_(True),
         SourceRegistry.approval_status == "APPROVED",
     )
-    return and_(verified_recently, or_(dated_active, undated), has_evidence, source_approved)
+    conditions = [verified_recently, or_(dated_active, undated), has_evidence, source_approved]
+    if settings.TOP10_REQUIRE_RESOLVED_IDENTITY:
+        conditions.append(or_(Promotion.competitor_id.isnot(None), Promotion.brand_id.isnot(None)))
+    if settings.TOP10_REQUIRE_KNOWN_GEOGRAPHY:
+        conditions.append(Promotion.geography_region.notin_(["UNKNOWN", "UNMAPPED"]))
+    return and_(*conditions)

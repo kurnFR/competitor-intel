@@ -2,9 +2,8 @@ import logging
 from typing import List
 
 from bs4 import BeautifulSoup
-from sqlalchemy.orm import Session
 
-from app.models.source import SourceRegistry, CrawlDocument
+from app.models.source import CrawlDocument
 from app.services.crawler.base import BaseCrawler
 from app.services.crawler.content import looks_dynamic_html, render_dynamic_page
 from app.services.crawler.discovery import discover_pagination_urls

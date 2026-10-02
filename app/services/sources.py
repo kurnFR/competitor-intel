@@ -39,7 +39,7 @@ def validate_source_url(url: str, *, resolve: bool = True) -> str:
         try:
             infos = socket.getaddrinfo(host, parts.port or (443 if parts.scheme == "https" else 80), proto=socket.IPPROTO_TCP)
         except socket.gaierror:
-            raise ValueError("This website address could not be found.")
+            raise ValueError("This website address could not be found.") from None
         if not infos or not all(_is_public(i[4][0]) for i in infos):
             raise ValueError("This address points to a private or internal network and is not allowed.")
     return host

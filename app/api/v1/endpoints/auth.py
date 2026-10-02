@@ -4,7 +4,6 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -128,7 +127,7 @@ def login(body: LoginIn, request: Request, response: Response, db: Session = Dep
             return LoginOut(mfa_required=True, challenge=crypto.sign_challenge(str(user.id), settings.MFA_CHALLENGE_SECONDS))
         token, session = auth_service.complete_login(db, user, ip=ip, user_agent=ua)
     except AuthError as exc:
-        raise _fail(exc)
+        raise _fail(exc) from None
     _set_cookie(response, token)
     return LoginOut(user=_user_out(user), csrf_token=session.csrf_token)
 
@@ -140,7 +139,7 @@ def login_mfa(body: MfaLoginIn, request: Request, response: Response, db: Sessio
         user, token, session = auth_service.mfa_login(db, body.challenge, body.code, ip=client_ip(request),
                                                      user_agent=request.headers.get("user-agent", ""))
     except AuthError as exc:
-        raise _fail(exc)
+        raise _fail(exc) from None
     _set_cookie(response, token)
     return LoginOut(user=_user_out(user), csrf_token=session.csrf_token)
 
@@ -175,7 +174,7 @@ def change_password(body: ChangePasswordIn, request: Request,
     try:
         auth_service.set_password(db, user, body.new_password, keep_session_id=principal.session.id)
     except AuthError as exc:
-        raise _fail(exc)
+        raise _fail(exc) from None
     auth_service.audit(db, "password_changed", username=user.username, ip=client_ip(request))
     db.commit()
 
@@ -246,7 +245,7 @@ def create_user(body: NewUserIn, request: Request, principal: Principal = Depend
         user = auth_service.create_user(db, username=body.username, password=body.password, role=body.role,
                                         display_name=body.display_name, must_change_password=True)
     except AuthError as exc:
-        raise _fail(exc)
+        raise _fail(exc) from None
     auth_service.audit(db, "user_created", username=principal.user.username, ip=client_ip(request),
                        detail={"target": user.username, "role": user.role})
     db.commit()
@@ -303,7 +302,7 @@ def reset_password(user_id: UUID, body: ResetPasswordIn, request: Request,
         auth_service.set_password(db, user, body.new_password, must_change=True,
                                   keep_session_id=principal.session.id if user.id == principal.user.id else None)
     except AuthError as exc:
-        raise _fail(exc)
+        raise _fail(exc) from None
     auth_service.audit(db, "password_reset", username=principal.user.username, ip=client_ip(request),
                        detail={"target": user.username})
     db.commit()

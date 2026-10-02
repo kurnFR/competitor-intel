@@ -270,7 +270,8 @@ How it is protected:
 * **JavaScript-only retailer pages** need a browser: `pip install -r requirements-browser.txt && playwright install chromium`. Without it the crawler logs a warning and those pages yield nothing.
 
 * **Price comparison** (`/compare`, analyst+): enter your own products (or import a CSV), and see how competitor promotions compare per 100 g, with the biggest undercuts first. Buy-X-get-Y offers are converted to an effective price; only promotions with a computable price and a similar pack size are compared.
-* **Websites we scan** (Admin page): add, pause or resume sources without touching code, and see each source's health (OK / failing / stale). Addresses pointing at private or internal networks are refused, and the crawler refuses to follow redirects into them.
+* **Regional pricing** (`/regional`): the same product's price per region side by side. Where a promotion's page does not state a region it is shown as *Not stated*, never as nationwide.
+* **Websites we scan** (Admin page): a new website is a *candidate* and is never scanned until an administrator approves it and confirms the reader (adapter); each source has its own schedule and health (OK / failing / stale). A failed scan is never treated as "no promotions". Recent scans are listed there too. Addresses pointing at private or internal networks are refused, and the crawler refuses to follow redirects into them.
 * **Chat digest** (optional): set `DIGEST_WEBHOOK_URL` (Slack, Google Chat, Mattermost) to post the weekly digest to a channel.
 
 ## Measuring extraction quality
@@ -286,6 +287,7 @@ Label 15-30 real pages (`name.txt` + `name.json`, see the sample). Re-run after 
 
 ## More documentation
 
+* `docs/PRD_ALIGNMENT.md` - requirement-by-requirement status and open decisions
 * `docs/DEPLOYMENT.md` - Docker Compose / server setup, HTTPS, backups, upgrade, troubleshooting
 * `docs/HANDOVER.md` - what is built, what you still need to do, and how to operate it
 * `tests/ui/README.md` - the click-through UI test

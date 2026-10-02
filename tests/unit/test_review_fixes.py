@@ -8,7 +8,7 @@ from app.core.config import settings
 from app.schemas.ai import ExtractedPromotionItem
 from app.services.channels import display_channel, normalize_channel, retailer_types_for
 from app.services.crawler.base import BaseCrawler, ROBOTS_DISALLOWED, _robots_cache
-from app.services.crawler.manager import get_crawler_for_source
+from app.services.crawler.manager import UnsupportedAdapter, get_crawler_for_source
 from app.services.extraction.cards import split_into_cards
 from app.services.ranking.scorer import PromotionScorer
 from app.services.validation.validator import PromotionValidator
@@ -81,12 +81,20 @@ def test_freshness_decays_with_age():
 
 
 # --- crawler --------------------------------------------------------------
-@pytest.mark.parametrize("domain,expected", [("alfagift.id", "alfamart"), ("www.alfamart.co.id", "alfamart"),
-                                              ("www.klikindomaret.com", "indomaret")])
-def test_retailer_domain_maps_to_profile(domain, expected):
-    source = SimpleNamespace(id="s1", domain=domain, base_url=f"https://{domain}", source_type="RETAILER")
-    crawler = get_crawler_for_source(None, source)
-    assert crawler.retailer_key == expected
+@pytest.mark.parametrize("adapter,expected", [("alfamart", "alfamart"), ("indomaret", "indomaret")])
+def test_adapter_key_selects_the_crawler(adapter, expected):
+    source = SimpleNamespace(id="s1", domain="anything.example", base_url="https://anything.example", source_type="RETAILER",
+                             adapter_key=adapter, name="x")
+    assert get_crawler_for_source(None, source).retailer_key == expected
+
+
+@pytest.mark.parametrize("adapter", [None, "", "no_such_adapter"])
+def test_no_adapter_means_failure_not_a_guessed_parser(adapter):
+    """The domain says Alfamart, but without an explicit adapter nothing is crawled (PRD 6)."""
+    source = SimpleNamespace(id="s1", domain="alfagift.id", base_url="https://alfagift.id", source_type="RETAILER",
+                             adapter_key=adapter, name="Alfagift")
+    with pytest.raises(UnsupportedAdapter):
+        get_crawler_for_source(None, source)
 
 
 class _Resp:

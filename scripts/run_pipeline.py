@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.db.session import SessionLocal, engine
 from app.models.promotion import Promotion, PromotionObservation
+from app.models.scan_run import ScanRun
 from app.models.source import CrawlDocument, SourceRegistry
 from app.services.channels import normalize_channel
 from app.services.crawler.manager import run_all_crawlers
@@ -53,6 +54,38 @@ def _release_lock(conn, acquired: bool) -> None:
         conn.close()
 
 
+def _start_run(trigger: str, triggered_by: Optional[str]):
+    """Record the run in its own session so it is visible immediately and survives a rollback of the main one."""
+    session = SessionLocal()
+    try:
+        run = ScanRun(trigger=trigger, triggered_by=triggered_by, status="RUNNING")
+        session.add(run)
+        session.commit()
+        return run.id
+    except Exception:
+        logger.exception("Could not record scan start")
+        session.rollback()
+        return None
+    finally:
+        session.close()
+
+
+def _finish_run(run_id, status: str, *, summary: Optional[dict] = None, error: Optional[str] = None) -> None:
+    if run_id is None:
+        return
+    session = SessionLocal()
+    try:
+        session.query(ScanRun).filter(ScanRun.id == run_id).update(
+            {"status": status, "finished_at": datetime.now(timezone.utc), "summary": summary, "error": (error or None) and error[:1000]},
+            synchronize_session=False)
+        session.commit()
+    except Exception:
+        logger.exception("Could not record scan result")
+        session.rollback()
+    finally:
+        session.close()
+
+
 def _touch_promotions_for_document(db: Session, document_id, now: datetime) -> int:
     """An unchanged page that was just re-fetched still confirms its promotions."""
     ids = db.query(PromotionObservation.promotion_id).filter(PromotionObservation.document_id == document_id)
@@ -67,6 +100,9 @@ def run_pipeline(
     crawl_fresh: bool = False,
     max_docs: Optional[int] = 3,
     force: bool = False,
+    only_due: bool = False,
+    trigger: str = "CLI",
+    triggered_by: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Crawl (optionally), extract, validate and store promotions.
 
@@ -85,6 +121,7 @@ def run_pipeline(
         return {"status": "busy"}
 
     db: Session = SessionLocal()
+    run_id = _start_run(trigger, triggered_by)
     summary: Dict[str, Any] = {
         "status": "completed", "documents": 0, "documents_skipped_unchanged": 0,
         "documents_failed": 0, "extracted": 0, "observations": 0, "created": 0,
@@ -95,13 +132,13 @@ def run_pipeline(
 
         if crawl_fresh:
             logger.info("Executing active crawlers...")
-            docs = run_all_crawlers(db)
+            docs = run_all_crawlers(db, only_due=only_due)
         else:
             query = db.query(CrawlDocument).order_by(CrawlDocument.retrieved_at.desc())
             docs = query.limit(max_docs).all() if max_docs else query.all()
             if not docs:
                 logger.info("No existing documents found. Triggering crawlers...")
-                docs = run_all_crawlers(db)
+                docs = run_all_crawlers(db, only_due=only_due)
                 crawl_fresh = True
 
         logger.info("Processing %d documents through AI Extraction & Validation...", len(docs))
@@ -261,11 +298,13 @@ def run_pipeline(
         logger.info("Rescored %d promotions.", rescored)
 
         logger.info("Pipeline execution finished! %s", summary)
+        _finish_run(run_id, "COMPLETED" if not summary["documents_failed"] else "PARTIAL", summary=summary)
         return summary
 
-    except Exception:
+    except Exception as exc:
         logger.exception("Pipeline error")
         db.rollback()
+        _finish_run(run_id, "FAILED", summary=summary, error=f"{type(exc).__name__}: {exc}")
         raise
     finally:
         db.close()

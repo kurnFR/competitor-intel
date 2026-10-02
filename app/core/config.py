@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 from typing import Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -15,7 +14,7 @@ class Settings(BaseSettings):
     APP_ENV: str = "development"
     DEBUG: bool = False
     PORT: int = 8000
-    HOST: str = "0.0.0.0"
+    HOST: str = "127.0.0.1"
 
     # Database
     DATABASE_URL: str = "postgresql+psycopg://user:password@localhost:5432/competitor_intel"
@@ -71,13 +70,21 @@ class Settings(BaseSettings):
     CRAWLER_RESPECT_ROBOTS: bool = True
 
     # Engine Tuning
+    # Default crawl frequency for newly added sources (each source then has its own schedule on the Admin page).
     CRAWL_INTERVAL_MINUTES: int = 1440
+    # How often the scheduler checks which sources are due.
+    SCHEDULER_TICK_MINUTES: int = 30
     EXPIRATION_CHECK_MINUTES: int = 15
     MAX_CONCURRENT_CRAWLS: int = 5
     RECENCY_MONTHS: int = 3
     # Promotions whose dates are not stated on the page stay visible this many days
     # after they were last seen on a source.
     UNDATED_PROMO_MAX_AGE_DAYS: int = 14
+    # Top 10 eligibility (PRD 14). Identity: a promotion needs a resolved competitor or brand (unresolved ones wait on the
+    # Review page). Geography: when true, promotions whose region is not stated are excluded; default false because
+    # most catalog pages do not state one and "not stated" is shown honestly instead.
+    TOP10_REQUIRE_RESOLVED_IDENTITY: bool = True
+    TOP10_REQUIRE_KNOWN_GEOGRAPHY: bool = False
     # Extraction limits per crawled document.
     MAX_CARDS_PER_DOCUMENT: int = 300
     CARDS_PER_LLM_BATCH: int = 6

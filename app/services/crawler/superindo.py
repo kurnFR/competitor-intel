@@ -1,7 +1,6 @@
 import logging
 from typing import List
-from sqlalchemy.orm import Session
-from app.models.source import SourceRegistry, CrawlDocument
+from app.models.source import CrawlDocument
 from app.services.crawler.base import BaseCrawler
 
 logger = logging.getLogger(__name__)

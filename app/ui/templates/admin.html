@@ -24,18 +24,24 @@
     </section>
     <section>
         <h2 class="text-lg font-bold mb-1">Websites we scan</h2>
-        <p class="text-sm text-slate-500 dark:text-slate-400 mb-3">Add a retailer or promotion catalog page. Unknown sites use the generic reader; check the results on the Review page and with <code>python -m scripts.try_extract</code>. Scans obey each site's robots.txt.</p>
+        <p class="text-sm text-slate-500 dark:text-slate-400 mb-3">A new website is only a <strong>candidate</strong>. Nothing is scanned until you <strong>approve</strong> it and confirm which reader (adapter) to use. Scans obey each site's robots.txt. Check results on the Review page and with <code>python -m scripts.try_extract</code>.</p>
         <div class="overflow-x-auto bg-white dark:bg-slate-800 rounded-xl shadow mb-4">
             <table class="min-w-full text-sm"><thead class="bg-slate-100 dark:bg-slate-700"><tr>
-                <th class="p-3 text-left">Name</th><th class="p-3 text-left">Address</th><th class="p-3 text-left">Health</th>
-                <th class="p-3 text-left">Last success</th><th class="p-3"></th></tr></thead><tbody id="sources"></tbody></table>
+                <th class="p-3 text-left">Name</th><th class="p-3 text-left">Address</th><th class="p-3 text-left">Reader</th><th class="p-3 text-left">Status</th>
+                <th class="p-3 text-left">Scan every</th><th class="p-3 text-left">Last checked OK</th><th class="p-3"></th></tr></thead><tbody id="sources"></tbody></table>
         </div>
-        <form id="new-source" class="bg-white dark:bg-slate-800 rounded-xl shadow p-4 grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
+        <form id="new-source" class="bg-white dark:bg-slate-800 rounded-xl shadow p-4 grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
             <label class="text-xs font-medium">Name<input name="name" required maxlength="255" class="mt-1 w-full rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-700 px-2 py-1.5 text-sm"></label>
             <label class="text-xs font-medium md:col-span-2">Promotion page address<input name="base_url" type="url" required placeholder="https://www.example.com/promo" class="mt-1 w-full rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-700 px-2 py-1.5 text-sm"></label>
             <label class="text-xs font-medium">Type<select name="source_type" class="mt-1 w-full rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-700 px-2 py-1.5 text-sm"><option value="RETAILER">Retailer</option><option value="PROMOTION_AGGREGATOR">Promotion catalog site</option></select></label>
-            <button class="rounded bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold py-2">Add website</button>
+            <label class="text-xs font-medium">Reader<select name="adapter_key" id="adapter-select" class="mt-1 w-full rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-700 px-2 py-1.5 text-sm"></select></label>
+            <button class="rounded bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold py-2">Add candidate</button>
         </form>
+    </section>
+    <section>
+        <h2 class="text-lg font-bold mb-3">Recent scans</h2>
+        <div class="overflow-x-auto bg-white dark:bg-slate-800 rounded-xl shadow"><table class="min-w-full text-xs"><thead class="bg-slate-100 dark:bg-slate-700"><tr>
+            <th class="p-2 text-left">Started</th><th class="p-2 text-left">By</th><th class="p-2 text-left">Result</th><th class="p-2 text-left">Pages</th><th class="p-2 text-left">Promotions stored</th><th class="p-2 text-left">Rejected</th><th class="p-2 text-left">Note</th></tr></thead><tbody id="scans"></tbody></table></div>
     </section>
     <section>
         <h2 class="text-lg font-bold mb-3">Recent security events</h2>
@@ -91,26 +97,66 @@
         if (r.ok) f.reset();
         loadUsers(); loadAudit();
     });
-    const HEALTH = {OK: 'text-emerald-600', FAILING: 'text-rose-600', STALE: 'text-amber-600', NEVER_SCANNED: 'text-slate-500', DISABLED: 'text-slate-400'};
+    const HEALTH = {OK: 'text-emerald-600', FAILING: 'text-rose-600', STALE: 'text-amber-600', NEVER_SCANNED: 'text-slate-500', DISABLED: 'text-slate-400', AWAITING_APPROVAL: 'text-violet-600', REJECTED: 'text-slate-400'};
+    const FREQ = [[60, 'hour'], [360, '6 hours'], [720, '12 hours'], [1440, 'day'], [4320, '3 days'], [10080, 'week']];
+    let ADAPTERS = [];
+    const adapterOptions = sel => ADAPTERS.map(a => `<option value="${esc(a.key)}" ${a.key === sel ? 'selected' : ''}>${esc(a.label)}</option>`).join('');
     async function loadSources() {
+        if (!ADAPTERS.length) {
+            ADAPTERS = await (await api('/api/v1/sources/adapters')).json();
+            document.getElementById('adapter-select').innerHTML = adapterOptions('generic_catalog');
+        }
         const rows = await (await api('/api/v1/sources/')).json();
-        document.getElementById('sources').innerHTML = rows.map(s => `<tr class="border-t border-slate-100 dark:border-slate-700">
+        document.getElementById('sources').innerHTML = rows.map(s => {
+            const approved = s.approval_status === 'APPROVED';
+            const freqs = FREQ.some(f => f[0] === s.crawl_frequency_minutes) ? FREQ : FREQ.concat([[s.crawl_frequency_minutes, s.crawl_frequency_minutes + ' min']]);
+            const actions = s.approval_status === 'CANDIDATE'
+                ? `<button onclick="approveSource('${esc(s.id)}')" class="px-2 py-1 rounded bg-emerald-600 text-white">Approve</button> <button onclick="rejectSource('${esc(s.id)}')" class="px-2 py-1 rounded bg-slate-500 text-white">Reject</button>`
+                : approved ? `<button onclick="toggleSource('${esc(s.id)}', ${!s.is_active})" class="px-2 py-1 rounded bg-slate-500 text-white">${s.is_active ? 'Pause' : 'Resume'}</button>`
+                : '<span class="text-slate-400">-</span>';
+            return `<tr class="border-t border-slate-100 dark:border-slate-700" data-source="${esc(s.id)}">
             <td class="p-3 font-medium">${esc(s.name)}</td><td class="p-3 text-xs text-slate-500 max-w-xs truncate" title="${esc(s.base_url)}">${esc(s.domain)}</td>
+            <td class="p-3 text-xs"><select ${s.approval_status === 'CANDIDATE' ? 'id="adapter-' + esc(s.id) + '"' : ''} ${approved || s.approval_status === 'CANDIDATE' ? '' : 'disabled'} onchange="setSource('${esc(s.id)}', {adapter_key: this.value})" class="rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-700 text-xs px-1 py-1 max-w-[11rem]">${adapterOptions(s.adapter_key)}</select></td>
             <td class="p-3 text-xs font-semibold ${HEALTH[s.health] || ''}">${esc(s.health.replace('_', ' '))}</td>
-            <td class="p-3 text-xs text-slate-500">${esc(s.last_success_at ? s.last_success_at.slice(0, 16).replace('T', ' ') : 'never')}</td>
-            <td class="p-3 text-xs"><button onclick="toggleSource('${esc(s.id)}', ${!s.is_active})" class="px-2 py-1 rounded bg-slate-500 text-white">${s.is_active ? 'Pause' : 'Resume'}</button></td></tr>`).join('');
+            <td class="p-3 text-xs">${approved ? `<select onchange="setSource('${esc(s.id)}', {crawl_frequency_minutes: parseInt(this.value)})" class="rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-700 text-xs px-1 py-1">${freqs.map(f => `<option value="${f[0]}" ${f[0] === s.crawl_frequency_minutes ? 'selected' : ''}>${esc(f[1])}</option>`).join('')}</select>` : '-'}</td>
+            <td class="p-3 text-xs text-slate-500">${esc(s.last_processed_at ? s.last_processed_at.slice(0, 16).replace('T', ' ') : 'never')}</td>
+            <td class="p-3 text-xs whitespace-nowrap">${actions}</td></tr>`;
+        }).join('');
     }
-    async function toggleSource(id, active) {
-        const r = await api('/api/v1/sources/' + id, {method: 'PATCH', json: {is_active: active}});
+    async function setSource(id, body) {
+        const r = await api('/api/v1/sources/' + id, {method: 'PATCH', json: body});
         flash(r.ok ? 'Website updated.' : await errText(r), r.ok); loadSources(); loadAudit();
+    }
+    async function toggleSource(id, active) { return setSource(id, {is_active: active}); }
+    async function approveSource(id) {
+        const sel = document.getElementById('adapter-' + id);
+        const r = await api(`/api/v1/sources/${id}/approve`, {method: 'POST', json: {adapter_key: sel ? sel.value : null}});
+        flash(r.ok ? 'Approved. It will be included in scans from now on.' : await errText(r), r.ok); loadSources(); loadAudit();
+    }
+    async function rejectSource(id) {
+        if (!confirm('Reject this website? It will never be scanned.')) return;
+        const r = await api(`/api/v1/sources/${id}/reject`, {method: 'POST'});
+        flash(r.ok ? 'Rejected.' : await errText(r), r.ok); loadSources(); loadAudit();
+    }
+    async function loadScans() {
+        const d = await (await api('/api/v1/pipeline/status')).json();
+        document.getElementById('scans').innerHTML = (d.history || []).map(r => {
+            const sm = r.summary || {};
+            const color = r.status === 'FAILED' ? 'text-rose-600' : (r.status === 'PARTIAL' ? 'text-amber-600' : (r.status === 'RUNNING' ? 'text-sky-600' : 'text-emerald-600'));
+            return `<tr class="border-t border-slate-100 dark:border-slate-700"><td class="p-2 whitespace-nowrap">${esc(r.started_at.slice(0, 16).replace('T', ' '))}</td>
+                <td class="p-2">${esc(r.triggered_by || r.trigger)}</td><td class="p-2 font-semibold ${color}">${esc(r.status)}</td>
+                <td class="p-2">${esc(sm.documents ?? '')}${sm.documents_skipped_unchanged ? ' (' + esc(sm.documents_skipped_unchanged) + ' unchanged)' : ''}</td>
+                <td class="p-2">${esc(sm.observations ?? '')}</td><td class="p-2">${esc(sm.rejected ?? '')}</td>
+                <td class="p-2 text-slate-500">${esc(r.error || (sm.documents_failed ? sm.documents_failed + ' page(s) failed' : ''))}</td></tr>`;
+        }).join('') || '<tr><td colspan="7" class="p-4 text-center text-slate-400">No scans recorded yet.</td></tr>';
     }
     document.getElementById('new-source').addEventListener('submit', async (e) => {
         e.preventDefault(); const f = e.target;
-        const r = await api('/api/v1/sources/', {method: 'POST', json: {name: f.elements['name'].value, base_url: f.elements['base_url'].value, source_type: f.elements['source_type'].value}});
-        flash(r.ok ? 'Website added. It will be included in the next scan.' : await errText(r), r.ok);
+        const r = await api('/api/v1/sources/', {method: 'POST', json: {name: f.elements['name'].value, base_url: f.elements['base_url'].value, source_type: f.elements['source_type'].value, adapter_key: f.elements['adapter_key'].value}});
+        flash(r.ok ? 'Added as a candidate. Approve it to include it in scans.' : await errText(r), r.ok);
         if (r.ok) f.reset(); loadSources(); loadAudit();
     });
-    loadSession().then(() => { loadUsers(); loadSources(); loadAudit(); });
+    loadSession().then(() => { loadUsers(); loadSources(); loadScans(); loadAudit(); });
 </script>
 </body>
 </html>

@@ -24,13 +24,14 @@ against its source text, ranks them, and shows them to the marketing team. Every
    is report-only: check the browser console for violations, then tighten it or self-host Tailwind/Font Awesome.
 3. **Set the secrets:** `ADMIN_API_KEY` (only if you automate scans), `SECRET_KEY` (needed for 2FA; never change it
    afterwards), database password, LLM key. Turn on `MFA_REQUIRED_FOR_ADMINS` once every admin has a phone set up.
-4. **Purge the old database log from git history.** `postgresql_schema_ddl_20260924.log` was deleted from the latest
+4. **Close or rebase PR #1** (it conflicts with `master`; see `docs/PRD_ALIGNMENT.md`).
+5. **Purge the old database log from git history.** `postgresql_schema_ddl_20260924.log` was deleted from the latest
    commit but is still in old ones. Rewrite history and force-push (this changes `master`; coordinate with anyone with a clone):
    `git filter-repo --path postgresql_schema_ddl_20260924.log --invert-paths`
-5. **Review each source's terms of use and robots rules** before enabling it; the crawler obeys robots.txt and
+6. **Review each source's terms of use and robots rules** before enabling it; the crawler obeys robots.txt and
    identifies itself using `CRAWLER_USER_AGENT` (add contact details).
-6. **Revoke the GitHub access token** that was used to publish this work, and any other temporary credentials.
-7. **Deploy over HTTPS** and schedule backups (`docs/DEPLOYMENT.md`).
+7. **Revoke the GitHub access token** that was used to publish this work, and any other temporary credentials.
+8. **Deploy over HTTPS** and schedule backups (`docs/DEPLOYMENT.md`).
 
 ## Day-to-day operation
 
@@ -47,15 +48,22 @@ against its source text, ranks them, and shows them to the marketing team. Every
 
 ## Known limits
 
-- **One app process only.** The scheduler, scan status and login throttling are in memory / per process. A database
-  lock prevents overlapping scans, but do not run several workers.
+- **One app process only.** The scheduler and the per-IP login throttle are in memory. A database lock prevents overlapping
+  scans and scan history is stored in the database, but do not run several workers.
 - **Extraction is only as good as the LLM and the page.** Promotions without a verbatim evidence quote in the page are
   rejected by design. Pages that only render with JavaScript need Playwright (not installed by default).
-- **Undated promotions** are shown for 14 days after last seen (flagged, ranked lower) because catalog pages often omit dates.
-- **Per-source crawl frequency is not used;** one global interval (`CRAWL_INTERVAL_MINUTES`) applies to all sources.
+- **Undated promotions** are shown (flagged, ranked lower) until their source is successfully processed later and no longer lists
+  them; a failing source never causes promotions to disappear.
+- **Geography is macro-region only** (province/city/store stay as wording) and is "Not stated" unless the page says so.
+- **Scans are per source.** Each approved source has its own frequency (Admin page); the scheduler checks every
+  `SCHEDULER_TICK_MINUTES` and scans only what is due. "Scan now" scans every approved source.
 - **Price comparison** covers products sold by weight (grams/kg). Volume and count packs are skipped.
 - **The Docker files were not built** in the environment where they were written; test them once on a spare machine.
 - **No self-service password reset by e-mail;** an admin resets passwords.
+
+## Where this stands against the PRD
+
+See `docs/PRD_ALIGNMENT.md` for a section-by-section status and the decisions that need to come from you.
 
 ## Suggested next steps
 
