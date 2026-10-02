@@ -17,6 +17,7 @@ from app.models.promotion import Promotion, PromotionEvidence
 from app.models.promotion_change import PromotionChangeEvent
 from app.models.resolution import ReviewQueue
 from app.services import auth as auth_service
+from tests.helpers import add_promotion, cleanup_source, make_source
 
 PASSWORD = "Correct-Horse-Battery-9"
 
@@ -41,15 +42,13 @@ def env():
     brands = db.query(Brand).limit(2).all()
     now = datetime.now(timezone.utc)
     promos = []
+    source = make_source(db, tag)
+    db.commit()
 
     def promo(name, **kw):
-        base = dict(product_name=f"Zz{tag} {name}", category="BISCUIT", promotion_type="DISCOUNT", discount_percentage=25.0,
-                    retailer_id=retailer.id, competitor_id=competitor.id, status="ACTIVE", last_seen_at=now,
-                    first_seen_at=now, rank_score=0.9)
+        base = dict(product_name=f"Zz{tag} {name}", retailer_id=retailer.id, competitor_id=competitor.id, rank_score=0.9)
         base.update(kw)
-        p = Promotion(**base)
-        db.add(p)
-        db.flush()
+        p = add_promotion(db, source, **base)
         promos.append(p)
         return p
 
@@ -69,6 +68,7 @@ def env():
         db.query(PromotionChangeEvent).filter(PromotionChangeEvent.promotion_id.in_(ids)).delete(synchronize_session=False)
         db.query(PromotionEvidence).filter(PromotionEvidence.promotion_id.in_(ids)).delete(synchronize_session=False)
         db.query(Promotion).filter(Promotion.id.in_(ids)).delete(synchronize_session=False)
+    cleanup_source(db, source)
     for name in users.values():
         db.query(AuditLog).filter(AuditLog.username == name).delete(synchronize_session=False)
         db.query(User).filter(User.username == name).delete(synchronize_session=False)
@@ -79,7 +79,7 @@ def env():
 def test_undated_promotions_are_visible_and_expired_are_not(env):
     dated = env.promo("Dated", start_date=env.now - timedelta(days=1), end_date=env.now + timedelta(days=4))
     undated = env.promo("Undated", status="UNKNOWN", rank_score=0.8)
-    stale = env.promo("Stale undated", status="UNKNOWN", last_seen_at=env.now - timedelta(days=40))
+    stale = env.promo("Stale undated", status="UNKNOWN", last_seen_at=env.now - timedelta(days=100), last_verified_at=env.now - timedelta(days=100))
     expired = env.promo("Expired", end_date=env.now - timedelta(days=1), status="EXPIRED")
     env.db.commit()
     c, _ = env.login("VIEWER")

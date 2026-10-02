@@ -1,32 +1,39 @@
-"""Which promotions count as "live" for the dashboard and statistics."""
+"""Which promotions count as "live" and eligible for the dashboard, Top 10, exports and statistics (PRD 13-14)."""
 from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, exists, func, or_
 
-from app.core.config import settings
-from app.models.promotion import Promotion
+from app.models.promotion import Promotion, PromotionEvidence
+from app.models.source import SourceRegistry
 
 
 def live_promotion_filter(now: datetime, *, recency_days: int):
-    """SQL condition for promotions worth showing to marketing.
+    """SQL condition for promotions eligible to be shown to marketing.
 
-    * ACTIVE promotions that have not passed their end date.
-    * Promotions whose dates were not stated on the source (status UNKNOWN) are
-      also shown while they keep being seen on a source, for a shorter window
-      (UNDATED_PROMO_MAX_AGE_DAYS), because catalog pages often omit dates.
+    A promotion must be:
+    * commercially active: ACTIVE and not past its end date, or UNKNOWN with no dates stated (flagged in the UI);
+    * recently VERIFIED (last_verified_at, not merely seen) within the freshness window;
+    * backed by stored evidence text;
+    * from a source that is approved and active.
+
+    Whether an undated promotion is still listed is decided by the expiration worker (it becomes NOT_LISTED only
+    when its source was successfully processed later and no longer lists it), not by a timer here.
     """
-    recent = Promotion.last_seen_at >= now - timedelta(days=recency_days)
-    undated_cutoff = now - timedelta(days=min(recency_days, settings.UNDATED_PROMO_MAX_AGE_DAYS))
+    verified_recently = Promotion.last_verified_at >= now - timedelta(days=recency_days)
     dated_active = and_(
         Promotion.status == "ACTIVE",
         or_(Promotion.end_date.is_(None), Promotion.end_date >= now),
     )
-    undated_recent = and_(
-        Promotion.status == "UNKNOWN",
-        Promotion.start_date.is_(None),
-        Promotion.end_date.is_(None),
-        Promotion.last_seen_at >= undated_cutoff,
+    undated = and_(Promotion.status == "UNKNOWN", Promotion.start_date.is_(None), Promotion.end_date.is_(None))
+    has_evidence = exists().where(
+        PromotionEvidence.promotion_id == Promotion.id,
+        func.length(func.trim(PromotionEvidence.evidence_text)) > 0,
     )
-    return and_(recent, or_(dated_active, undated_recent))
+    source_approved = exists().where(
+        SourceRegistry.id == Promotion.source_id,
+        SourceRegistry.is_active.is_(True),
+        SourceRegistry.approval_status == "APPROVED",
+    )
+    return and_(verified_recently, or_(dated_active, undated), has_evidence, source_approved)

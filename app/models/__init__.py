@@ -6,6 +6,7 @@ from app.models.promotion_change import PromotionChangeEvent
 from app.models.resolution import EntityMapping, ReviewQueue
 from app.models.auth import User, UserSession, AuditLog
 from app.models.own_product import OwnProduct
+from app.models.scan_run import ScanRun
 
 __all__ = [
     "Base",
@@ -26,4 +27,5 @@ __all__ = [
     "UserSession",
     "AuditLog",
     "OwnProduct",
+    "ScanRun",
 ]

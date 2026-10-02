@@ -1,50 +1,52 @@
 import logging
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
+
 from sqlalchemy.orm import Session
+
+from app.core.config import settings
 from app.models.promotion import Promotion
+from app.models.source import SourceRegistry
+from app.services.validation.lifecycle import NOT_LISTED
 
 logger = logging.getLogger(__name__)
 
 
 def run_expiration_check(db: Session) -> int:
-    """
-    Checks active promotions and transitions expired ones:
-    - If end_date < now -> EXPIRED
-    - If end_date is null and last_seen_at > 7 days ago -> UNKNOWN
+    """Move promotions out of the live set when the evidence says they are over.
+
+    1. An explicit end date in the past -> EXPIRED (this overrides crawl freshness).
+    2. A promotion without an end date is NOT_LISTED only when its source was successfully collected and
+       processed AFTER we last verified it (by more than UNDATED_PROMO_MAX_AGE_DAYS) and it was not found again.
+       If the source has been failing or unreachable, nothing is concluded: a failed crawl is never read as
+       "the source lists zero promotions" (PRD 5).
     """
     now = datetime.now(timezone.utc)
-    seven_days_ago = now - timedelta(days=7)
 
-    # 1. Past end date
-    expired_query = (
-        db.query(Promotion)
-        .filter(
-            Promotion.status == "ACTIVE",
-            Promotion.end_date != None,
-            Promotion.end_date < now
-        )
-    )
     count_expired = 0
-    for p in expired_query.all():
+    for p in db.query(Promotion).filter(
+        Promotion.status.in_(["ACTIVE", "UNKNOWN", "UPCOMING"]), Promotion.end_date.isnot(None), Promotion.end_date < now,
+    ).all():
         p.status = "EXPIRED"
         p.updated_at = now
         count_expired += 1
 
-    # 2. Stale without end date
-    stale_query = (
+    grace = timedelta(days=settings.UNDATED_PROMO_MAX_AGE_DAYS)
+    count_unlisted = 0
+    gone = (
         db.query(Promotion)
+        .join(SourceRegistry, SourceRegistry.id == Promotion.source_id)
         .filter(
-            Promotion.status == "ACTIVE",
-            Promotion.end_date == None,
-            Promotion.last_seen_at < seven_days_ago
+            Promotion.status.in_(["ACTIVE", "UNKNOWN"]),
+            Promotion.end_date.is_(None),
+            SourceRegistry.last_processed_at.isnot(None),
+            SourceRegistry.last_processed_at > Promotion.last_verified_at + grace,
         )
     )
-    count_stale = 0
-    for p in stale_query.all():
-        p.status = "UNKNOWN"
+    for p in gone.all():
+        p.status = NOT_LISTED
         p.updated_at = now
-        count_stale += 1
+        count_unlisted += 1
 
     db.commit()
-    logger.info(f"Expiration worker processed: {count_expired} marked EXPIRED, {count_stale} marked UNKNOWN.")
-    return count_expired + count_stale
+    logger.info("Expiration worker: %d marked EXPIRED, %d marked NOT_LISTED.", count_expired, count_unlisted)
+    return count_expired + count_unlisted

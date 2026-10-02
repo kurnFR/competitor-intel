@@ -6,6 +6,7 @@ ACTIVE = "ACTIVE"
 UPCOMING = "UPCOMING"
 EXPIRED = "EXPIRED"
 UNKNOWN = "UNKNOWN"
+NOT_LISTED = "NOT_LISTED"   # source was successfully processed later and no longer lists this promotion
 
 
 def evaluate_lifecycle(
