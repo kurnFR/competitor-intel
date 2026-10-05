@@ -265,7 +265,7 @@ How it is protected:
 
 * **Insights** (`/insights`): weekly digest of new promotions, price/mechanic changes and promotions ending within 7 days, plus a per-competitor activity heat-map.
 * **Export** (analyst+): CSV or Excel of the current filtered view. Cells that could run as spreadsheet formulas are neutralised.
-* **Review** (analyst+): approve or reject uncertain product/brand/retailer matches; approval links the promotion to the suggested entity.
+* **Review** (analyst+): approve or reject uncertain product/brand/retailer matches (approval links the promotion to the suggested entity), and decide **conflicts**: when two comparable sources report different values for the same promotion, the stored values are frozen, the promotion is hidden from the Top 10, and you choose *use new values* or *keep current*. Both observations are always kept.
 * **Weekly e-mail digest** (optional): set `SMTP_HOST`, `SMTP_FROM`, `DIGEST_RECIPIENTS`; sent on `DIGEST_DAY_OF_WEEK` at `DIGEST_HOUR`. Test now with `python -m scripts.send_digest`.
 * **JavaScript-only retailer pages** need a browser: `pip install -r requirements-browser.txt && playwright install chromium`. Without it the crawler logs a warning and those pages yield nothing.
 

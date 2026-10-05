@@ -253,3 +253,113 @@ def test_identity_and_optional_geography_gates(env, monkeypatch):
 
     monkeypatch.setattr(settings, "TOP10_REQUIRE_KNOWN_GEOGRAPHY", True)   # strict reading of "geography understood"
     assert env.visible(c) == {"Resolved"}
+
+
+# ---------------------------------------------------------------- multi-source conflicts (PRD 16)
+def _two_sources(env, reliability_a=0.85, reliability_b=0.85):
+    a, b = env.source(), env.source()
+    a.reliability_score, b.reliability_score = reliability_a, reliability_b
+    env.db.commit()
+    return a, b
+
+
+def _observe(env, source, price, label, **kw):
+    from app.models.entity import Competitor
+    doc = _document(env, source)
+    competitor = env.db.query(Competitor).first()
+    return upsert_promotion_observation(
+        env.db, document_id=doc.id, resolved_entities={"competitor_id": competitor.id}, item=_item(product_name=f"Zz{env.tag} {label}", promo_price=price,
+                                               discount_percentage=None, regular_price=None, **kw),
+        raw_text="Roma Kelapa 300g Rp7.000", source_id=source.id, source_reliability=source.reliability_score,
+        observed_at=env.now)
+
+
+def _pending(env, promo):
+    from app.models.resolution import ReviewQueue
+    return env.db.query(ReviewQueue).filter(ReviewQueue.promotion_id == promo.id, ReviewQueue.entity_type == "CONFLICT").all()
+
+
+def test_comparable_sources_disagreeing_freeze_the_values_and_ask_a_person(env):
+    a, b = _two_sources(env)
+    p1, obs1, _ = _observe(env, a, 7000, "Dispute")
+    env.db.commit()
+    assert "Dispute" in env.visible(env.client())                     # control: visible while only one source speaks
+    p2, obs2, created = _observe(env, b, 6500, "Dispute")
+    assert p1.id == p2.id and not created
+    assert p2.promo_price == 7000 and p2.source_id == a.id           # nothing was silently overwritten
+    assert p2.has_open_conflict is True
+    assert obs1.id != obs2.id and obs2.extracted_json["promo_price"] == 6500   # both observations are retained
+    (item,) = _pending(env, p2)
+    assert item.status == "PENDING" and "Rp7,000 vs Rp6,500" in item.reason
+    # re-observing the same disagreement (e.g. a re-crawl of a changed page) does not pile up duplicate review items
+    _, newest, _ = _observe(env, b, 6500, "Dispute")
+    (item,) = _pending(env, p2)
+    assert item.observation_id == newest.id                           # ...and points at the freshest observation
+    env.db.commit()
+    assert "Dispute" not in env.visible(env.client())                  # hidden from the Top 10 until resolved
+
+
+def test_more_authoritative_source_wins_automatically_and_less_authoritative_is_kept_out(env):
+    a, b = _two_sources(env, reliability_a=0.70, reliability_b=0.95)
+    p, _, _ = _observe(env, a, 7000, "Auth")
+    p, _, _ = _observe(env, b, 6500, "Auth")
+    assert p.promo_price == 6500 and p.source_id == b.id and not p.has_open_conflict and _pending(env, p) == []
+    p, obs, _ = _observe(env, a, 9000, "Auth")                          # now the weaker source disagrees
+    assert p.promo_price == 6500 and p.source_id == b.id and not p.has_open_conflict
+    assert obs.extracted_json["promo_price"] == 9000                    # still on record
+
+
+def test_stale_facts_are_superseded_by_a_newer_observation(env):
+    a, b = _two_sources(env)
+    p, _, _ = _observe(env, a, 7000, "Stale")
+    p.last_verified_at = env.now - timedelta(days=10)
+    p, _, _ = _observe(env, b, 6500, "Stale")
+    assert p.promo_price == 6500 and not p.has_open_conflict
+
+
+def test_analyst_resolves_a_conflict_either_way(env):
+    a, b = _two_sources(env)
+    p1, _, _ = _observe(env, a, 7000, "Resolve")
+    p2, _, _ = _observe(env, b, 6500, "Resolve")
+    q1, _, _ = _observe(env, a, 9000, "Resolve Other")
+    q2, _, _ = _observe(env, b, 8000, "Resolve Other")
+    env.db.commit()
+    c = env.client()
+    csrf = {"X-CSRF-Token": c.get("/api/v1/auth/me").json()["csrf_token"]}
+    items = {i["promotion_id"]: i for i in c.get("/api/v1/review/?limit=200").json() if i["entity_type"] == "CONFLICT"}
+    use_new, keep = items[str(p1.id)], items[str(q1.id)]
+    assert use_new["can_approve"] is True and "Two sources disagree" in use_new["reason"]
+
+    r = c.post(f"/api/v1/review/{use_new['id']}/resolve", json={"decision": "APPROVED"}, headers=csrf)
+    assert r.status_code == 200
+    r = c.post(f"/api/v1/review/{keep['id']}/resolve", json={"decision": "REJECTED"}, headers=csrf)
+    assert r.status_code == 200
+    env.db.expire_all()
+    p1, q1 = env.db.get(Promotion, p1.id), env.db.get(Promotion, q1.id)
+    assert p1.promo_price == 6500 and p1.source_id == b.id and p1.has_open_conflict is False      # new values adopted
+    assert q1.promo_price == 9000 and q1.source_id == a.id and q1.has_open_conflict is False      # current values kept
+    assert {"Resolve", "Resolve Other"} <= env.visible(c)                                         # visible again
+    assert c.post(f"/api/v1/review/{use_new['id']}/resolve", json={"decision": "APPROVED"}, headers=csrf).status_code == 409
+    actions = {a.action for a in env.db.query(AuditLog).filter(AuditLog.action == "conflict_resolved")}
+    assert "conflict_resolved" in actions
+
+
+def test_a_promotion_stays_hidden_until_every_conflict_on_it_is_resolved(env):
+    a, b = _two_sources(env)
+    c3 = env.source()
+    c3.reliability_score = 0.85
+    env.db.commit()
+    p, _, _ = _observe(env, a, 7000, "Two disputes")
+    _observe(env, b, 6500, "Two disputes")
+    _observe(env, c3, 6200, "Two disputes")
+    env.db.commit()
+    assert len(_pending(env, p)) == 2
+    c = env.client()
+    csrf = {"X-CSRF-Token": c.get("/api/v1/auth/me").json()["csrf_token"]}
+    ids = [i["id"] for i in c.get("/api/v1/review/?limit=200").json() if i["promotion_id"] == str(p.id)]
+    c.post(f"/api/v1/review/{ids[0]}/resolve", json={"decision": "REJECTED"}, headers=csrf)
+    env.db.expire_all()
+    assert env.db.get(Promotion, p.id).has_open_conflict is True       # one dispute remains
+    c.post(f"/api/v1/review/{ids[1]}/resolve", json={"decision": "REJECTED"}, headers=csrf)
+    env.db.expire_all()
+    assert env.db.get(Promotion, p.id).has_open_conflict is False

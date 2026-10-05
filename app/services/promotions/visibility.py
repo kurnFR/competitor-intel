@@ -18,6 +18,7 @@ def live_promotion_filter(now: datetime, *, recency_days: int):
     * recently VERIFIED (last_verified_at, not merely seen) within the freshness window;
     * backed by stored evidence text;
     * from a source that is approved and active;
+    * free of an unresolved multi-source conflict (it waits on the Review page);
     * identity resolved (a competitor or brand is linked; unresolved matches wait on the Review page);
     * optionally (TOP10_REQUIRE_KNOWN_GEOGRAPHY) a stated region.
 
@@ -39,7 +40,8 @@ def live_promotion_filter(now: datetime, *, recency_days: int):
         SourceRegistry.is_active.is_(True),
         SourceRegistry.approval_status == "APPROVED",
     )
-    conditions = [verified_recently, or_(dated_active, undated), has_evidence, source_approved]
+    conditions = [verified_recently, or_(dated_active, undated), has_evidence, source_approved,
+                  Promotion.has_open_conflict.is_(False)]
     if settings.TOP10_REQUIRE_RESOLVED_IDENTITY:
         conditions.append(or_(Promotion.competitor_id.isnot(None), Promotion.brand_id.isnot(None)))
     if settings.TOP10_REQUIRE_KNOWN_GEOGRAPHY:
