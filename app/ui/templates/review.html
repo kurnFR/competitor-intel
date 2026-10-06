@@ -5,7 +5,7 @@
 {% include "_nav.html" %}
 <main class="max-w-7xl mx-auto px-4 py-6">
     <h2 class="text-lg font-bold mb-1">Matches to confirm</h2>
-    <p class="text-sm text-slate-500 dark:text-slate-400 mb-4">The system was unsure about these matches. Approve the suggested match to link the promotion to it, or reject to leave it unchanged.</p>
+    <p class="text-sm text-slate-500 dark:text-slate-400 mb-4">The system was unsure about these items. <strong>Matches:</strong> approve the suggested match to link the promotion to it, or reject to leave it unchanged. <strong>Conflicts:</strong> two sources report different values for the same promotion; it stays hidden from the Top 10 until you choose to use the new values or keep the current ones. Both observations are kept either way.</p>
     <div id="msg" role="alert" class="hidden mb-3 rounded-md px-3 py-2 text-sm"></div>
     <div class="overflow-x-auto bg-white dark:bg-slate-800 rounded-xl shadow">
         <table class="min-w-full text-sm"><thead class="bg-slate-100 dark:bg-slate-700"><tr>
@@ -20,21 +20,27 @@
     async function load() {
         const r = await api('/api/v1/review/');
         const items = await r.json();
-        document.getElementById('rows').innerHTML = items.map(i => `<tr class="border-t border-slate-100 dark:border-slate-700">
-            <td class="p-3 font-medium">${esc(i.entity_type)}</td>
+        document.getElementById('rows').innerHTML = items.map(i => {
+            const conflict = i.entity_type === 'CONFLICT';
+            const approveLabel = conflict ? 'Use new values' : 'Approve';
+            const rejectLabel = conflict ? 'Keep current' : 'Reject';
+            return `<tr class="border-t border-slate-100 dark:border-slate-700">
+            <td class="p-3 font-medium">${conflict ? '<span class="text-rose-600">CONFLICT</span>' : esc(i.entity_type)}</td>
             <td class="p-3">${esc(i.promotion_product || '-')}<div class="text-xs text-slate-500">${esc(i.promotion_competitor || '')}</div></td>
             <td class="p-3">${esc(i.current_match || '-')}</td><td class="p-3">${esc(i.suggested_match || '-')}</td>
-            <td class="p-3 text-xs text-slate-500 max-w-xs">${esc(i.reason)}</td>
+            <td class="p-3 text-xs text-slate-500 max-w-md whitespace-pre-line">${esc(i.reason)}</td>
             <td class="p-3 text-center">${i.confidence != null ? esc(Math.round(i.confidence * 100)) + '%' : '-'}</td>
             <td class="p-3 whitespace-nowrap">
-                <button ${i.can_approve ? '' : 'disabled title="No suggested match"'} onclick="resolve('${esc(i.id)}','APPROVED')" class="px-2 py-1 rounded bg-emerald-600 text-white text-xs disabled:opacity-40">Approve</button>
-                <button onclick="resolve('${esc(i.id)}','REJECTED')" class="px-2 py-1 rounded bg-slate-500 text-white text-xs">Reject</button></td></tr>`).join('')
+                <button ${i.can_approve ? '' : 'disabled title="Nothing to approve"'} onclick="resolve('${esc(i.id)}','APPROVED')" class="px-2 py-1 rounded bg-emerald-600 text-white text-xs disabled:opacity-40">${approveLabel}</button>
+                <button onclick="resolve('${esc(i.id)}','REJECTED')" class="px-2 py-1 rounded bg-slate-500 text-white text-xs">${rejectLabel}</button></td></tr>`;
+        }).join('')
             || '<tr><td colspan="7" class="p-6 text-center text-slate-400">Nothing waiting for review.</td></tr>';
     }
     async function resolve(id, decision) {
         const r = await api(`/api/v1/review/${id}/resolve`, {method: 'POST', json: {decision}});
         if (!r.ok) return flash(await errText(r), false);
-        flash(decision === 'APPROVED' ? 'Match approved.' : 'Match rejected.', true);
+        const done = await r.json();
+        flash(done.entity_type === 'CONFLICT' ? (decision === 'APPROVED' ? 'New values adopted.' : 'Current values kept.') : (decision === 'APPROVED' ? 'Match approved.' : 'Match rejected.'), true);
         load();
     }
     loadSession().then(load);

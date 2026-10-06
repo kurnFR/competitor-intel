@@ -15,10 +15,10 @@ Nothing here has been proven against your real sources yet (PRD section 20 succe
 | 10 | **Regional pricing** kept visible per region | Done | `/regional`: one row per product, one column per region; "Not stated" is its own column, never merged. |
 | 11 | Evidence and provenance | Done | Verbatim evidence quote required; source URL, document and observation kept. |
 | 12-13 | AI extraction and validation/quality gate | Done | Quote must appear in the page; prices/discounts/dates validated; rejected items counted. Quality still needs measuring on real pages (`scripts/eval_extraction.py`). |
-| 14 | **Top 10 eligibility** | Done except contradictions | Requires: commercially active, `last_verified_at` within the window (default 90 days), evidence exists, source approved + active, identity resolved (competitor or brand linked). Optional strict geography gate (see decisions). **Not built:** "no material unresolved contradiction" (needs section 16). |
+| 14 | **Top 10 eligibility** | Done | Requires: commercially active, `last_verified_at` within the window (default 90 days), evidence exists, source approved + active, identity resolved (competitor or brand linked), **no unresolved multi-source conflict**. Optional strict geography gate (see decisions). |
 | 14 | Explainable Impact Score | Partial | Score combines strength, discount, source reliability, freshness, importance and change impact; the breakdown is not shown in the UI. |
 | 15 | Freshness vs validity | Done | `last_seen_at` (observed), `last_verified_at` (validated), source `last_success_at` / `last_processed_at` (collected / processed), `start_date`/`end_date` (validity). An explicit past end date overrides freshness. |
-| 16 | **Multi-source conflict** handling | Not built | Different sources reporting different prices are treated as changes to one promotion; there is no cross-source conflict detection or review. |
+| 16 | **Multi-source conflict** handling | Done | Both observations are always kept. When a *different* source reports a materially different price, discount, dates or mechanic for the same promotion: facts older than 7 days are superseded by the newer one; a clearly more authoritative source (reliability gap of 0.15 or more) wins; a clearly less authoritative one is kept out; otherwise the stored values are **frozen**, the promotion is hidden from the Top 10 and a CONFLICT item goes to the Review page where an analyst chooses *use new values* or *keep current*. Retailer, channel, geography and period are part of promotion identity, so sources that differ on those are treated as different activities, not conflicts. |
 | 17 | UX: Overview, Promotions, Regional Pricing, Competitors, Sources, Review Queue, Settings | Partial | Dashboard (Overview + Promotions + evidence drawer), Regional pricing, Review queue, Insights (competitor activity), Price comparison, Admin (sources + health, users, scan history, security log), Account. **Missing:** a dedicated Competitors page and a read-only Sources/health view for non-admins. |
 | 18 | Scan now vs Discover | Partial | "Scan now" crawls all approved, active sources. Discover is not built. |
 | 19 | PostgreSQL boundary; UI reads production data only | Done | No mock/fallback rows in the UI. |
@@ -26,10 +26,8 @@ Nothing here has been proven against your real sources yet (PRD section 20 succe
 
 ## Decisions for you
 
-1. **PR #1 (`docs/production-architecture-v2`).** It cannot merge: it is a parallel code line with a different migration chain
-   (15 files conflict, and it deletes the original initial migration). The requirement documents in it are valuable; the code overlaps with
-   what is now in `master` (source approval/adapters, URL validation, geography). Recommended: close PR #1 and, if you want the
-   documents in the repo, add them in a docs-only PR rebased on `master`.
+1. ~~PR #1~~ **Resolved.** It was a parallel code line (different migration chain, 15 conflicting files), so it was closed. Its requirement
+   documents are in `docs/requirements/` (PR #4); the overlapping code ideas are implemented on `master`.
 2. **"Geography sufficiently understood" (PRD 14).** Read strictly it would hide every promotion whose page states no region, which
    is most catalog pages. Default here: show them, labelled "Not stated". Set `TOP10_REQUIRE_KNOWN_GEOGRAPHY=true` for the strict reading.
 3. **Identity gate.** Promotions with no competitor or brand linked are hidden until someone resolves them on the Review page
@@ -40,8 +38,8 @@ Nothing here has been proven against your real sources yet (PRD section 20 succe
 
 ## Not built yet (suggested order)
 
-1. Multi-source conflict detection and review (PRD 16), then the "no unresolved contradiction" Top 10 gate.
-2. Source discovery (PRD 6/18) with a candidate queue.
-3. Per-URL registry and schedules.
-4. Province/city/store-level geography as structured data.
-5. Competitors page, read-only source health for analysts, explainable score breakdown.
+1. Source discovery (PRD 6/18) with a candidate queue.
+2. Per-URL registry and schedules.
+3. Province/city/store-level geography as structured data.
+4. Competitors page, read-only source health for analysts, explainable score breakdown.
+5. Tune the conflict thresholds (`RECENT_DAYS`, `AUTHORITY_MARGIN`, price tolerance in `app/services/promotions/conflicts.py`) once real data shows how often sources disagree.

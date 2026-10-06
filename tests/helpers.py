@@ -40,8 +40,10 @@ def add_promotion(db, source, *, evidence=True, now=None, **fields):
 
 def cleanup_source(db, source):
     from app.models.promotion_change import PromotionChangeEvent
+    from app.models.resolution import ReviewQueue
     ids = [r[0] for r in db.query(Promotion.id).filter(Promotion.source_id == source.id).all()]
     if ids:
+        db.query(ReviewQueue).filter(ReviewQueue.promotion_id.in_(ids)).delete(synchronize_session=False)
         db.query(PromotionChangeEvent).filter(PromotionChangeEvent.promotion_id.in_(ids)).delete(synchronize_session=False)
         db.query(PromotionEvidence).filter(PromotionEvidence.promotion_id.in_(ids)).delete(synchronize_session=False)
         db.query(Promotion).filter(Promotion.id.in_(ids)).delete(synchronize_session=False)

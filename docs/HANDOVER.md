@@ -11,12 +11,14 @@ against its source text, ranks them, and shows them to the marketing team. Every
 | Insights | Weekly digest (new / changed / ending soon) and competitor activity heat-map |
 | Price comparison | Your prices vs competitor promotions per 100 g (analyst+) |
 | Export | CSV / Excel of the filtered view (analyst+) |
-| Review | Confirm or reject uncertain product/brand/retailer matches (analyst+) |
+| Review | Confirm uncertain product/brand/retailer matches, and decide conflicts where two sources disagree (analyst+) |
 | Admin | Users and roles, 2FA reset, websites we scan (with health), security log |
 | Alerts | Weekly digest by e-mail and/or Slack-style webhook (optional) |
 | Security | Argon2id passwords, optional 2FA, server-side sessions, CSRF, lockout, audit log, roles |
 
 ## What you still need to do (I cannot do these for you)
+
+**Start with `docs/FIRST_RUN.md`** (ordered checklist) and run `python -m scripts.preflight` to see what is outstanding.
 
 1. **Try it on your real sources and LLM.** This was developed and tested with synthetic data. Run a scan, then
    check 20-30 promotions against the source pages. Use `python -m scripts.eval_extraction` to keep score.
@@ -24,14 +26,13 @@ against its source text, ranks them, and shows them to the marketing team. Every
    is report-only: check the browser console for violations, then tighten it or self-host Tailwind/Font Awesome.
 3. **Set the secrets:** `ADMIN_API_KEY` (only if you automate scans), `SECRET_KEY` (needed for 2FA; never change it
    afterwards), database password, LLM key. Turn on `MFA_REQUIRED_FOR_ADMINS` once every admin has a phone set up.
-4. **Close or rebase PR #1** (it conflicts with `master`; see `docs/PRD_ALIGNMENT.md`).
-5. **Purge the old database log from git history.** `postgresql_schema_ddl_20260924.log` was deleted from the latest
+4. **Purge the old database log from git history.** `postgresql_schema_ddl_20260924.log` was deleted from the latest
    commit but is still in old ones. Rewrite history and force-push (this changes `master`; coordinate with anyone with a clone):
    `git filter-repo --path postgresql_schema_ddl_20260924.log --invert-paths`
-6. **Review each source's terms of use and robots rules** before enabling it; the crawler obeys robots.txt and
+5. **Review each source's terms of use and robots rules** before enabling it; the crawler obeys robots.txt and
    identifies itself using `CRAWLER_USER_AGENT` (add contact details).
-7. **Revoke the GitHub access token** that was used to publish this work, and any other temporary credentials.
-8. **Deploy over HTTPS** and schedule backups (`docs/DEPLOYMENT.md`).
+6. **Revoke the GitHub access token** that was used to publish this work, and any other temporary credentials.
+7. **Deploy over HTTPS** and schedule backups (`docs/DEPLOYMENT.md`).
 
 ## Day-to-day operation
 

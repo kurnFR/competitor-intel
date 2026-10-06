@@ -6,6 +6,17 @@
 <main class="max-w-7xl mx-auto px-4 py-6 space-y-8">
     <div id="msg" role="alert" class="hidden rounded-md px-3 py-2 text-sm"></div>
     <section>
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-2">
+            <h2 class="text-lg font-bold">Setup checklist</h2>
+            <div class="flex items-center gap-3 text-sm">
+                <label class="flex items-center gap-1"><input id="check-llm" type="checkbox"> also test the LLM connection</label>
+                <button onclick="runChecks()" class="px-3 py-1.5 rounded bg-slate-700 hover:bg-slate-800 text-white text-xs font-semibold">Run checks</button>
+            </div>
+        </div>
+        <div id="check-summary" class="text-sm mb-2 text-slate-500"></div>
+        <div id="checks" class="bg-white dark:bg-slate-800 rounded-xl shadow divide-y divide-slate-100 dark:divide-slate-700"></div>
+    </section>
+    <section>
         <h2 class="text-lg font-bold mb-3">Users</h2>
         <div class="overflow-x-auto bg-white dark:bg-slate-800 rounded-xl shadow mb-4">
             <table class="min-w-full text-sm"><thead class="bg-slate-100 dark:bg-slate-700"><tr>
@@ -52,6 +63,18 @@
 <script>
     const msg = document.getElementById('msg');
     function flash(text, ok) { msg.textContent = text; msg.className = 'rounded-md px-3 py-2 text-sm ' + (ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'); }
+    const CHECK_STYLE = {PASS: ['OK', 'bg-emerald-100 text-emerald-700'], WARN: ['Attention', 'bg-amber-100 text-amber-700'], FAIL: ['Fix now', 'bg-rose-100 text-rose-700'], INFO: ['Note', 'bg-slate-100 text-slate-600']};
+    async function runChecks() {
+        document.getElementById('check-summary').textContent = 'Checking...';
+        const r = await api('/api/v1/system/check?llm=' + document.getElementById('check-llm').checked);
+        if (!r.ok) { document.getElementById('check-summary').textContent = await errText(r); return; }
+        const d = await r.json();
+        document.getElementById('check-summary').innerHTML = `<strong class="${d.summary.ready ? 'text-emerald-600' : 'text-rose-600'}">${d.summary.ready ? 'Ready to use' : 'Not ready: fix the items marked "Fix now"'}</strong> &middot; ${esc(d.summary.PASS)} ok, ${esc(d.summary.WARN)} need attention, ${esc(d.summary.FAIL)} to fix, ${esc(d.summary.INFO)} notes`;
+        document.getElementById('checks').innerHTML = d.checks.map(c => `<div class="p-3 flex gap-3 items-start">
+            <span class="shrink-0 text-xs font-semibold px-2 py-0.5 rounded ${CHECK_STYLE[c.status][1]}">${CHECK_STYLE[c.status][0]}</span>
+            <div class="text-sm"><div class="font-medium">${esc(c.name)}</div><div class="text-slate-600 dark:text-slate-300">${esc(c.detail)}</div>
+            ${c.fix ? `<div class="text-xs text-slate-500 mt-1">&rarr; ${esc(c.fix)}</div>` : ''}</div></div>`).join('');
+    }
     const me = "{{ user.username }}";
     async function loadUsers() {
         const users = await (await api('/api/v1/auth/users')).json();
@@ -156,7 +179,7 @@
         flash(r.ok ? 'Added as a candidate. Approve it to include it in scans.' : await errText(r), r.ok);
         if (r.ok) f.reset(); loadSources(); loadAudit();
     });
-    loadSession().then(() => { loadUsers(); loadSources(); loadScans(); loadAudit(); });
+    loadSession().then(() => { runChecks(); loadUsers(); loadSources(); loadScans(); loadAudit(); });
 </script>
 </body>
 </html>

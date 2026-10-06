@@ -4,7 +4,7 @@ if TYPE_CHECKING:
 import uuid
 from datetime import datetime, timezone
 from typing import Optional, List
-from sqlalchemy import String, Text, Float, Integer, DateTime, ForeignKey, Index
+from sqlalchemy import Boolean, String, Text, Float, Integer, DateTime, ForeignKey, Index
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.session import Base
@@ -82,6 +82,8 @@ class Promotion(Base):
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     # When the extracted facts were last validated against a successfully collected source (PRD 15).
     last_verified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    # True while two sources disagree materially and nobody has decided which is right (PRD 16). Hidden from the Top 10.
+    has_open_conflict: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     source_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("competitor_intel.source_registry.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
