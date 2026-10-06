@@ -32,10 +32,22 @@ If it reports sample/test data, pause or reject those websites on the Admin page
 (a tuned one if it is Superindo / Indomaret / Alfamart, otherwise the generic catalog reader), then **Approve**.
 Nothing is scanned before approval.
 
+## 5b. Try a real page before trusting a website (nothing is saved)
+Save a promotion page as a file (or copy its text) and run:
+
+    python -m scripts.dry_run page.html --retailer Indomaret
+
+It uses the same extraction and matching code as a real scan and tells you, for every promotion it found: what was
+extracted, whether the retailer / brand / competitor / product were matched, whether it is new or already known,
+whether it **would appear on the dashboard - and if not, exactly why and what to do about it**. Rejected items are
+listed with their reasons. Nothing is written to the database. Use `--extracted items.json` to replay saved model
+output without calling the LLM.
+
 ## 6. Do one scan and look at the result
 1. Dashboard -> **Scan now** (or `python -m scripts.run_pipeline`). Watch **Admin -> Recent scans**.
 2. Open 20-30 promotions and compare each with its source page (the evidence quote and link are in the detail drawer).
 3. **Review** page: confirm uncertain matches and decide any conflicts. Promotions with no matched competitor/brand stay hidden until you do.
+   If the dashboard looks empty, the **Setup checklist** (Admin) lists the exact reasons promotions are hidden, with counts.
 4. Check **Regional pricing**: promotions whose page does not state a region appear under "Not stated" - that is expected.
 
 ## 7. Measure extraction quality (do this before you trust the numbers)

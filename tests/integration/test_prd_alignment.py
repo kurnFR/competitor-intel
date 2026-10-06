@@ -363,3 +363,25 @@ def test_a_promotion_stays_hidden_until_every_conflict_on_it_is_resolved(env):
     c.post(f"/api/v1/review/{ids[1]}/resolve", json={"decision": "REJECTED"}, headers=csrf)
     env.db.expire_all()
     assert env.db.get(Promotion, p.id).has_open_conflict is False
+
+
+# ---------------------------------------------------------------- "why is this promotion hidden?"
+def test_why_hidden_names_every_failed_gate_and_agrees_with_the_filter(env):
+    from app.services.promotions.visibility import gate_failure_counts, why_hidden
+    ok, candidate = env.source(), env.source(approved=False)
+    shown = add_promotion(env.db, ok, product_name=f"Zz{env.tag} Shown")
+    hidden = add_promotion(env.db, candidate, product_name=f"Zz{env.tag} Hidden", evidence=False, competitor_id=None,
+                           has_open_conflict=True, last_verified_at=env.now - timedelta(days=120))
+    expired = add_promotion(env.db, ok, product_name=f"Zz{env.tag} Over", status="EXPIRED")
+    env.db.commit()
+    assert why_hidden(env.db, shown.id) == []
+    reasons = why_hidden(env.db, hidden.id)
+    assert {r["key"] for r in reasons} == {"verified", "evidence", "source", "conflict", "identity"}
+    assert all(r["label"] and r["fix"] for r in reasons)
+    assert [r["key"] for r in why_hidden(env.db, expired.id)] == ["active"]
+    # the explanation and the real filter can never disagree
+    visible = env.visible(env.client())
+    assert visible == {"Shown"}
+    summary = gate_failure_counts(env.db)
+    assert summary["shown"] >= 1 and summary["total"] == summary["shown"] + summary["hidden"]
+    assert {g["key"] for g in summary["gates"]} >= {"active", "verified", "evidence", "source", "conflict", "identity"}

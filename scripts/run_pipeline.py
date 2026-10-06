@@ -1,4 +1,3 @@
-import hashlib
 import logging
 import sys
 from datetime import datetime, timezone
@@ -7,20 +6,14 @@ from typing import Any, Dict, Optional
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
 from app.db.session import SessionLocal, engine
 from app.models.promotion import Promotion, PromotionObservation
 from app.models.scan_run import ScanRun
 from app.models.source import CrawlDocument, SourceRegistry
-from app.services.channels import normalize_channel
 from app.services.crawler.manager import run_all_crawlers
-from app.services.entity_resolution.product import resolve_product_result
+from app.services.pipeline_core import process_document
 from app.services.entity_resolution.resolver import EntityResolver
-from app.services.entity_resolution.review import persist_resolution_reviews
-from app.services.extraction.cards import split_into_cards
-from app.services.geography import appears_in_source, clean_wording
 from app.services.extraction.llm_extractor import LLMExtractor
-from app.services.promotions.upsert import upsert_promotion_observation
 from app.services.ranking.rescore import rescore_promotions
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -147,7 +140,6 @@ def run_pipeline(
         source_ok: Dict[Any, bool] = {}        # source_id -> every document of that source succeeded in this run
         extractor = LLMExtractor()
         resolver = EntityResolver(db)
-        batch_size = max(1, settings.CARDS_PER_LLM_BATCH)
 
         for doc in docs:
             logger.info("Document %s (%s) text length: %d", doc.id, doc.url, len(doc.text_content or ""))
@@ -168,113 +160,7 @@ def run_pipeline(
             source = doc.source or db.query(SourceRegistry).filter(SourceRegistry.id == doc.source_id).first()
             reliability = source.reliability_score if source else 0.85
 
-            cards, total_cards = split_into_cards(doc.text_content, max_cards=settings.MAX_CARDS_PER_DOCUMENT)
-            if total_cards > len(cards):
-                dropped = total_cards - len(cards)
-                summary["cards_truncated"] += dropped
-                logger.warning(
-                    "Document %s has %d cards; only the first %d are processed (%d skipped). "
-                    "Raise MAX_CARDS_PER_DOCUMENT to process all.",
-                    doc.id, total_cards, len(cards), dropped,
-                )
-            logger.info("Splitting into %d item cards...", len(cards))
-
-            doc_ok = True
-            for i in range(0, len(cards), batch_size):
-                batch = cards[i:i + batch_size]
-                chunk = "\n\n".join(batch)
-                logger.info("Extracting batch %d (%d cards)...", i // batch_size + 1, len(batch))
-
-                result = extractor.extract_with_metadata(chunk)
-                summary["rejected"] += len(result.rejected_items)
-                if result.parser_status not in _GOOD_STATUSES:
-                    doc_ok = False
-                logger.info(
-                    "Batch extraction status=%s accepted=%d rejected=%d",
-                    result.parser_status, len(result.items), len(result.rejected_items),
-                )
-
-                raw_response_hash = (
-                    hashlib.sha256(result.raw_response.encode("utf-8")).hexdigest()
-                    if result.raw_response else None
-                )
-                metadata = {
-                    "model": result.model,
-                    "status": result.parser_status,
-                    "extracted_at": result.extracted_at,
-                    "raw_response_hash": raw_response_hash,
-                    "rejected_count": len(result.rejected_items),
-                }
-
-                for item in result.items:
-                    summary["extracted"] += 1
-                    # Where a promotion is valid must come from the page itself; unsupported wording is dropped
-                    # (the promotion is kept with unknown geography) rather than trusted.
-                    item.geography = clean_wording(item.geography)
-                    if item.geography and not appears_in_source(item.geography, chunk):
-                        logger.warning("Dropping geography %r for %r: not found in the source text.", item.geography, item.product_name)
-                        item.geography = None
-                        summary["geography_dropped"] = summary.get("geography_dropped", 0) + 1
-
-                    retailer_result = resolver.resolve_retailer_result(item.retailer)
-                    brand_result, competitor_result = resolver.resolve_brand_and_competitor_result(
-                        item.brand, item.product_name,
-                    )
-                    product_result = resolve_product_result(
-                        db,
-                        item.product_name,
-                        brand_result.entity.id if brand_result.status == "RESOLVED" and brand_result.entity else None,
-                        sku=getattr(item, "sku", None),
-                        barcode=getattr(item, "barcode", None),
-                        pack_size=item.pack_size,
-                    )
-                    resolved_entities = {
-                        "retailer_id": retailer_result.entity.id if retailer_result.status == "RESOLVED" else None,
-                        "brand_id": brand_result.entity.id if brand_result.status == "RESOLVED" else None,
-                        "competitor_id": competitor_result.entity.id if competitor_result.status == "RESOLVED" else None,
-                        "product_id": product_result.entity.id if product_result.status == "RESOLVED" else None,
-                        "competitor_importance": (
-                            competitor_result.entity.importance_score
-                            if competitor_result.status == "RESOLVED" and competitor_result.entity else None
-                        ),
-                    }
-
-                    # Savepoint per item: one bad row must not poison the whole document.
-                    try:
-                        with db.begin_nested():
-                            promotion, observation, created = upsert_promotion_observation(
-                                db,
-                                document_id=doc.id,
-                                item=item,
-                                resolved_entities=resolved_entities,
-                                raw_text=chunk,
-                                extracted_json=item.model_dump(),
-                                observed_at=result.extracted_at,
-                                source_url=doc.url,
-                                extraction_metadata=metadata,
-                                source_reliability=reliability,
-                                source_id=doc.source_id,
-                            )
-                            if promotion.channel is None and retailer_result.status == "RESOLVED" and retailer_result.entity:
-                                promotion.channel = normalize_channel(retailer_result.entity.channel_type)
-                            summary["review_items"] += persist_resolution_reviews(
-                                db,
-                                observation_id=observation.id,
-                                promotion_id=promotion.id,
-                                resolutions=(
-                                    ("RETAILER", item.retailer, retailer_result),
-                                    ("BRAND", item.brand, brand_result),
-                                    ("COMPETITOR", item.competitor, competitor_result),
-                                    ("PRODUCT", item.product_name, product_result),
-                                ),
-                            )
-                        summary["created"] += int(created)
-                        summary["observations"] += 1
-                    except ValueError as validation_error:
-                        logger.warning("Rejected promotion from document %s: %s", doc.id, validation_error)
-                    except Exception:
-                        doc_ok = False
-                        logger.exception("Failed to store promotion from document %s", doc.id)
+            doc_ok = process_document(db, doc, extractor=extractor, resolver=resolver, reliability=reliability, summary=summary)
 
             source_ok[doc.source_id] = source_ok.get(doc.source_id, True) and doc_ok
             if doc_ok:

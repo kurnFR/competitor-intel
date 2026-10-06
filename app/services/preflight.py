@@ -19,8 +19,6 @@ from app.models.auth import User
 from app.models.resolution import ReviewQueue
 from app.models.scan_run import ScanRun
 from app.models.source import SourceRegistry
-from app.models.promotion import Promotion
-from app.services.promotions.visibility import live_promotion_filter
 
 PASS, WARN, FAIL, INFO = "PASS", "WARN", "FAIL", "INFO"
 
@@ -184,15 +182,19 @@ def _scans(db: Session) -> Check:
 
 
 def _promotions(db: Session) -> Check:
-    now = datetime.now(timezone.utc)
-    live = db.query(Promotion).filter(live_promotion_filter(now, recency_days=90)).count()
-    total = db.query(Promotion).count()
-    if total == 0:
+    from app.services.promotions.visibility import gate_failure_counts
+    r = gate_failure_counts(db)
+    if r["total"] == 0:
         return Check("Promotions", INFO, "No promotions stored yet.")
-    if live == 0:
-        return Check("Promotions", WARN, f"{total} stored but none pass the Top 10 checks.",
-                     "Common reasons: no matched competitor/brand (see Review), source not approved, conflicts waiting, or nothing verified recently.")
-    return Check("Promotions", PASS, f"{live} eligible for the dashboard (of {total} stored).")
+    reasons = [g for g in r["gates"] if g["count"] > 0]
+    top = "; ".join(f"{g['count']} x {g['label'].lower()}" for g in reasons[:3])
+    if r["shown"] == 0:
+        return Check("Promotions", WARN, f"{r['total']} stored but none are shown on the dashboard. Reasons: {top}.",
+                     reasons[0]["fix"] if reasons else "")
+    if r["hidden"]:
+        return Check("Promotions", INFO, f"{r['shown']} shown, {r['hidden']} hidden (most common reasons: {top}).",
+                     "Hidden promotions are normal when they are expired or waiting on review.")
+    return Check("Promotions", PASS, f"All {r['shown']} stored promotions are shown.")
 
 
 def _review(db: Session) -> Check:
