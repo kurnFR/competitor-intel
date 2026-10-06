@@ -18,6 +18,8 @@ against its source text, ranks them, and shows them to the marketing team. Every
 
 ## What you still need to do (I cannot do these for you)
 
+**Start with `docs/FIRST_RUN.md`** (ordered checklist) and run `python -m scripts.preflight` to see what is outstanding.
+
 1. **Try it on your real sources and LLM.** This was developed and tested with synthetic data. Run a scan, then
    check 20-30 promotions against the source pages. Use `python -m scripts.eval_extraction` to keep score.
 2. **Look at the pages in a real browser** (styling and layout were not visually checked). The Content-Security-Policy
