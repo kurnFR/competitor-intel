@@ -86,6 +86,9 @@ def test_crawl_to_canonical_promotion_and_idempotency(db_engine):
             reliability_score=0.95,
             country="ID",
             language="id",
+            # Left behind if this test runs on a shared database: make sure the scanner can never pick it up.
+            is_active=False,
+            approval_status="CANDIDATE",
         )
         db.add(source)
         db.flush()

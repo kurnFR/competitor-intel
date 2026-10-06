@@ -4,7 +4,7 @@ if TYPE_CHECKING:
 import uuid
 from datetime import datetime, timezone
 from typing import Optional, List
-from sqlalchemy import String, Text, Float, Integer, DateTime, ForeignKey, Index
+from sqlalchemy import Boolean, String, Text, Float, Integer, DateTime, ForeignKey, Index
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.session import Base
@@ -34,7 +34,7 @@ class Promotion(Base):
     __tablename__ = "promotions"
     __table_args__ = (
         Index("idx_promotions_status", "status"), Index("idx_promotions_end_date", "end_date"),
-        Index("idx_promotions_last_seen", "last_seen_at"), Index("idx_promotions_category", "category"),
+        Index("idx_promotions_last_seen", "last_seen_at"), Index("idx_promotions_last_verified", "last_verified_at"), Index("idx_promotions_geo_region", "geography_region"), Index("idx_promotions_category", "category"),
         Index("idx_promotions_rank_score", "rank_score"), Index("idx_promotions_active_top", "status", "end_date", "last_seen_at", "rank_score"),
         Index("idx_promotions_lineage_parent", "supersedes_promotion_id"),
         {"schema": "competitor_intel"}
@@ -67,7 +67,10 @@ class Promotion(Base):
     start_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     end_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     channel: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    geography: Mapped[str] = mapped_column(String(50), default="Indonesia")
+    # Verbatim wording from the source; NULL when the source did not state where the promotion is valid.
+    geography: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    # Normalised macro-region (see app.services.geography); UNKNOWN when not stated, never assumed nationwide.
+    geography_region: Mapped[str] = mapped_column(String(30), nullable=False, default="UNKNOWN", server_default="UNKNOWN")
     status: Mapped[str] = mapped_column(String(50), default="ACTIVE")
     source_reliability: Mapped[float] = mapped_column(Float, default=0.8)
     ai_confidence: Mapped[float] = mapped_column(Float, default=0.8)
@@ -77,6 +80,11 @@ class Promotion(Base):
     source_identity_fingerprint: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    # When the extracted facts were last validated against a successfully collected source (PRD 15).
+    last_verified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    # True while two sources disagree materially and nobody has decided which is right (PRD 16). Hidden from the Top 10.
+    has_open_conflict: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    source_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("competitor_intel.source_registry.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     competitor: Mapped[Optional["Competitor"]] = relationship("app.models.entity.Competitor")

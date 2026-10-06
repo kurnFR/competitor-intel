@@ -29,7 +29,7 @@ def _block_internal_requests(request: httpx.Request) -> None:
     try:
         guard_request_url(str(request.url))
     except ValueError as exc:
-        raise httpx.UnsupportedProtocol(str(exc))
+        raise httpx.UnsupportedProtocol(str(exc)) from exc
 
 
 ROBOTS_TTL_SECONDS = 24 * 3600

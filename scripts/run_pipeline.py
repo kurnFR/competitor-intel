@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.db.session import SessionLocal, engine
 from app.models.promotion import Promotion, PromotionObservation
+from app.models.scan_run import ScanRun
 from app.models.source import CrawlDocument, SourceRegistry
 from app.services.channels import normalize_channel
 from app.services.crawler.manager import run_all_crawlers
@@ -17,6 +18,7 @@ from app.services.entity_resolution.product import resolve_product_result
 from app.services.entity_resolution.resolver import EntityResolver
 from app.services.entity_resolution.review import persist_resolution_reviews
 from app.services.extraction.cards import split_into_cards
+from app.services.geography import appears_in_source, clean_wording
 from app.services.extraction.llm_extractor import LLMExtractor
 from app.services.promotions.upsert import upsert_promotion_observation
 from app.services.ranking.rescore import rescore_promotions
@@ -52,13 +54,45 @@ def _release_lock(conn, acquired: bool) -> None:
         conn.close()
 
 
+def _start_run(trigger: str, triggered_by: Optional[str]):
+    """Record the run in its own session so it is visible immediately and survives a rollback of the main one."""
+    session = SessionLocal()
+    try:
+        run = ScanRun(trigger=trigger, triggered_by=triggered_by, status="RUNNING")
+        session.add(run)
+        session.commit()
+        return run.id
+    except Exception:
+        logger.exception("Could not record scan start")
+        session.rollback()
+        return None
+    finally:
+        session.close()
+
+
+def _finish_run(run_id, status: str, *, summary: Optional[dict] = None, error: Optional[str] = None) -> None:
+    if run_id is None:
+        return
+    session = SessionLocal()
+    try:
+        session.query(ScanRun).filter(ScanRun.id == run_id).update(
+            {"status": status, "finished_at": datetime.now(timezone.utc), "summary": summary, "error": (error or None) and error[:1000]},
+            synchronize_session=False)
+        session.commit()
+    except Exception:
+        logger.exception("Could not record scan result")
+        session.rollback()
+    finally:
+        session.close()
+
+
 def _touch_promotions_for_document(db: Session, document_id, now: datetime) -> int:
     """An unchanged page that was just re-fetched still confirms its promotions."""
     ids = db.query(PromotionObservation.promotion_id).filter(PromotionObservation.document_id == document_id)
     return (
         db.query(Promotion)
         .filter(Promotion.id.in_(ids), Promotion.status.in_(["ACTIVE", "UNKNOWN"]))
-        .update({"last_seen_at": now}, synchronize_session=False)
+        .update({"last_seen_at": now, "last_verified_at": now}, synchronize_session=False)
     )
 
 
@@ -66,6 +100,9 @@ def run_pipeline(
     crawl_fresh: bool = False,
     max_docs: Optional[int] = 3,
     force: bool = False,
+    only_due: bool = False,
+    trigger: str = "CLI",
+    triggered_by: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Crawl (optionally), extract, validate and store promotions.
 
@@ -84,6 +121,7 @@ def run_pipeline(
         return {"status": "busy"}
 
     db: Session = SessionLocal()
+    run_id = _start_run(trigger, triggered_by)
     summary: Dict[str, Any] = {
         "status": "completed", "documents": 0, "documents_skipped_unchanged": 0,
         "documents_failed": 0, "extracted": 0, "observations": 0, "created": 0,
@@ -94,18 +132,19 @@ def run_pipeline(
 
         if crawl_fresh:
             logger.info("Executing active crawlers...")
-            docs = run_all_crawlers(db)
+            docs = run_all_crawlers(db, only_due=only_due)
         else:
             query = db.query(CrawlDocument).order_by(CrawlDocument.retrieved_at.desc())
             docs = query.limit(max_docs).all() if max_docs else query.all()
             if not docs:
                 logger.info("No existing documents found. Triggering crawlers...")
-                docs = run_all_crawlers(db)
+                docs = run_all_crawlers(db, only_due=only_due)
                 crawl_fresh = True
 
         logger.info("Processing %d documents through AI Extraction & Validation...", len(docs))
         summary["documents"] = len(docs)
 
+        source_ok: Dict[Any, bool] = {}        # source_id -> every document of that source succeeded in this run
         extractor = LLMExtractor()
         resolver = EntityResolver(db)
         batch_size = max(1, settings.CARDS_PER_LLM_BATCH)
@@ -120,6 +159,7 @@ def run_pipeline(
             if already_done and not force:
                 if crawl_fresh:
                     _touch_promotions_for_document(db, doc.id, now)
+                    source_ok.setdefault(doc.source_id, True)
                     db.commit()
                 summary["documents_skipped_unchanged"] += 1
                 logger.info("Document %s unchanged since last extraction; skipping LLM call.", doc.id)
@@ -168,6 +208,13 @@ def run_pipeline(
 
                 for item in result.items:
                     summary["extracted"] += 1
+                    # Where a promotion is valid must come from the page itself; unsupported wording is dropped
+                    # (the promotion is kept with unknown geography) rather than trusted.
+                    item.geography = clean_wording(item.geography)
+                    if item.geography and not appears_in_source(item.geography, chunk):
+                        logger.warning("Dropping geography %r for %r: not found in the source text.", item.geography, item.product_name)
+                        item.geography = None
+                        summary["geography_dropped"] = summary.get("geography_dropped", 0) + 1
 
                     retailer_result = resolver.resolve_retailer_result(item.retailer)
                     brand_result, competitor_result = resolver.resolve_brand_and_competitor_result(
@@ -206,6 +253,7 @@ def run_pipeline(
                                 source_url=doc.url,
                                 extraction_metadata=metadata,
                                 source_reliability=reliability,
+                                source_id=doc.source_id,
                             )
                             if promotion.channel is None and retailer_result.status == "RESOLVED" and retailer_result.entity:
                                 promotion.channel = normalize_channel(retailer_result.entity.channel_type)
@@ -228,6 +276,7 @@ def run_pipeline(
                         doc_ok = False
                         logger.exception("Failed to store promotion from document %s", doc.id)
 
+            source_ok[doc.source_id] = source_ok.get(doc.source_id, True) and doc_ok
             if doc_ok:
                 doc.metadata_json = {**(doc.metadata_json or {}), "pipeline_processed_at": now.isoformat()}
             else:
@@ -235,17 +284,27 @@ def run_pipeline(
                 logger.warning("Document %s had extraction errors and will be retried next run.", doc.id)
             db.commit()
 
+        # A source counts as "processed" only if every one of its pages was collected and extracted (or confirmed
+        # unchanged). A failed crawl or failed extraction is never evidence that a promotion has disappeared.
+        finished = datetime.now(timezone.utc)
+        for sid, ok in source_ok.items():
+            if ok and sid is not None:
+                db.query(SourceRegistry).filter(SourceRegistry.id == sid).update({"last_processed_at": finished}, synchronize_session=False)
+        db.commit()
+
         # Keep freshness-based ranking current after this run.
         rescored = rescore_promotions(db)
         db.commit()
         logger.info("Rescored %d promotions.", rescored)
 
         logger.info("Pipeline execution finished! %s", summary)
+        _finish_run(run_id, "COMPLETED" if not summary["documents_failed"] else "PARTIAL", summary=summary)
         return summary
 
-    except Exception:
+    except Exception as exc:
         logger.exception("Pipeline error")
         db.rollback()
+        _finish_run(run_id, "FAILED", summary=summary, error=f"{type(exc).__name__}: {exc}")
         raise
     finally:
         db.close()

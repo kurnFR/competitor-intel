@@ -265,12 +265,13 @@ How it is protected:
 
 * **Insights** (`/insights`): weekly digest of new promotions, price/mechanic changes and promotions ending within 7 days, plus a per-competitor activity heat-map.
 * **Export** (analyst+): CSV or Excel of the current filtered view. Cells that could run as spreadsheet formulas are neutralised.
-* **Review** (analyst+): approve or reject uncertain product/brand/retailer matches; approval links the promotion to the suggested entity.
+* **Review** (analyst+): approve or reject uncertain product/brand/retailer matches (approval links the promotion to the suggested entity), and decide **conflicts**: when two comparable sources report different values for the same promotion, the stored values are frozen, the promotion is hidden from the Top 10, and you choose *use new values* or *keep current*. Both observations are always kept.
 * **Weekly e-mail digest** (optional): set `SMTP_HOST`, `SMTP_FROM`, `DIGEST_RECIPIENTS`; sent on `DIGEST_DAY_OF_WEEK` at `DIGEST_HOUR`. Test now with `python -m scripts.send_digest`.
 * **JavaScript-only retailer pages** need a browser: `pip install -r requirements-browser.txt && playwright install chromium`. Without it the crawler logs a warning and those pages yield nothing.
 
 * **Price comparison** (`/compare`, analyst+): enter your own products (or import a CSV), and see how competitor promotions compare per 100 g, with the biggest undercuts first. Buy-X-get-Y offers are converted to an effective price; only promotions with a computable price and a similar pack size are compared.
-* **Websites we scan** (Admin page): add, pause or resume sources without touching code, and see each source's health (OK / failing / stale). Addresses pointing at private or internal networks are refused, and the crawler refuses to follow redirects into them.
+* **Regional pricing** (`/regional`): the same product's price per region side by side. Where a promotion's page does not state a region it is shown as *Not stated*, never as nationwide.
+* **Websites we scan** (Admin page): a new website is a *candidate* and is never scanned until an administrator approves it and confirms the reader (adapter); each source has its own schedule and health (OK / failing / stale). A failed scan is never treated as "no promotions". Recent scans are listed there too. Addresses pointing at private or internal networks are refused, and the crawler refuses to follow redirects into them.
 * **Chat digest** (optional): set `DIGEST_WEBHOOK_URL` (Slack, Google Chat, Mattermost) to post the weekly digest to a channel.
 
 ## Measuring extraction quality
@@ -284,8 +285,14 @@ python -m scripts.eval_extraction --min-f1 0.8  # score against labelled pages i
 
 Label 15-30 real pages (`name.txt` + `name.json`, see the sample). Re-run after changing the model or prompt.
 
+## Is my installation set up correctly?
+
+`python -m scripts.preflight [--llm]` (or **Admin -> Setup checklist**) checks the database and migrations, security settings, administrator accounts, the LLM, websites, recent scans and the review backlog, and tells you what to fix. It never shows secret values. Start with `docs/FIRST_RUN.md`.
+
 ## More documentation
 
+* `docs/FIRST_RUN.md` - step-by-step checklist for the first real run
+* `docs/PRD_ALIGNMENT.md` - requirement-by-requirement status and open decisions
 * `docs/DEPLOYMENT.md` - Docker Compose / server setup, HTTPS, backups, upgrade, troubleshooting
 * `docs/HANDOVER.md` - what is built, what you still need to do, and how to operate it
 * `tests/ui/README.md` - the click-through UI test

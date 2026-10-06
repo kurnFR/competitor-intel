@@ -20,11 +20,17 @@ class SourceRegistry(Base):
     country: Mapped[str] = mapped_column(String(10), default="ID")
     language: Mapped[str] = mapped_column(String(10), default="id")
     category: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    crawl_frequency_minutes: Mapped[int] = mapped_column(Integer, default=60)
+    crawl_frequency_minutes: Mapped[int] = mapped_column(Integer, default=1440)
     priority: Mapped[int] = mapped_column(Integer, default=1)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # CANDIDATE -> APPROVED (crawled) or REJECTED. Only APPROVED + active sources with an adapter are ever crawled.
+    approval_status: Mapped[str] = mapped_column(String(20), nullable=False, default="APPROVED", server_default="APPROVED")
+    adapter_key: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
     robots_allowed: Mapped[bool] = mapped_column(Boolean, default=True)
     last_crawled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Last time this source's content was successfully collected AND processed (extracted or confirmed unchanged).
+    # A failed crawl or failed extraction must never be read as 'the source lists no promotions'.
+    last_processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     last_success_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     last_error_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

@@ -41,6 +41,7 @@ class Top10PromotionItem(BaseModel):
     outlet: Optional[str] = None
     channel: Optional[str] = None
     geography: Optional[str] = None
+    geography_region: Optional[str] = None
     promotion_type: str
     buy_quantity: Optional[int] = None
     free_quantity: Optional[int] = None

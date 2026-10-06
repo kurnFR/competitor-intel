@@ -13,6 +13,7 @@ from app.models.entity import Competitor, Retailer
 from app.models.own_product import OwnProduct
 from app.models.promotion import Promotion
 from app.services import auth as auth_service
+from tests.helpers import add_promotion, cleanup_source, make_source
 
 PASSWORD = "Correct-Horse-Battery-9"
 
@@ -35,14 +36,13 @@ def env():
     competitor = db.query(Competitor).first()
     now = datetime.now(timezone.utc)
     promos = []
+    source = make_source(db, tag)
+    db.commit()
 
     def promo(name, **kw):
-        base = dict(product_name=f"Zz{tag} {name}", category="BISCUIT", promotion_type="DISCOUNT", retailer_id=retailer.id,
-                    competitor_id=competitor.id, status="ACTIVE", last_seen_at=now, first_seen_at=now, rank_score=0.5)
+        base = dict(product_name=f"Zz{tag} {name}", retailer_id=retailer.id, competitor_id=competitor.id)
         base.update(kw)
-        p = Promotion(**base)
-        db.add(p)
-        db.flush()
+        p = add_promotion(db, source, **base)
         promos.append(p)
         return p
 
@@ -56,7 +56,7 @@ def env():
     db.rollback()
     db.query(OwnProduct).filter(OwnProduct.name.like(f"Zz{tag}%")).delete(synchronize_session=False)
     db.query(OwnProduct).filter(OwnProduct.sku.like(f"SKU-{tag}%")).delete(synchronize_session=False)
-    db.query(Promotion).filter(Promotion.id.in_([p.id for p in promos])).delete(synchronize_session=False)
+    cleanup_source(db, source)
     for name in users.values():
         db.query(AuditLog).filter(AuditLog.username == name).delete(synchronize_session=False)
         db.query(User).filter(User.username == name).delete(synchronize_session=False)

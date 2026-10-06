@@ -32,7 +32,8 @@ STRICT EXTRACTION RULES:
 7. Normalize prices into numeric IDR only when a price is explicitly present (e.g. "Rp6.500" -> 6500, "18.900" -> 18900). Do not derive a price from unrelated text.
 8. Provide an exact, contiguous quote from the supplied source text in evidence_quote. The quote must support the extracted promotion; do not fabricate or paraphrase evidence.
 9. Confidence must reflect evidence quality, not model certainty. Lower confidence when the source is ambiguous or incomplete.
-10. Return valid JSON only with structure: {"promotions": [...]}
+10. geography: copy the EXACT wording from the source text that states where the promotion is valid (for example "Jawa", "Seluruh Indonesia", "Online only", "Jabodetabek", a city or store list). If the source does not state where the promotion is valid, return null. NEVER assume a promotion is nationwide and never infer a region from the retailer, the website or the language.
+11. Return valid JSON only with structure: {"promotions": [...]}
 """
 
 
@@ -93,6 +94,7 @@ Respond with valid JSON matching:
       "start_date": null,
       "end_date": null,
       "retailer": null,
+      "geography": null,
       "evidence_quote": "exact source text",
       "confidence": 0.0
     }}

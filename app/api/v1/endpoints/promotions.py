@@ -7,11 +7,13 @@ from app.db.session import get_db
 from app.models.promotion import Promotion, PromotionEvidence
 from app.models.promotion_change import PromotionChangeEvent
 from app.models.entity import Competitor, Brand, Retailer
-from app.schemas.promotion import Top10Response, Top10PromotionItem, PromotionDetailOut, PromotionChangeEventOut, StatsResponse
+from app.schemas.promotion import Top10Response, Top10PromotionItem, PromotionDetailOut, PromotionChangeEventOut
 from fastapi.responses import Response
 from app.core.deps import require_role
 from app.services.digest import build_digest
-from app.services.exporting import EXPORT_HEADERS, build_export
+from app.services.regional import build_regional_prices
+from app.services.exporting import build_export
+from app.services.geography import REGION_LABELS, UNKNOWN
 from app.services.channels import display_channel, normalize_channel, retailer_types_for
 from app.services.promotions.visibility import live_promotion_filter
 
@@ -41,7 +43,7 @@ def _channel_condition(channel: str):
 
 
 def _filtered_query(db: Session, now: datetime, *, days: int, q=None, category=None, outlet=None, channel=None,
-                    brand=None, competitor=None):
+                    brand=None, competitor=None, region=None):
     query = (
         db.query(Promotion)
         .outerjoin(Competitor, Promotion.competitor_id == Competitor.id)
@@ -66,6 +68,8 @@ def _filtered_query(db: Session, now: datetime, *, days: int, q=None, category=N
         query = query.filter(_ilike(Brand.name, brand))
     if competitor:
         query = query.filter(_ilike(Competitor.name, competitor))
+    if region:
+        query = query.filter(Promotion.geography_region == region.strip().upper())
     return query
 
 
@@ -93,6 +97,7 @@ def get_top10_promotions(
     outlet: Optional[str] = Query(None, max_length=100, description="Filter by outlet name"),
     retailer: Optional[str] = Query(None, max_length=100, description="Backward-compatible outlet filter"),
     channel: Optional[str] = Query(None, max_length=50, description="Filter by channel, e.g. Modern Trade or E-commerce"),
+    region: Optional[str] = Query(None, max_length=30, description="Filter by stated region, e.g. JAWA, SUMATERA, ONLINE, NATIONAL, UNKNOWN"),
     brand: Optional[str] = Query(None, max_length=100, description="Filter by brand name"),
     competitor: Optional[str] = Query(None, max_length=100, description="Filter by competitor name"),
     days: int = Query(90, ge=1, le=365, description="Recency window in days (default 90 for 3-month rule)"),
@@ -100,8 +105,8 @@ def get_top10_promotions(
 ):
     now = datetime.now(timezone.utc)
     query = _filtered_query(db, now, days=days, q=q, category=category, outlet=outlet or retailer,
-                            channel=channel, brand=brand, competitor=competitor)
-    results = query.order_by(Promotion.rank_score.desc(), Promotion.last_seen_at.desc()).limit(10).all()
+                            channel=channel, brand=brand, competitor=competitor, region=region)
+    results = query.order_by(Promotion.rank_score.desc(), Promotion.last_verified_at.desc()).limit(10).all()
 
     evidence_by_promo = _latest_evidence(db, results)
 
@@ -118,7 +123,8 @@ def get_top10_promotions(
             competitor=p.competitor.name if p.competitor else None, category=p.category, pack_size=p.pack_size,
             retailer=p.retailer.name if p.retailer else None, outlet=p.retailer.name if p.retailer else None,
             channel=display_channel(p.channel, p.retailer.channel_type if p.retailer else None),
-            geography=p.geography, promotion_type=p.promotion_type,
+            geography=p.geography or REGION_LABELS[UNKNOWN], geography_region=p.geography_region,
+            promotion_type=p.promotion_type,
             buy_quantity=p.buy_quantity, free_quantity=p.free_quantity, regular_price=p.regular_price,
             promo_price=p.promo_price, discount_percentage=p.discount_percentage, effective_discount=p.discount_percentage,
             valid_until=valid_until,
@@ -128,7 +134,7 @@ def get_top10_promotions(
             evidence_quote=latest_evidence.evidence_text if latest_evidence else None,
             source_url=latest_evidence.source_url if latest_evidence else None,
             source_status=("Verified source" if latest_evidence and latest_evidence.source_url and latest_evidence.evidence_text else "Unverified source"),
-            last_verified=p.last_seen_at,
+            last_verified=p.last_verified_at,
         ))
     return Top10Response(generated_at=now.isoformat(), count=len(items), promotions=items)
 
@@ -152,7 +158,7 @@ def _export_rows(db: Session, promotions) -> list:
             "valid_until": p.end_date.strftime("%Y-%m-%d") if p.end_date else None,
             "dates_stated": "Yes" if dates_stated else "No", "score": p.rank_score, "confidence": p.ai_confidence,
             "source_url": ev.source_url if ev else None, "evidence": ev.evidence_text if ev else None,
-            "last_verified": p.last_seen_at.strftime("%Y-%m-%d %H:%M") if p.last_seen_at else None,
+            "last_verified": p.last_verified_at.strftime("%Y-%m-%d %H:%M") if p.last_verified_at else None,
         })
     return rows
 
@@ -164,6 +170,7 @@ def export_promotions(
     category: Optional[str] = Query(None, max_length=50),
     outlet: Optional[str] = Query(None, max_length=100),
     channel: Optional[str] = Query(None, max_length=50),
+    region: Optional[str] = Query(None, max_length=30),
     brand: Optional[str] = Query(None, max_length=100),
     competitor: Optional[str] = Query(None, max_length=100),
     days: int = Query(90, ge=1, le=365),
@@ -174,8 +181,8 @@ def export_promotions(
     now = datetime.now(timezone.utc)
     promotions = (
         _filtered_query(db, now, days=days, q=q, category=category, outlet=outlet, channel=channel,
-                        brand=brand, competitor=competitor)
-        .order_by(Promotion.rank_score.desc(), Promotion.last_seen_at.desc()).limit(limit).all()
+                        brand=brand, competitor=competitor, region=region)
+        .order_by(Promotion.rank_score.desc(), Promotion.last_verified_at.desc()).limit(limit).all()
     )
     content, media_type, ext = build_export(_export_rows(db, promotions), format)
     filename = f"competitor-promotions-{now.strftime('%Y%m%d')}.{ext}"
@@ -187,6 +194,20 @@ def export_promotions(
 def promotion_digest(days: int = Query(7, ge=1, le=60), db: Session = Depends(get_db)):
     """What is new, what changed and what ends soon."""
     return build_digest(db, days=days)
+
+
+@router.get("/regional-prices")
+def regional_prices(
+    category: Optional[str] = Query(None, max_length=50),
+    competitor: Optional[str] = Query(None, max_length=100),
+    q: Optional[str] = Query(None, max_length=100),
+    days: int = Query(90, ge=1, le=365),
+    db: Session = Depends(get_db),
+):
+    """Price of each eligible product per stated region. Unstated regions stay separate, never 'nationwide'."""
+    now = datetime.now(timezone.utc)
+    promotions = _filtered_query(db, now, days=days, q=q, category=category, competitor=competitor).limit(5000).all()
+    return build_regional_prices(promotions)
 
 
 @router.get("/{promotion_id}/changes", response_model=List[PromotionChangeEventOut])

@@ -64,13 +64,30 @@ const stat = p.d.body.textContent;
 check("dashboard has no leftover template errors", !/undefined|\[object Object\]|NaN/.test(p.d.querySelector("#promo-table-body").textContent), p.d.querySelector("#promo-table-body").textContent.slice(0, 200));
 
 // ---- 3. Other pages render and load data
-for (const [path, marker] of [["/insights", "Promotion activity by competitor"], ["/compare", "Our prices vs competitor promotions"], ["/review", "Matches to confirm"], ["/admin", "Websites we scan"]]) {
+for (const [path, marker] of [["/insights", "Promotion activity by competitor"], ["/regional", "Regional pricing"], ["/compare", "Our prices vs competitor promotions"], ["/review", "Matches to confirm"], ["/admin", "Websites we scan"]]) {
   const q = await openPage(path); await sleep(700);
   check(`${path} renders with no script errors`, q.status === 200 && q.errors.length === 0 && q.d.body.textContent.includes(marker), (q.errors || []).join("|"));
 }
 const adminPage = await openPage("/admin"); await sleep(800);
 check("admin page lists users and sources", adminPage.d.querySelectorAll("#users tr").length >= 1 && adminPage.d.querySelectorAll("#sources tr").length >= 1);
 check("admin page lists security events", adminPage.d.querySelectorAll("#audit tr").length >= 1);
+
+// ---- 3b. Sources: add a candidate, see it awaiting approval, approve it through the UI
+{
+  const a = await openPage("/admin"); await sleep(800);
+  const form = $(a, "#new-source");
+  const unique = "UI Candidate " + Date.now();
+  form.elements["name"].value = unique; form.elements["base_url"].value = "https://93.184.216.34/ui-promo-" + Date.now();
+  check("adapter dropdown is populated", form.elements["adapter_key"].options.length >= 4);
+  submit(a, form); await sleep(900);
+  let row = [...a.d.querySelectorAll("#sources tr")].find(r => r.textContent.includes(unique));
+  check("new website appears as a candidate awaiting approval", !!row && /AWAITING APPROVAL/.test(row.textContent) && /Approve/.test(row.textContent), row ? row.textContent.slice(0, 120) : "row missing");
+  const approve = [...row.querySelectorAll("button")].find(b => /Approve/.test(b.textContent));
+  approve.dispatchEvent(new a.w.Event("click")); await sleep(900);
+  row = [...a.d.querySelectorAll("#sources tr")].find(r => r.textContent.includes(unique));
+  check("approving moves it out of the candidate state", !!row && !/AWAITING/.test(row.textContent) && /NEVER SCANNED/.test(row.textContent), row ? row.textContent.slice(0, 120) : "row missing");
+  check("recent scans panel renders", a.d.querySelectorAll("#scans tr").length >= 1);
+}
 
 // ---- 4. Account page: enrol two-factor through the UI
 p = await openPage("/account"); await sleep(500);

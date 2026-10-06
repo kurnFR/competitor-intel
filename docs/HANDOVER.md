@@ -11,12 +11,14 @@ against its source text, ranks them, and shows them to the marketing team. Every
 | Insights | Weekly digest (new / changed / ending soon) and competitor activity heat-map |
 | Price comparison | Your prices vs competitor promotions per 100 g (analyst+) |
 | Export | CSV / Excel of the filtered view (analyst+) |
-| Review | Confirm or reject uncertain product/brand/retailer matches (analyst+) |
+| Review | Confirm uncertain product/brand/retailer matches, and decide conflicts where two sources disagree (analyst+) |
 | Admin | Users and roles, 2FA reset, websites we scan (with health), security log |
 | Alerts | Weekly digest by e-mail and/or Slack-style webhook (optional) |
 | Security | Argon2id passwords, optional 2FA, server-side sessions, CSRF, lockout, audit log, roles |
 
 ## What you still need to do (I cannot do these for you)
+
+**Start with `docs/FIRST_RUN.md`** (ordered checklist) and run `python -m scripts.preflight` to see what is outstanding.
 
 1. **Try it on your real sources and LLM.** This was developed and tested with synthetic data. Run a scan, then
    check 20-30 promotions against the source pages. Use `python -m scripts.eval_extraction` to keep score.
@@ -47,15 +49,22 @@ against its source text, ranks them, and shows them to the marketing team. Every
 
 ## Known limits
 
-- **One app process only.** The scheduler, scan status and login throttling are in memory / per process. A database
-  lock prevents overlapping scans, but do not run several workers.
+- **One app process only.** The scheduler and the per-IP login throttle are in memory. A database lock prevents overlapping
+  scans and scan history is stored in the database, but do not run several workers.
 - **Extraction is only as good as the LLM and the page.** Promotions without a verbatim evidence quote in the page are
   rejected by design. Pages that only render with JavaScript need Playwright (not installed by default).
-- **Undated promotions** are shown for 14 days after last seen (flagged, ranked lower) because catalog pages often omit dates.
-- **Per-source crawl frequency is not used;** one global interval (`CRAWL_INTERVAL_MINUTES`) applies to all sources.
+- **Undated promotions** are shown (flagged, ranked lower) until their source is successfully processed later and no longer lists
+  them; a failing source never causes promotions to disappear.
+- **Geography is macro-region only** (province/city/store stay as wording) and is "Not stated" unless the page says so.
+- **Scans are per source.** Each approved source has its own frequency (Admin page); the scheduler checks every
+  `SCHEDULER_TICK_MINUTES` and scans only what is due. "Scan now" scans every approved source.
 - **Price comparison** covers products sold by weight (grams/kg). Volume and count packs are skipped.
 - **The Docker files were not built** in the environment where they were written; test them once on a spare machine.
 - **No self-service password reset by e-mail;** an admin resets passwords.
+
+## Where this stands against the PRD
+
+See `docs/PRD_ALIGNMENT.md` for a section-by-section status and the decisions that need to come from you.
 
 ## Suggested next steps
 

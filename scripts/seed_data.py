@@ -1,6 +1,4 @@
-import uuid
 import re
-from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from app.db.session import SessionLocal
 from app.models.entity import Competitor, Brand, Product, Retailer
@@ -9,6 +7,18 @@ from app.models.source import SourceRegistry
 
 def normalize(name: str) -> str:
     return re.sub(r"[^a-z0-9]", "", name.lower())
+
+
+def ADAPTER_FOR_DOMAIN(domain: str, source_type: str) -> str:
+    """Seed sources get an explicit adapter; at runtime adapters are never guessed from the domain."""
+    d = domain.lower()
+    if "superindo" in d:
+        return "superindo"
+    if "indomaret" in d:
+        return "indomaret"
+    if "alfamart" in d or "alfagift" in d:
+        return "alfamart"
+    return "generic_catalog"
 
 
 def seed_reference_data():
@@ -224,7 +234,9 @@ def seed_reference_data():
                     tier=s_data["tier"],
                     reliability_score=s_data["reliability_score"],
                     category=s_data["category"],
-                    crawl_frequency_minutes=s_data["crawl_frequency_minutes"],
+                    crawl_frequency_minutes=max(s_data["crawl_frequency_minutes"], 1440),
+                    adapter_key=ADAPTER_FOR_DOMAIN(s_data["domain"], s_data["source_type"]),
+                    approval_status="APPROVED",
                     country="ID",
                     language="id",
                     is_active=True

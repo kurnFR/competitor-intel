@@ -28,7 +28,7 @@ def scheduled_expiration_job():
 
 def scheduled_pipeline_job():
     try:
-        run_pipeline(crawl_fresh=True, max_docs=None)
+        run_pipeline(crawl_fresh=True, max_docs=None, only_due=True, trigger="SCHEDULED")
     except Exception:
         logger.exception("Error in scheduled pipeline job")
 
@@ -54,7 +54,7 @@ def start_scheduler():
     scheduler.add_job(
         scheduled_pipeline_job,
         "interval",
-        minutes=settings.CRAWL_INTERVAL_MINUTES,
+        minutes=settings.SCHEDULER_TICK_MINUTES,
         id="pipeline_runner",
         replace_existing=True
     )
@@ -66,8 +66,8 @@ def start_scheduler():
         logger.info("Weekly digest scheduled (%s at %02d:00).", settings.DIGEST_DAY_OF_WEEK, settings.DIGEST_HOUR)
     scheduler.start()
     logger.info(
-        "Background scheduler started (Expiration: %sm, Crawl: %sm).",
-        settings.EXPIRATION_CHECK_MINUTES, settings.CRAWL_INTERVAL_MINUTES,
+        "Background scheduler started (expiry check every %sm; sources checked for due crawls every %sm).",
+        settings.EXPIRATION_CHECK_MINUTES, settings.SCHEDULER_TICK_MINUTES,
     )
 
 

@@ -55,6 +55,7 @@ WantedBy=multi-user.target
 - [ ] `APP_ENV=production` (Secure cookies, HSTS, hidden `/docs`)
 - [ ] HTTPS in front; `TRUST_PROXY=true` **only** if the proxy overwrites `X-Forwarded-For`
 - [ ] First administrator created; no shared accounts (one login per person)
+- [ ] Sources approved on the Admin page (new ones start as candidates and are not scanned)
 - [ ] `CRAWLER_USER_AGENT` contains a contact address; each source's terms of use reviewed
 - [ ] LLM endpoint reachable from the server (`python -m scripts.try_extract sample.txt`)
 - [ ] Database backups scheduled (`deploy/backup.sh`) and a restore tested once

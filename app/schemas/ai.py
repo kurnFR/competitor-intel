@@ -31,6 +31,7 @@ class ExtractedPromotionItem(BaseModel):
     start_date: Optional[str] = Field(default=None, description="Promotion start date in YYYY-MM-DD or null")
     end_date: Optional[str] = Field(default=None, description="Promotion valid until date in YYYY-MM-DD or null")
     retailer: Optional[str] = Field(default=None, description="Retailer name: Indomaret, Alfamart, Superindo, Hypermart, etc.")
+    geography: Optional[str] = Field(default=None, max_length=255, description="Exact source wording of where the promotion is valid (e.g. 'Jawa', 'Seluruh Indonesia', 'Online'); null if the source does not say")
     evidence_quote: str = Field(min_length=1, description="Exact snippet from source text supporting this promotion")
     confidence: float = Field(default=0.9, ge=0, le=1, description="Confidence score from 0.0 to 1.0")
 

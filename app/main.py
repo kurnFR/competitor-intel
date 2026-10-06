@@ -3,6 +3,8 @@ import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Optional
+from sqlalchemy.orm import Session
+from app.db.session import get_db
 from fastapi import BackgroundTasks, Depends, FastAPI, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -131,6 +133,11 @@ def insights_page(request: Request, principal: Optional[Principal] = Depends(get
     return _protected_page(request, "insights.html", principal)
 
 
+@app.get("/regional", response_class=HTMLResponse)
+def regional_page(request: Request, principal: Optional[Principal] = Depends(get_principal_optional)):
+    return _protected_page(request, "regional.html", principal)
+
+
 @app.get("/compare", response_class=HTMLResponse)
 def compare_page(request: Request, principal: Optional[Principal] = Depends(get_principal_optional)):
     return _protected_page(request, "compare.html", principal, minimum="ANALYST")
@@ -153,11 +160,11 @@ def health_check():
     return {"status": "ok"}
 
 
-def _run_pipeline_job():
+def _run_pipeline_job(triggered_by: Optional[str] = None):
     pipeline_state.update(status="running", started_at=datetime.now(timezone.utc).isoformat(), finished_at=None, error=None)
     try:
         # A fresh crawl processes every document it produced (max_docs=None).
-        result = run_pipeline(crawl_fresh=True, max_docs=None)
+        result = run_pipeline(crawl_fresh=True, max_docs=None, trigger="MANUAL", triggered_by=triggered_by)
         if result.get("status") == "busy":
             pipeline_state.update(status="completed", error="Another scan was already running; nothing new was started.")
         else:
@@ -171,16 +178,20 @@ def _run_pipeline_job():
         pipeline_state["finished_at"] = datetime.now(timezone.utc).isoformat()
 
 
-@app.post("/api/v1/pipeline/run", status_code=202, dependencies=[Depends(require_admin_session_or_key)])
-def run_pipeline_now(background_tasks: BackgroundTasks):
+@app.post("/api/v1/pipeline/run", status_code=202)
+def run_pipeline_now(background_tasks: BackgroundTasks, principal: Optional[Principal] = Depends(require_admin_session_or_key)):
     if pipeline_state["status"] in ("running", "queued"):
         return {"status": pipeline_state["status"], "message": "A promotion scan is already running."}
     pipeline_state.update(status="queued", started_at=None, finished_at=None, error=None)
-    background_tasks.add_task(_run_pipeline_job)
+    background_tasks.add_task(_run_pipeline_job, principal.user.username if principal else "api-key")
     return {"status": "queued", "message": "Promotion scan queued. Use /api/v1/pipeline/status to monitor it."}
 
 
 @app.get("/api/v1/pipeline/status", dependencies=[Depends(require_role("VIEWER"))])
-def pipeline_status():
-    # Status is tracked per process; run a single uvicorn worker (see scripts/start_server.sh).
-    return pipeline_state
+def pipeline_status(db: Session = Depends(get_db)):
+    """In-process state for the scan being started or running here, plus the recorded history (any process)."""
+    from app.models.scan_run import ScanRun
+    runs = db.query(ScanRun).order_by(ScanRun.started_at.desc()).limit(8).all()
+    history = [{"id": str(r.id), "started_at": r.started_at.isoformat(), "finished_at": r.finished_at.isoformat() if r.finished_at else None,
+                "trigger": r.trigger, "triggered_by": r.triggered_by, "status": r.status, "summary": r.summary, "error": r.error} for r in runs]
+    return {**pipeline_state, "history": history}

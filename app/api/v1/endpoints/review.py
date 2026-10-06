@@ -12,7 +12,9 @@ from app.db.session import get_db
 from app.models.entity import Brand, Competitor, Product, Retailer
 from app.models.promotion import Promotion
 from app.models.resolution import ReviewQueue
+from app.models.promotion import PromotionObservation
 from app.services import auth as auth_service
+from app.services.promotions.upsert import apply_observation_values
 
 router = APIRouter()
 
@@ -71,7 +73,7 @@ def list_review_items(status: str = Query("PENDING", pattern="^(PENDING|APPROVED
             promotion_competitor=promo.competitor.name if promo and promo.competitor else None,
             current_match=_name(db, item.entity_type, item.entity_id),
             suggested_match=_name(db, item.entity_type, item.candidate_entity_id),
-            can_approve=bool(spec and promo and item.candidate_entity_id),
+            can_approve=bool(promo and item.observation_id) if item.entity_type == "CONFLICT" else bool(spec and promo and item.candidate_entity_id),
         ))
     return out
 
@@ -84,6 +86,9 @@ def resolve_review_item(item_id: UUID, body: ResolveIn, request: Request,
         raise HTTPException(status_code=404, detail="Review item not found.")
     if item.status != "PENDING":
         raise HTTPException(status_code=409, detail="This item was already reviewed.")
+
+    if item.entity_type == "CONFLICT":
+        return _resolve_conflict(db, item, body, request, principal)
 
     if body.decision == "APPROVED":
         spec = ENTITY_MODELS.get((item.entity_type or "").upper())
@@ -108,3 +113,34 @@ def resolve_review_item(item_id: UUID, body: ResolveIn, request: Request,
         current_match=_name(db, item.entity_type, item.entity_id),
         suggested_match=_name(db, item.entity_type, item.candidate_entity_id),
     )
+
+
+def _resolve_conflict(db: Session, item: ReviewQueue, body: ResolveIn, request: Request, principal: Principal):
+    """APPROVED = use the new source's values; REJECTED = keep the current values. Both observations stay on record."""
+    promo = db.get(Promotion, item.promotion_id) if item.promotion_id else None
+    if promo is None:
+        raise HTTPException(status_code=422, detail="The promotion no longer exists.")
+    if body.decision == "APPROVED":
+        observation = db.get(PromotionObservation, item.observation_id) if item.observation_id else None
+        if observation is None:
+            raise HTTPException(status_code=422, detail="The conflicting observation is no longer available; keep the current values instead.")
+        try:
+            apply_observation_values(db, promo, observation)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from None
+    item.status = body.decision
+    item.review_notes = body.notes
+    item.assigned_to = principal.user.username
+    item.reviewed_at = datetime.now(timezone.utc)
+    db.flush()
+    still_open = db.query(ReviewQueue).filter(
+        ReviewQueue.entity_type == "CONFLICT", ReviewQueue.promotion_id == promo.id, ReviewQueue.status == "PENDING").count()
+    promo.has_open_conflict = still_open > 0
+    auth_service.audit(db, "conflict_resolved", username=principal.user.username, ip=client_ip(request),
+                       detail={"item": str(item.id), "promotion": str(promo.id),
+                               "decision": "used_new_values" if body.decision == "APPROVED" else "kept_current_values"})
+    db.commit()
+    return ReviewItemOut(
+        id=item.id, entity_type=item.entity_type, reason=item.reason, confidence=item.confidence, priority=item.priority,
+        status=item.status, created_at=item.created_at, promotion_id=item.promotion_id, promotion_product=promo.product_name,
+        promotion_competitor=promo.competitor.name if promo.competitor else None)
