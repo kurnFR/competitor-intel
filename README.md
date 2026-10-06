@@ -263,6 +263,8 @@ How it is protected:
 
 ## Marketing features
 
+* **Why this rank:** open any promotion's evidence drawer to see exactly how its impact score was built (component by component).
+* **Competitors** (`/competitors`): per competitor, live promotions, average discount, usual mechanic, outlets, new / changed / ending this week.
 * **Insights** (`/insights`): weekly digest of new promotions, price/mechanic changes and promotions ending within 7 days, plus a per-competitor activity heat-map.
 * **Export** (analyst+): CSV or Excel of the current filtered view. Cells that could run as spreadsheet formulas are neutralised.
 * **Review** (analyst+): approve or reject uncertain product/brand/retailer matches (approval links the promotion to the suggested entity), and decide **conflicts**: when two comparable sources report different values for the same promotion, the stored values are frozen, the promotion is hidden from the Top 10, and you choose *use new values* or *keep current*. Both observations are always kept.

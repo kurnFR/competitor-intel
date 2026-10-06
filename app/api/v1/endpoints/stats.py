@@ -2,6 +2,7 @@ from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
+from app.core.deps import require_role
 from app.db.session import get_db
 from app.models.promotion import Promotion
 from app.models.entity import Competitor, Brand, Retailer
@@ -91,3 +92,56 @@ def get_trends(weeks: int = Query(8, ge=2, le=26), db: Session = Depends(get_db)
         entry["total"] += count
     ordered = [{"competitor": n, **v} for n, v in sorted(series.items(), key=lambda kv: -kv[1]["total"])]
     return {"weeks": labels, "competitors": ordered}
+
+
+@router.get("/competitors")
+def competitor_overview(db: Session = Depends(get_db)):
+    """One row per tracked competitor: live promotions, typical discount, usual mechanic, reach and recent activity."""
+    from collections import Counter
+    from app.models.promotion_change import PromotionChangeEvent
+
+    now = datetime.now(timezone.utc)
+    week_ago = now - timedelta(days=7)
+    live = live_promotion_filter(now, recency_days=90)
+    promos = (
+        db.query(Promotion).outerjoin(Retailer, Promotion.retailer_id == Retailer.id).filter(live, Promotion.competitor_id.isnot(None)).all()
+    )
+    changes = dict(
+        db.query(Promotion.competitor_id, func.count(PromotionChangeEvent.id))
+        .join(PromotionChangeEvent, PromotionChangeEvent.promotion_id == Promotion.id)
+        .filter(PromotionChangeEvent.observed_at >= week_ago, PromotionChangeEvent.event_type != "CREATED")
+        .group_by(Promotion.competitor_id).all()
+    )
+    by_competitor = {}
+    for p in promos:
+        by_competitor.setdefault(p.competitor_id, []).append(p)
+    rows = []
+    for c in db.query(Competitor).filter(Competitor.is_active.is_(True)).order_by(Competitor.name).all():
+        ps = by_competitor.get(c.id, [])
+        discounts = [p.discount_percentage for p in ps if p.discount_percentage]
+        mechanics = Counter(p.promotion_type for p in ps)
+        rows.append({
+            "id": str(c.id), "name": c.name, "live_promotions": len(ps),
+            "avg_discount": round(sum(discounts) / len(discounts), 1) if discounts else None,
+            "top_mechanic": mechanics.most_common(1)[0][0] if mechanics else None,
+            "outlets": len({p.retailer_id for p in ps if p.retailer_id}),
+            "new_this_week": sum(1 for p in ps if p.first_seen_at and p.first_seen_at >= week_ago),
+            "changes_this_week": int(changes.get(c.id, 0)),
+            "ending_soon": sum(1 for p in ps if p.end_date and now <= p.end_date <= now + timedelta(days=7)),
+        })
+    rows.sort(key=lambda r: (-r["live_promotions"], r["name"]))
+    return {"generated_at": now.isoformat(), "competitors": rows}
+
+
+@router.get("/sources", dependencies=[Depends(require_role("ANALYST"))])
+def source_health(db: Session = Depends(get_db)):
+    """Read-only view of how fresh the data is, for analysts (no addresses, no errors, no controls)."""
+    from app.api.v1.endpoints.sources import _health
+    from app.models.source import SourceRegistry
+
+    now = datetime.now(timezone.utc)
+    rows = []
+    for s in db.query(SourceRegistry).filter(SourceRegistry.approval_status == "APPROVED").order_by(SourceRegistry.name).all():
+        rows.append({"name": s.name, "domain": s.domain, "health": _health(s, now), "scan_every_minutes": s.crawl_frequency_minutes,
+                     "last_processed_at": s.last_processed_at.isoformat() if s.last_processed_at else None})
+    return {"generated_at": now.isoformat(), "sources": rows}

@@ -57,6 +57,7 @@
                     <i id="theme-icon" class="fa-solid fa-moon"></i>
                 </button>
 
+                <a href="/competitors" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-xs font-medium rounded-lg border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-building"></i> Competitors</a>
                 <a href="/regional" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-xs font-medium rounded-lg border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-map-location-dot"></i> Regions</a>
                 <a href="/insights" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-xs font-medium rounded-lg border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-chart-column"></i> Insights</a>
                 {% if user.role in ('ANALYST', 'ADMIN') %}
@@ -256,6 +257,10 @@
                     </div>
                 </div>
                 <div>
+                    <span class="text-xs text-slate-400 dark:text-slate-500 uppercase font-bold tracking-wider">Why this rank</span>
+                    <div id="modal-score" class="mt-1 space-y-1.5"></div>
+                </div>
+                <div>
                     <span class="text-xs text-slate-400 dark:text-slate-500 uppercase font-bold tracking-wider">Source Webpage</span>
                     <div class="mt-1">
                         <a id="modal-url" href="#" target="_blank" class="text-xs text-blue-600 dark:text-blue-400 hover:underline break-all flex items-center gap-1">
@@ -310,6 +315,18 @@
             }
         }
 
+        function renderScoreBreakdown(b) {
+            const box = document.getElementById('modal-score');
+            if (!b) { box.textContent = 'No breakdown available.'; return; }
+            const rows = b.components.map(c => {
+                const pct = Math.round((c.points / c.weight) * 100);
+                return `<div><div class="flex justify-between text-xs"><span class="text-slate-600 dark:text-slate-300">${esc(c.label)} <span class="text-slate-400">&times; ${Math.round(c.weight * 100)}%</span></span><span class="font-semibold">+${(c.points * 100).toFixed(1)}</span></div>
+                    <div class="h-1.5 rounded bg-slate-100 dark:bg-slate-800 overflow-hidden"><div class="h-full bg-blue-500" style="width:${pct}%"></div></div>
+                    <div class="text-[11px] text-slate-400">${esc(c.note)}</div></div>`;
+            }).join('');
+            const penalty = b.undated_penalty ? `<div class="text-xs text-amber-600">Dates not stated on the source: score &times; ${esc(b.undated_penalty)}</div>` : '';
+            box.innerHTML = rows + penalty + `<div class="flex justify-between text-sm font-bold border-t border-slate-200 dark:border-slate-700 pt-1"><span>Impact score</span><span>${(b.score * 100).toFixed(1)} / 100</span></div>`;
+        }
         function currentFilterQuery() {
             const params = new URLSearchParams();
             const map = {category: 'filter-category', outlet: 'filter-outlet', channel: 'filter-channel', q: 'filter-search'};
@@ -469,6 +486,7 @@
             document.getElementById('modal-confidence').textContent = `${(p.ai_confidence * 100).toFixed(0)}%`;
             document.getElementById('modal-reliability').textContent = `${(p.source_reliability * 100).toFixed(0)}%`;
             const modalUrl = document.getElementById('modal-url');
+            renderScoreBreakdown(p.score_breakdown);
             const safeUrl = safeHttpUrl(p.source_url);
             modalUrl.href = safeUrl || '#';
             modalUrl.rel = 'noopener noreferrer';
@@ -483,6 +501,8 @@
 
         // Initialize on load
         updateThemeIcon();
+        const initialQuery = new URLSearchParams(location.search).get('q');
+        if (initialQuery) document.getElementById('filter-search').value = initialQuery;
         loadSession().then(() => { fetchStats(); fetchTop10(); });
     </script>
 </body>

@@ -363,3 +363,73 @@ def test_a_promotion_stays_hidden_until_every_conflict_on_it_is_resolved(env):
     c.post(f"/api/v1/review/{ids[1]}/resolve", json={"decision": "REJECTED"}, headers=csrf)
     env.db.expire_all()
     assert env.db.get(Promotion, p.id).has_open_conflict is False
+
+
+# ---------------------------------------------------------------- explainable score, competitors, source health (PRD 14, 17)
+def test_top10_explains_each_rank_and_matches_the_stored_score(env):
+    from app.services.ranking.rescore import rescore_promotions
+    src = env.source()
+    add_promotion(env.db, src, product_name=f"Zz{env.tag} Explained", promotion_type="DISCOUNT", discount_percentage=30.0,
+                  source_reliability=0.9, ai_confidence=0.85)
+    env.db.commit()
+    rescore_promotions(env.db)
+    env.db.commit()
+    item = env.client().get(f"/api/v1/promotions/top10?q=Zz{env.tag}").json()["promotions"][0]
+    b = item["score_breakdown"]
+    assert b["score"] == pytest.approx(item["rank_score"], abs=1e-4)                  # what is explained is what ranks
+    assert {c["key"] for c in b["components"]} >= {"strength", "freshness", "change"}
+    assert all(c["note"] for c in b["components"])
+    strength = next(c for c in b["components"] if c["key"] == "strength")
+    assert "30" in strength["note"] and strength["points"] == pytest.approx(0.25 * 0.75, abs=1e-4)
+
+
+def test_competitor_overview_counts_only_eligible_promotions(env):
+    from app.models.entity import Competitor
+    src = env.source()
+    comp = Competitor(name=f"Zz {env.tag} Rival", normalized_name=f"zz{env.tag}rival", is_active=True)
+    env.db.add(comp)
+    env.db.flush()
+    n = lambda label: f"Zz{env.tag} {label}"
+    add_promotion(env.db, src, product_name=n("A"), competitor_id=comp.id, discount_percentage=20.0, end_date=env.now + timedelta(days=3))
+    add_promotion(env.db, src, product_name=n("B"), competitor_id=comp.id, discount_percentage=40.0, promotion_type="BUY_X_GET_Y")
+    add_promotion(env.db, src, product_name=n("C"), competitor_id=comp.id, discount_percentage=50.0, has_open_conflict=True)   # hidden
+    add_promotion(env.db, src, product_name=n("D"), competitor_id=comp.id, evidence=False)                                        # hidden
+    env.db.commit()
+    try:
+        rows = {r["name"]: r for r in env.client().get("/api/v1/stats/competitors").json()["competitors"]}
+        r = rows[comp.name]
+        assert r["live_promotions"] == 2 and r["avg_discount"] == 30.0 and r["new_this_week"] == 2 and r["ending_soon"] == 1
+        assert r["top_mechanic"] in ("DISCOUNT", "BUY_X_GET_Y")
+        assert TestClient(app).get("/api/v1/stats/competitors").status_code == 401
+    finally:
+        cleanup_source(env.db, src)
+        env.db.delete(comp)
+        env.db.commit()
+
+
+def test_source_health_is_read_only_analyst_data_without_internals(env):
+    from sqlalchemy import text as sql
+    src = env.source()
+    src.last_processed_at = env.now
+    src.last_success_at = env.now
+    src.last_crawled_at = env.now
+    env.db.commit()
+    data = env.client().get("/api/v1/stats/sources").json()                       # the fixture user is an ANALYST
+    mine = next(s for s in data["sources"] if s["domain"] == src.domain)
+    assert mine["health"] == "OK" and mine["scan_every_minutes"] == 1440
+    assert set(mine) == {"name", "domain", "health", "scan_every_minutes", "last_processed_at"}    # no URLs, errors or controls
+
+    viewer = f"viewer_{env.tag}"
+    auth_service.create_user(env.db, username=viewer, password=PASSWORD, role="VIEWER")
+    env.db.commit()
+    try:
+        c = TestClient(app, follow_redirects=False)
+        c.post("/api/v1/auth/login", json={"username": viewer, "password": PASSWORD})
+        assert c.get("/api/v1/stats/sources").status_code == 403
+        assert c.get("/api/v1/stats/competitors").status_code == 200
+        assert c.get("/competitors").status_code == 200
+        assert 'id="sources"' not in c.get("/insights").text                       # panel is not even rendered for viewers
+    finally:
+        env.db.query(AuditLog).filter(AuditLog.username == viewer).delete(synchronize_session=False)
+        env.db.query(User).filter(User.username == viewer).delete(synchronize_session=False)
+        env.db.commit()

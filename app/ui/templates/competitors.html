@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><title>Competitors - {{ app_name }}</title>{% include "_head.html" %}</head>
+<body class="bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 min-h-screen">
+{% include "_nav.html" %}
+<main class="max-w-7xl mx-auto px-4 py-6">
+    <h2 class="text-lg font-bold mb-1">Competitors</h2>
+    <p class="text-sm text-slate-500 dark:text-slate-400 mb-4">Who is promoting right now. Counts include only promotions that pass the quality checks (evidence, approved source, resolved identity, no open conflict). Click a name to see their promotions.</p>
+    <div class="overflow-x-auto bg-white dark:bg-slate-800 rounded-xl shadow"><table class="min-w-full text-sm">
+        <thead class="bg-slate-100 dark:bg-slate-700"><tr>
+            <th class="p-3 text-left">Competitor</th><th class="p-3 text-right">Live promotions</th><th class="p-3 text-right">Avg discount</th>
+            <th class="p-3 text-left">Usual mechanic</th><th class="p-3 text-right">Outlets</th><th class="p-3 text-right">New this week</th>
+            <th class="p-3 text-right">Changed this week</th><th class="p-3 text-right">Ending in 7 days</th></tr></thead>
+        <tbody id="rows"></tbody></table></div>
+</main>
+<script>
+    const num = n => n === 0 ? '<span class="text-slate-300">0</span>' : esc(n);
+    async function load() {
+        const d = await (await api('/api/v1/stats/competitors')).json();
+        document.getElementById('rows').innerHTML = d.competitors.map(c => `<tr class="border-t border-slate-100 dark:border-slate-700">
+            <td class="p-3 font-medium"><a class="text-blue-600 hover:underline" href="/?q=${encodeURIComponent(c.name)}">${esc(c.name)}</a></td>
+            <td class="p-3 text-right font-semibold">${num(c.live_promotions)}</td>
+            <td class="p-3 text-right">${c.avg_discount == null ? '<span class="text-slate-300">-</span>' : esc(c.avg_discount) + '%'}</td>
+            <td class="p-3">${c.top_mechanic ? esc(c.top_mechanic.replace(/_/g, ' ')) : '<span class="text-slate-300">-</span>'}</td>
+            <td class="p-3 text-right">${num(c.outlets)}</td><td class="p-3 text-right">${num(c.new_this_week)}</td>
+            <td class="p-3 text-right">${num(c.changes_this_week)}</td><td class="p-3 text-right ${c.ending_soon ? 'text-rose-600 font-semibold' : ''}">${num(c.ending_soon)}</td></tr>`).join('')
+            || '<tr><td colspan="8" class="p-6 text-center text-slate-400">No competitors tracked yet.</td></tr>';
+    }
+    loadSession().then(load);
+</script>
+</body>
+</html>

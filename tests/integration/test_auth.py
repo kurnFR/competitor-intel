@@ -238,7 +238,7 @@ def test_all_pages_render_for_the_right_roles(env):
     a, v = env.client(), env.client()
     env.login(a, admin)
     env.login(v, viewer)
-    for path in ("/", "/insights", "/regional", "/compare", "/review", "/admin", "/account"):
+    for path in ("/", "/insights", "/competitors", "/regional", "/compare", "/review", "/admin", "/account"):
         r = a.get(path)
         assert r.status_code == 200 and "text/html" in r.headers["content-type"], path
     assert 'id="scan-button"' in a.get("/").text and "/admin" in a.get("/").text

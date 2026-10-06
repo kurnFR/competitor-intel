@@ -133,6 +133,11 @@ def insights_page(request: Request, principal: Optional[Principal] = Depends(get
     return _protected_page(request, "insights.html", principal)
 
 
+@app.get("/competitors", response_class=HTMLResponse)
+def competitors_page(request: Request, principal: Optional[Principal] = Depends(get_principal_optional)):
+    return _protected_page(request, "competitors.html", principal)
+
+
 @app.get("/regional", response_class=HTMLResponse)
 def regional_page(request: Request, principal: Optional[Principal] = Depends(get_principal_optional)):
     return _protected_page(request, "regional.html", principal)

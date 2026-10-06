@@ -97,8 +97,20 @@ class PromotionScorer:
 
         return round(min(1.0, impact), 4)
 
+    # (key, label, weight): the single definition of how a score is built. Strength is the largest single driver; recent
+    # material changes carry enough weight to outrank stale, high-discount promotions.
+    COMPONENTS = (
+        ("strength", "Promotion strength", 0.25),
+        ("reliability", "Source reliability", 0.15),
+        ("freshness", "Freshness (last verified)", 0.10),
+        ("relevance", "Category relevance", 0.15),
+        ("importance", "Competitor importance", 0.10),
+        ("confidence", "Extraction confidence", 0.10),
+        ("change", "Recent change impact", 0.15),
+    )
+
     @classmethod
-    def compute_total_score(
+    def explain(
         cls,
         promotion_type: str,
         discount_percentage: Optional[float],
@@ -111,29 +123,31 @@ class PromotionScorer:
         change_impact: float = 0.0,
         dates_known: bool = True,
         now: Optional[datetime] = None,
-    ) -> float:
-        strength = cls.calculate_promotion_strength(promotion_type, discount_percentage)
-        freshness = cls.calculate_freshness(last_seen_at, now=now)
-        relevance = 1.0 if (category or "").upper() in {"BISCUIT", "CRACKER", "COOKIE", "WAFER"} else 0.8
-        reliability = cls._bounded(source_reliability, 0.8)
-        importance = cls._bounded(competitor_importance, 0.5)
-        confidence = cls._bounded(ai_confidence, 0.8)
-        change = cls._bounded(change_impact, 0.0)
+    ) -> dict:
+        """The score and exactly how it was built: each component's value (0-1), weight and points contributed."""
+        values = {
+            "strength": cls.calculate_promotion_strength(promotion_type, discount_percentage),
+            "reliability": cls._bounded(source_reliability, 0.8),
+            "freshness": cls.calculate_freshness(last_seen_at, now=now),
+            "relevance": 1.0 if (category or "").upper() in {"BISCUIT", "CRACKER", "COOKIE", "WAFER"} else 0.8,
+            "importance": cls._bounded(competitor_importance, 0.5),
+            "confidence": cls._bounded(ai_confidence, 0.8),
+            "change": cls._bounded(change_impact, 0.0),
+        }
+        components = [
+            {"key": key, "label": label, "value": round(values[key], 4), "weight": weight, "points": round(values[key] * weight, 4)}
+            for key, label, weight in cls.COMPONENTS
+        ]
+        base = sum(values[key] * weight for key, _, weight in cls.COMPONENTS)
+        # Validity period could not be confirmed on the source; rank slightly lower.
+        penalty = 1.0 if dates_known else UNDATED_PENALTY
+        return {
+            "score": round(min(1.0, max(0.0, base * penalty)), 4),
+            "base": round(base, 4),
+            "undated_penalty": None if dates_known else UNDATED_PENALTY,
+            "components": components,
+        }
 
-        # Keep promotion strength as the largest single driver while giving
-        # genuinely new material changes enough weight to outrank stale,
-        # high-discount promotions. Existing callers remain compatible because
-        # change_impact defaults to zero.
-        score = (
-            0.25 * strength
-            + 0.15 * reliability
-            + 0.10 * freshness
-            + 0.15 * relevance
-            + 0.10 * importance
-            + 0.10 * confidence
-            + 0.15 * change
-        )
-        if not dates_known:
-            # Validity period could not be confirmed on the source; rank slightly lower.
-            score *= UNDATED_PENALTY
-        return round(min(1.0, max(0.0, score)), 4)
+    @classmethod
+    def compute_total_score(cls, *args, **kwargs) -> float:
+        return cls.explain(*args, **kwargs)["score"]

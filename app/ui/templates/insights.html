@@ -24,6 +24,14 @@
         <p class="text-sm text-slate-500 dark:text-slate-400 mb-3">New promotions detected per week (average discount in brackets).</p>
         <div class="overflow-x-auto bg-white dark:bg-slate-800 rounded-xl shadow"><table id="trends" class="min-w-full text-sm"></table></div>
     </section>
+    {% if user.role in ('ANALYST', 'ADMIN') %}
+    <section>
+        <h2 class="text-lg font-bold mb-1">How fresh is the data?</h2>
+        <p class="text-sm text-slate-500 dark:text-slate-400 mb-3">Status of each approved website. A source that is failing or stale means its promotions may be out of date, not that it has none.</p>
+        <div class="overflow-x-auto bg-white dark:bg-slate-800 rounded-xl shadow"><table class="min-w-full text-sm"><thead class="bg-slate-100 dark:bg-slate-700"><tr>
+            <th class="p-3 text-left">Website</th><th class="p-3 text-left">Status</th><th class="p-3 text-left">Scanned every</th><th class="p-3 text-left">Last checked OK</th></tr></thead><tbody id="sources"></tbody></table></div>
+    </section>
+    {% endif %}
 </main>
 <script>
     const card = (label, value, icon, color) => `<div class="bg-white dark:bg-slate-800 rounded-xl shadow p-4 flex items-center gap-4">
@@ -54,7 +62,16 @@
             `<td class="p-3 text-center font-semibold">${esc(c.total)}</td></tr>`).join('');
         document.getElementById('trends').innerHTML = head + '<tbody>' + body + '</tbody>';
     }
-    loadSession().then(() => { loadDigest(); loadTrends(); document.getElementById('days').addEventListener('change', loadDigest); });
+    const SRC_COLOR = {OK: 'text-emerald-600', FAILING: 'text-rose-600', STALE: 'text-amber-600', NEVER_SCANNED: 'text-slate-500', DISABLED: 'text-slate-400'};
+    const every = m => m % 1440 === 0 ? (m / 1440) + ' day(s)' : m % 60 === 0 ? (m / 60) + ' hour(s)' : m + ' min';
+    async function loadSources() {
+        const box = document.getElementById('sources'); if (!box) return;
+        const d = await (await api('/api/v1/stats/sources')).json();
+        box.innerHTML = d.sources.map(s => `<tr class="border-t border-slate-100 dark:border-slate-700"><td class="p-3 font-medium">${esc(s.name)}<div class="text-xs text-slate-400">${esc(s.domain)}</div></td>
+            <td class="p-3 text-xs font-semibold ${SRC_COLOR[s.health] || ''}">${esc(s.health.replace('_', ' '))}</td><td class="p-3 text-xs">${esc(every(s.scan_every_minutes))}</td>
+            <td class="p-3 text-xs text-slate-500">${esc(s.last_processed_at ? s.last_processed_at.slice(0, 16).replace('T', ' ') : 'never')}</td></tr>`).join('') || '<tr><td colspan="4" class="p-4 text-center text-slate-400">No approved websites yet.</td></tr>';
+    }
+    loadSession().then(() => { loadSources(); loadDigest(); loadTrends(); document.getElementById('days').addEventListener('change', loadDigest); });
 </script>
 </body>
 </html>
