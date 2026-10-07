@@ -7,6 +7,7 @@ from app.models.resolution import EntityMapping, ReviewQueue
 from app.models.auth import User, UserSession, AuditLog
 from app.models.own_product import OwnProduct
 from app.models.scan_run import ScanRun
+from app.models.alert import AlertEvent
 
 __all__ = [
     "Base",
@@ -28,4 +29,5 @@ __all__ = [
     "AuditLog",
     "OwnProduct",
     "ScanRun",
+    "AlertEvent",
 ]

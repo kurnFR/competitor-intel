@@ -62,6 +62,9 @@ against its source text, ranks them, and shows them to the marketing team. Every
 - **The Docker files were not built** in the environment where they were written; test them once on a spare machine.
 - **No self-service password reset by e-mail;** an admin resets passwords.
 
+- **The app cannot alert you that it is down.** Failure alerts cover scans and websites; add an outside uptime check on `/health`.
+- **Old crawled pages lose their raw file and full text** after `RETENTION_DOCUMENT_DAYS` (promotions, evidence and the newest page per website are kept). Raise it if you need to re-run extraction on old pages.
+
 ## Where this stands against the PRD
 
 See `docs/PRD_ALIGNMENT.md` for a section-by-section status and the decisions that need to come from you.

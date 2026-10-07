@@ -74,6 +74,14 @@ class Settings(BaseSettings):
     CRAWL_INTERVAL_MINUTES: int = 1440
     # How often the scheduler checks which sources are due.
     SCHEDULER_TICK_MINUTES: int = 30
+
+    # Data retention (a daily job). The NEWEST page of every website is always kept, whatever its age.
+    RETENTION_ENABLED: bool = True
+    RETENTION_DOCUMENT_DAYS: int = 90      # raw files and full page text of older crawled pages are removed (never below 14)
+    RETENTION_AUDIT_DAYS: int = 365
+    RETENTION_SCAN_RUN_DAYS: int = 180
+    RETENTION_ALERT_DAYS: int = 180
+    RETENTION_HOUR: int = 3
     EXPIRATION_CHECK_MINUTES: int = 15
     MAX_CONCURRENT_CRAWLS: int = 5
     RECENCY_MONTHS: int = 3

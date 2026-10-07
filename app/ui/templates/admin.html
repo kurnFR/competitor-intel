@@ -17,6 +17,12 @@
         <div id="checks" class="bg-white dark:bg-slate-800 rounded-xl shadow divide-y divide-slate-100 dark:divide-slate-700"></div>
     </section>
     <section>
+        <h2 class="text-lg font-bold mb-1">Recent alerts</h2>
+        <p class="text-sm text-slate-500 dark:text-slate-400 mb-3">Scan and website failures, each announced once (by e-mail / chat webhook if configured).</p>
+        <div class="overflow-x-auto bg-white dark:bg-slate-800 rounded-xl shadow"><table class="min-w-full text-xs"><thead class="bg-slate-100 dark:bg-slate-700"><tr>
+            <th class="p-2 text-left">When</th><th class="p-2 text-left">Alert</th><th class="p-2 text-left">Sent</th><th class="p-2 text-left">Status</th></tr></thead><tbody id="alerts"></tbody></table></div>
+    </section>
+    <section>
         <h2 class="text-lg font-bold mb-3">Users</h2>
         <div class="overflow-x-auto bg-white dark:bg-slate-800 rounded-xl shadow mb-4">
             <table class="min-w-full text-sm"><thead class="bg-slate-100 dark:bg-slate-700"><tr>
@@ -64,6 +70,15 @@
     const msg = document.getElementById('msg');
     function flash(text, ok) { msg.textContent = text; msg.className = 'rounded-md px-3 py-2 text-sm ' + (ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'); }
     const CHECK_STYLE = {PASS: ['OK', 'bg-emerald-100 text-emerald-700'], WARN: ['Attention', 'bg-amber-100 text-amber-700'], FAIL: ['Fix now', 'bg-rose-100 text-rose-700'], INFO: ['Note', 'bg-slate-100 text-slate-600']};
+    async function loadAlerts() {
+        const rows = await (await api('/api/v1/system/alerts')).json();
+        document.getElementById('alerts').innerHTML = rows.map(a => `<tr class="border-t border-slate-100 dark:border-slate-700 align-top">
+            <td class="p-2 whitespace-nowrap">${esc(a.created_at.slice(0, 16).replace('T', ' '))}</td>
+            <td class="p-2"><div class="font-medium ${a.kind === 'SOURCE_RECOVERED' ? 'text-emerald-600' : 'text-rose-600'}">${esc(a.title)}</div><div class="text-slate-500 whitespace-pre-line">${esc(a.body)}</div></td>
+            <td class="p-2">${a.delivered ? esc(a.delivery || 'yes') : '<span class="text-amber-600">not yet' + (a.last_error ? ' (' + esc(a.last_error) + ')' : '') + '</span>'}</td>
+            <td class="p-2">${a.resolved_at ? '<span class="text-emerald-600">resolved</span>' : (a.kind === 'SOURCE_RECOVERED' ? '' : '<span class="text-rose-600">open</span>')}</td></tr>`).join('')
+            || '<tr><td colspan="4" class="p-4 text-center text-slate-400">No alerts. Everything that was scanned worked.</td></tr>';
+    }
     async function runChecks() {
         document.getElementById('check-summary').textContent = 'Checking...';
         const r = await api('/api/v1/system/check?llm=' + document.getElementById('check-llm').checked);
@@ -179,7 +194,7 @@
         flash(r.ok ? 'Added as a candidate. Approve it to include it in scans.' : await errText(r), r.ok);
         if (r.ok) f.reset(); loadSources(); loadAudit();
     });
-    loadSession().then(() => { runChecks(); loadUsers(); loadSources(); loadScans(); loadAudit(); });
+    loadSession().then(() => { runChecks(); loadAlerts(); loadUsers(); loadSources(); loadScans(); loadAudit(); });
 </script>
 </body>
 </html>

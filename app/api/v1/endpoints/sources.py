@@ -3,7 +3,7 @@
 Lifecycle (PRD 6): a source is added as a CANDIDATE and is never crawled until an administrator APPROVES it with an
 explicit adapter. Rejected or paused sources are never crawled either.
 """
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import List, Optional
 from uuid import UUID
 
@@ -17,6 +17,7 @@ from app.db.session import get_db
 from app.models.source import SourceRegistry
 from app.services import auth as auth_service
 from app.services.crawler.manager import ADAPTER_LABELS, ADAPTERS
+from app.services.source_health import compute_health
 from app.services.sources import validate_source_url
 
 router = APIRouter()
@@ -63,20 +64,7 @@ class SourceOut(BaseModel):
     health: str
 
 
-def _health(s: SourceRegistry, now: datetime) -> str:
-    if s.approval_status == "CANDIDATE":
-        return "AWAITING_APPROVAL"
-    if s.approval_status == "REJECTED":
-        return "REJECTED"
-    if not s.is_active:
-        return "DISABLED"
-    if s.last_crawled_at is None:
-        return "NEVER_SCANNED"
-    if s.last_error_at and (s.last_success_at is None or s.last_error_at > s.last_success_at):
-        return "FAILING"
-    if s.last_success_at and now - s.last_success_at > timedelta(days=3):
-        return "STALE"
-    return "OK"
+_health = compute_health      # kept under its old name for the other modules that import it
 
 
 def _out(s: SourceRegistry, now: datetime) -> SourceOut:

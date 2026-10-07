@@ -18,7 +18,7 @@ after each step and it tells you what is still missing.
 | `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL` | extraction |
 | `CRAWLER_USER_AGENT=CompetitorIntelBot/1.0 (+https://your-site; you@your-company)` | so site owners can reach you |
 | `MFA_REQUIRED_FOR_ADMINS=true` (once admins have set up their phones) | stronger admin sign-in |
-| `SMTP_*` / `DIGEST_*` / `DIGEST_WEBHOOK_URL` (optional) | weekly digest |
+| `SMTP_*` + `DIGEST_RECIPIENTS` and/or `DIGEST_WEBHOOK_URL` | weekly digest **and** failure alerts (so you hear about a broken scan) |
 
 ## 3. Create your first administrator
 `python -m scripts.create_user --username yourname --role ADMIN` then sign in and turn on two-factor on the **Account** page.
@@ -51,6 +51,7 @@ before it is switched to enforcing.
 - Schedule backups (`deploy/backup.sh`) and test a restore once.
 - Revoke the GitHub token used to publish this work.
 - Remove `postgresql_schema_ddl_20260924.log` from git history (command in `docs/HANDOVER.md`).
+- Add an outside uptime check on `/health` (the app cannot alert you that it is down).
 - Never run the automated tests against the production database.
 
 ## What "done" looks like
@@ -59,4 +60,6 @@ before it is switched to enforcing.
 - [ ] 20+ promotions spot-checked against their sources, extraction baseline recorded
 - [ ] Review queue worked through, no open conflicts you did not decide
 - [ ] Dashboard looked at in a real browser
+- [ ] Failure alerts reach a real inbox/channel (the checklist says "announced once each")
+- [ ] Outside uptime monitor on `/health`
 - [ ] Backups running; token revoked

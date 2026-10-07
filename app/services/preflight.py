@@ -203,6 +203,42 @@ def _review(db: Session) -> Check:
     return Check("Review queue", PASS if pending == 0 else INFO, f"{pending} item(s) waiting.")
 
 
+def _alerts(db: Session) -> Check:
+    from app.models.alert import AlertEvent
+    from app.services import alerts, notify
+    if not notify.any_channel_configured():
+        return Check("Failure alerts", WARN, "No e-mail or chat webhook is configured, so nobody will be told when a scan or a website fails "
+                     "(problems only show on this page).",
+                     "Set SMTP_HOST + SMTP_FROM + DIGEST_RECIPIENTS and/or DIGEST_WEBHOOK_URL. Alerts use the same channels as the weekly digest.")
+    stuck = db.query(AlertEvent).filter(AlertEvent.delivered.is_(False), AlertEvent.attempts >= alerts.MAX_ATTEMPTS).count()
+    if stuck:
+        return Check("Failure alerts", WARN, f"{stuck} alert(s) could not be delivered after {alerts.MAX_ATTEMPTS} attempts.",
+                     "Check the SMTP / webhook settings and the server log.")
+    channels = ", ".join(c for c, on in (("e-mail", notify.email_configured()), ("chat webhook", notify.webhook_configured())) if on)
+    return Check("Failure alerts", PASS, f"Failures are announced once each via {channels}.")
+
+
+def _storage(db: Session) -> Check:
+    import os
+    import shutil
+    root = Path(os.getenv("RAW_DOCUMENT_STORAGE_PATH", "./data/raw_documents"))
+    probe = root
+    while not probe.exists() and probe != probe.parent:
+        probe = probe.parent
+    usage = shutil.disk_usage(probe)
+    used = sum(f.stat().st_size for f in root.rglob("*") if f.is_file()) if root.exists() else 0
+    gb = lambda n: f"{n / 1024 ** 3:.1f} GB"
+    free_pct = usage.free / usage.total * 100
+    retention = (f"Pages older than {settings.RETENTION_DOCUMENT_DAYS} days are trimmed daily." if settings.RETENTION_ENABLED
+                 else "Data retention is OFF, so stored pages will keep growing.")
+    detail = f"Stored pages use {gb(used)}; {gb(usage.free)} free on the disk ({free_pct:.0f}%). {retention}"
+    if usage.free < 2 * 1024 ** 3 or free_pct < 10:
+        return Check("Disk space", FAIL if usage.free < 512 * 1024 ** 2 else WARN, detail, "Free up space or move RAW_DOCUMENT_STORAGE_PATH to a larger disk.")
+    if not settings.RETENTION_ENABLED:
+        return Check("Disk space", WARN, detail, "Set RETENTION_ENABLED=true (see python -m scripts.retention --dry-run).")
+    return Check("Disk space", PASS, detail)
+
+
 def _optional(db: Session) -> Check:
     from app.services.digest import digest_configured
     bits = [f"weekly digest: {'on' if digest_configured() else 'off'}",
@@ -213,7 +249,7 @@ def _optional(db: Session) -> Check:
 def run_checks(db: Session, *, check_llm: bool = False) -> List[Check]:
     """Run every check; one failing check never hides the others."""
     steps: List[Callable[[Session], object]] = [
-        _database, _environment, _https, _secret_key, _admins, _api_key, _crawler, _llm(check_llm), _sources, _scans, _promotions, _review, _optional]
+        _database, _environment, _https, _secret_key, _admins, _api_key, _crawler, _llm(check_llm), _sources, _scans, _alerts, _storage, _promotions, _review, _optional]
     results: List[Check] = []
     for step in steps:
         try:

@@ -266,6 +266,8 @@ How it is protected:
 * **Insights** (`/insights`): weekly digest of new promotions, price/mechanic changes and promotions ending within 7 days, plus a per-competitor activity heat-map.
 * **Export** (analyst+): CSV or Excel of the current filtered view. Cells that could run as spreadsheet formulas are neutralised.
 * **Review** (analyst+): approve or reject uncertain product/brand/retailer matches (approval links the promotion to the suggested entity), and decide **conflicts**: when two comparable sources report different values for the same promotion, the stored values are frozen, the promotion is hidden from the Top 10, and you choose *use new values* or *keep current*. Both observations are always kept.
+* **Failure alerts:** a failed scan, or a website that starts failing / goes 3+ days without a successful check, is announced **once** (and its recovery) by e-mail and/or chat webhook, with retries if delivery fails. Recent alerts are on the Admin page.
+* **Data retention:** a daily job removes the raw file and full text of crawled pages older than `RETENTION_DOCUMENT_DAYS` (default 90) and prunes old audit/scan/alert rows. Promotions, evidence and the newest page of each website are always kept. Preview with `python -m scripts.retention --dry-run`.
 * **Weekly e-mail digest** (optional): set `SMTP_HOST`, `SMTP_FROM`, `DIGEST_RECIPIENTS`; sent on `DIGEST_DAY_OF_WEEK` at `DIGEST_HOUR`. Test now with `python -m scripts.send_digest`.
 * **JavaScript-only retailer pages** need a browser: `pip install -r requirements-browser.txt && playwright install chromium`. Without it the crawler logs a warning and those pages yield nothing.
 
