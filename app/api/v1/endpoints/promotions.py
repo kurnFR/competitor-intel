@@ -11,6 +11,7 @@ from app.schemas.promotion import Top10Response, Top10PromotionItem, PromotionDe
 from fastapi.responses import Response
 from app.core.deps import require_role
 from app.services.digest import build_digest
+from app.services.ranking.rescore import explain_scores
 from app.services.regional import build_regional_prices
 from app.services.exporting import build_export
 from app.services.geography import REGION_LABELS, UNKNOWN
@@ -109,6 +110,7 @@ def get_top10_promotions(
     results = query.order_by(Promotion.rank_score.desc(), Promotion.last_verified_at.desc()).limit(10).all()
 
     evidence_by_promo = _latest_evidence(db, results)
+    breakdowns = explain_scores(db, results, now=now)
 
     items = []
     for idx, p in enumerate(results, start=1):
@@ -127,7 +129,7 @@ def get_top10_promotions(
             promotion_type=p.promotion_type,
             buy_quantity=p.buy_quantity, free_quantity=p.free_quantity, regular_price=p.regular_price,
             promo_price=p.promo_price, discount_percentage=p.discount_percentage, effective_discount=p.discount_percentage,
-            valid_until=valid_until,
+            valid_until=valid_until, score_breakdown=breakdowns.get(p.id),
             valid_from=p.start_date.strftime("%Y-%m-%d") if p.start_date else None,
             dates_stated=dates_stated, rank_score=p.rank_score,
             ai_confidence=p.ai_confidence, source_reliability=p.source_reliability,

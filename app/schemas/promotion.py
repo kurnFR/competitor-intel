@@ -52,6 +52,7 @@ class Top10PromotionItem(BaseModel):
     valid_until: Optional[str] = None
     valid_from: Optional[str] = None
     dates_stated: bool = True
+    score_breakdown: Optional[dict] = None
     rank_score: float
     ai_confidence: float
     source_reliability: float

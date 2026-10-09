@@ -64,7 +64,7 @@ const stat = p.d.body.textContent;
 check("dashboard has no leftover template errors", !/undefined|\[object Object\]|NaN/.test(p.d.querySelector("#promo-table-body").textContent), p.d.querySelector("#promo-table-body").textContent.slice(0, 200));
 
 // ---- 3. Other pages render and load data
-for (const [path, marker] of [["/insights", "Promotion activity by competitor"], ["/regional", "Regional pricing"], ["/compare", "Our prices vs competitor promotions"], ["/review", "Matches to confirm"], ["/admin", "Websites we scan"]]) {
+for (const [path, marker] of [["/insights", "Promotion activity by competitor"], ["/regional", "Regional pricing"], ["/competitors", "Competitors"], ["/compare", "Our prices vs competitor promotions"], ["/review", "Matches to confirm"], ["/admin", "Websites we scan"]]) {
   const q = await openPage(path); await sleep(700);
   check(`${path} renders with no script errors`, q.status === 200 && q.errors.length === 0 && q.d.body.textContent.includes(marker), (q.errors || []).join("|"));
 }
