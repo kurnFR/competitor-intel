@@ -10,6 +10,10 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
+from fastapi.responses import JSONResponse, PlainTextResponse
+from app.core.errors import setup_problem_response
+from app.services.schema_check import schema_status
 from app.core.config import settings
 from app.core.deps import Principal, get_principal_optional, require_admin_session_or_key, require_role
 from app.db.session import engine
@@ -32,6 +36,13 @@ async def lifespan(app: FastAPI):
     with engine.connect() as conn:
         res = conn.execute(text("SELECT current_database(), current_user;")).fetchone()
         logger.info(f"Connected to PostgreSQL: Database={res[0]}, User={res[1]}")
+    status = schema_status()
+    if status["ok"]:
+        logger.info("Database schema is up to date.")
+    else:
+        bar = "=" * 78
+        logger.error("\n%s\n  DATABASE SETUP PROBLEM: %s\n  -> %s\n  Pages that need the database will show a setup message until this is fixed.\n%s",
+                     bar, status["message"], status["fix"], bar)
 
     # Start background scheduler for periodic crawling & expiration checking
     start_scheduler()
@@ -160,9 +171,23 @@ def admin_page(request: Request, principal: Optional[Principal] = Depends(get_pr
 
 @app.get("/health")
 def health_check():
-    with engine.connect() as conn:
-        conn.execute(text("SELECT 1;"))
-    return {"status": "ok"}
+    """200 only when the database is reachable AND at the version this code expects (so a monitor can tell)."""
+    status = schema_status()
+    if status["ok"]:
+        return {"status": "ok"}
+    return JSONResponse(status_code=503, content={"status": "error", "problem": status["problem"], "detail": status["message"], "fix": status["fix"]})
+
+
+@app.exception_handler(SQLAlchemyError)
+async def database_error_handler(request: Request, exc: SQLAlchemyError):
+    """A database error caused by a missing/outdated schema gets a plain-language page; other database errors stay a 500."""
+    logger.error("Database error on %s %s", request.method, request.url.path, exc_info=exc)
+    status = schema_status()
+    if not status["ok"]:
+        return setup_problem_response(request, status)
+    if request.url.path.startswith("/api/"):
+        return JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
+    return PlainTextResponse("Internal Server Error", status_code=500)
 
 
 def _run_pipeline_job(triggered_by: Optional[str] = None):

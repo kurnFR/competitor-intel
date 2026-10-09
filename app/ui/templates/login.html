@@ -35,6 +35,10 @@
         <p class="mt-6 text-xs text-slate-400 text-center">Access is logged. Contact an administrator if you need an account.</p>
     </main>
     <script>
+        // If the server itself is not ready (database not set up / out of date), say so before anyone types a password.
+        fetch('/health').then(r => r.ok ? null : r.json()).then(j => {
+            if (j && j.detail) { const b = document.getElementById('error'); b.textContent = j.detail + ' ' + (j.fix || ''); b.classList.remove('hidden'); }
+        }).catch(() => {});
         const form = document.getElementById('login-form');
         const errorBox = document.getElementById('error');
         const mfaForm = document.getElementById('mfa-form');
