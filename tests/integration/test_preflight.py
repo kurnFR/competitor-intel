@@ -185,3 +185,18 @@ def test_cli_exit_code_reflects_failures(monkeypatch, capsys):
     assert cli.main() == 1
     out = capsys.readouterr().out
     assert "[FAIL] C: broken" in out and "-> fix it" in out and "Fix the failures above first" in out
+
+
+def test_promotions_check_explains_why_nothing_is_shown(db, monkeypatch):
+    import app.services.promotions.visibility as vis
+    gates = [{"key": "identity", "label": "No competitor or brand could be matched", "fix": "Open the Review page.", "count": 30},
+             {"key": "source", "label": "Its source is not an approved, active website", "fix": "Approve it.", "count": 5},
+             {"key": "evidence", "label": "No stored evidence text", "fix": "Re-run a scan.", "count": 0}]
+    monkeypatch.setattr(vis, "gate_failure_counts", lambda session, **kw: {"total": 35, "shown": 0, "hidden": 35, "gates": gates})
+    c = by_name(run_checks(db))["Promotions"]
+    assert c.status == WARN and "30 x no competitor or brand could be matched" in c.detail and "5 x its source" in c.detail
+    assert "evidence" not in c.detail and c.fix == "Open the Review page."          # zero-count reasons are not mentioned
+    monkeypatch.setattr(vis, "gate_failure_counts", lambda session, **kw: {"total": 35, "shown": 20, "hidden": 15, "gates": gates})
+    assert by_name(run_checks(db))["Promotions"].status == INFO
+    monkeypatch.setattr(vis, "gate_failure_counts", lambda session, **kw: {"total": 4, "shown": 4, "hidden": 0, "gates": gates})
+    assert by_name(run_checks(db))["Promotions"].status == PASS

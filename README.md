@@ -291,6 +291,13 @@ Label 15-30 real pages (`name.txt` + `name.json`, see the sample). Re-run after 
 
 `python -m scripts.preflight [--llm]` (or **Admin -> Setup checklist**) checks the database and migrations, security settings, administrator accounts, the LLM, websites, recent scans and the review backlog, and tells you what to fix. It never shows secret values. Start with `docs/FIRST_RUN.md`.
 
+## Testing a page without scanning (and "why is this hidden?")
+
+`python -m scripts.dry_run page.html [--retailer NAME]` runs one real page through the same extraction, matching and storage
+code as a scan inside a transaction that is always rolled back, and reports for every promotion whether it would appear on the
+dashboard and, if not, which rule hides it and how to fix it. The Setup checklist shows the same reasons, with counts, for what
+is already stored.
+
 ## More documentation
 
 * `docs/FIRST_RUN.md` - step-by-step checklist for the first real run
