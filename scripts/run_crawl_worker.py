@@ -7,6 +7,12 @@ Usage:
 import argparse
 import logging
 import os
+import sys
+from pathlib import Path
+
+_ROOT = Path(__file__).resolve().parent.parent
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
 
 from app.db.session import SessionLocal
 from app.services.crawler.job_processor import CrawlJobProcessor

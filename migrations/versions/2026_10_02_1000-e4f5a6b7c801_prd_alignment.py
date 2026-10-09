@@ -36,7 +36,15 @@ def upgrade() -> None:
             FROM {S}.promotion_observations o JOIN {S}.crawl_documents d ON d.id = o.document_id
             WHERE o.promotion_id IS NOT NULL
             ORDER BY o.promotion_id, o.observed_at DESC
-        ) latest WHERE latest.promotion_id = p.id
+        ) latest WHERE latest.promotion_id = p.id;
+
+        UPDATE {S}.promotions p SET source_id = latest.source_id
+        FROM (
+            SELECT DISTINCT ON (e.promotion_id) e.promotion_id, d.source_id
+            FROM {S}.promotion_evidence e JOIN {S}.crawl_documents d ON d.id = e.document_id
+            WHERE e.promotion_id IS NOT NULL AND d.source_id IS NOT NULL
+            ORDER BY e.promotion_id, e.captured_at DESC
+        ) latest WHERE latest.promotion_id = p.id AND p.source_id IS NULL;
     """)
     op.create_index("ix_promotions_source_id", "promotions", ["source_id"], schema=S)
     op.create_index("idx_promotions_last_verified", "promotions", ["last_verified_at"], schema=S)
