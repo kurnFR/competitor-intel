@@ -155,3 +155,16 @@ def test_geography_is_kept_only_when_the_page_states_it(monkeypatch, synthetic_d
     assert summary["geography_dropped"] == 1
     promo = _promo(synthetic_doc)
     assert promo.geography is None and promo.geography_region == "UNKNOWN"
+
+
+def test_an_unchanged_page_still_reconfirms_its_promotions_even_if_its_text_was_trimmed(monkeypatch, synthetic_doc):
+    """Retention removes old page text; a stable page must not stop re-confirming its promotions because of that."""
+    _patch(monkeypatch, synthetic_doc)
+    rp.run_pipeline(crawl_fresh=True, max_docs=None)
+    first_verified = _promo(synthetic_doc).last_verified_at
+    doc = synthetic_doc["db"].get(CrawlDocument, synthetic_doc["doc"].id)
+    doc.text_content = None
+    synthetic_doc["db"].commit()
+    summary = rp.run_pipeline(crawl_fresh=True, max_docs=None)
+    assert summary["documents_skipped_unchanged"] == 1
+    assert _promo(synthetic_doc).last_verified_at > first_verified

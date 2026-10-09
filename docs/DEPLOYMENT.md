@@ -62,6 +62,21 @@ WantedBy=multi-user.target
 - [ ] PostgreSQL not exposed to the internet
 - [ ] Old `postgresql_schema_ddl_20260924.log` purged from git history (see `docs/HANDOVER.md`)
 
+## Monitoring and housekeeping
+
+**What the app tells you by itself.** When a scan fails, or an approved website starts failing or goes 3+ days without a
+successful check, you get **one** message (e-mail and/or chat webhook, the same channels as the weekly digest), and another
+when it recovers. Alerts also appear under **Admin -> Recent alerts**. Without a configured channel they are only listed there.
+
+**What it cannot tell you: that the app itself is down.** Use an outside uptime monitor (UptimeRobot, Better Stack, a cron on
+another machine) on `https://your-domain/health` - it returns `{"status":"ok"}` only when the app and database are reachable.
+
+**Disk.** Crawled pages are stored on disk (`RAW_DOCUMENT_STORAGE_PATH`) and in the database. A daily job (03:30) removes the raw
+file and full text of crawled pages older than `RETENTION_DOCUMENT_DAYS` (default 90) - promotions, evidence quotes, source links
+and page records (address, time, hash) are kept, and the **newest page of every website is never removed**. It also prunes the audit
+log (365 d), scan history (180 d) and alerts (180 d). Preview: `python -m scripts.retention --dry-run`. The Setup checklist shows
+disk use and free space.
+
 ## Upgrading
 
 ```bash

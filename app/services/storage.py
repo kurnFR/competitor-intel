@@ -29,6 +29,10 @@ class RawDocumentStore:
     def get(self, uri: str) -> bytes:
         raise NotImplementedError
 
+    def delete(self, uri: str) -> int:
+        """Remove a stored object. Returns the bytes freed (0 if it was already gone)."""
+        raise NotImplementedError
+
 
 class LocalRawDocumentStore(RawDocumentStore):
     """Content-addressed local store suitable for development and single-host use."""
@@ -59,6 +63,18 @@ class LocalRawDocumentStore(RawDocumentStore):
         if not uri.startswith("file://"):
             raise ValueError("LocalRawDocumentStore only supports file:// URIs")
         return Path(uri[7:]).read_bytes()
+
+    def delete(self, uri: str) -> int:
+        if not uri.startswith("file://"):
+            raise ValueError("LocalRawDocumentStore only supports file:// URIs")
+        path = Path(uri[7:]).resolve()
+        if self.root not in path.parents:                      # never delete anything outside the store
+            raise ValueError(f"Refusing to delete a path outside the raw document store: {path}")
+        if not path.is_file():
+            return 0
+        size = path.stat().st_size
+        path.unlink()
+        return size
 
 
 def get_raw_document_store(root: Optional[str] = None) -> RawDocumentStore:

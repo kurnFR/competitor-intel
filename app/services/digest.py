@@ -3,16 +3,14 @@ from __future__ import annotations
 
 import html
 import logging
-import smtplib
-import ssl
 from datetime import datetime, timedelta, timezone
-from email.message import EmailMessage
 from typing import Any, Dict, Optional
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session, contains_eager
 
-from app.core.config import settings
+from app.core.config import settings  # noqa: F401  (kept: tests patch digest.settings)
+from app.services import notify
 from app.models.entity import Brand, Competitor, Retailer
 from app.models.promotion import Promotion
 from app.models.promotion_change import PromotionChangeEvent
@@ -129,27 +127,22 @@ def render_digest(d: Dict[str, Any]) -> tuple[str, str, str]:
 
 
 def digest_email_configured() -> bool:
-    return bool(settings.SMTP_HOST and settings.digest_recipient_list and (settings.SMTP_FROM or settings.SMTP_USER))
+    return notify.email_configured()
 
 
 def webhook_configured() -> bool:
-    return settings.DIGEST_WEBHOOK_URL.lower().startswith("https://")
+    return notify.webhook_configured()
 
 
 def digest_configured() -> bool:
-    return digest_email_configured() or webhook_configured()
+    return notify.any_channel_configured()
 
 
 def send_digest_webhook(db: Session, *, days: int = 7) -> bool:
     if not webhook_configured():
         return False
-    import httpx
     _, text, _ = render_digest(build_digest(db, days=days))
-    if len(text) > 3500:
-        text = text[:3500].rsplit("\n", 1)[0] + "\n... (truncated, see the dashboard)"
-    resp = httpx.post(settings.DIGEST_WEBHOOK_URL, json={"text": text}, timeout=15.0, follow_redirects=False)
-    resp.raise_for_status()
-    logger.info("Digest posted to webhook.")
+    notify.send_webhook(text)
     return True
 
 
@@ -170,16 +163,5 @@ def send_digest_email(db: Session, *, days: int = 7) -> bool:
         logger.info("Digest e-mail skipped: SMTP_HOST / DIGEST_RECIPIENTS / SMTP_FROM not configured.")
         return False
     subject, text, html_body = render_digest(build_digest(db, days=days))
-    msg = EmailMessage()
-    msg["Subject"] = subject
-    msg["From"] = settings.SMTP_FROM or settings.SMTP_USER
-    msg["To"] = ", ".join(settings.digest_recipient_list)
-    msg.set_content(text)
-    msg.add_alternative(html_body, subtype="html")
-    with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=30) as smtp:
-        smtp.starttls(context=ssl.create_default_context())
-        if settings.SMTP_USER:
-            smtp.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
-        smtp.send_message(msg)
-    logger.info("Digest e-mail sent to %d recipient(s).", len(settings.digest_recipient_list))
+    notify.send_email(subject, text, html_body)
     return True

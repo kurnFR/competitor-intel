@@ -143,18 +143,20 @@ def run_pipeline(
 
         for doc in docs:
             logger.info("Document %s (%s) text length: %d", doc.id, doc.url, len(doc.text_content or ""))
-            if not doc.text_content:
-                continue
-
             now = datetime.now(timezone.utc)
             already_done = bool((doc.metadata_json or {}).get("pipeline_processed_at"))
             if already_done and not force:
+                # Checked BEFORE the text: an unchanged page must always re-confirm its promotions, even if its stored
+                # text was removed by the retention policy.
                 if crawl_fresh:
                     _touch_promotions_for_document(db, doc.id, now)
                     source_ok.setdefault(doc.source_id, True)
                     db.commit()
                 summary["documents_skipped_unchanged"] += 1
                 logger.info("Document %s unchanged since last extraction; skipping LLM call.", doc.id)
+                continue
+
+            if not doc.text_content:
                 continue
 
             source = doc.source or db.query(SourceRegistry).filter(SourceRegistry.id == doc.source_id).first()
