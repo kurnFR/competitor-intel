@@ -39,6 +39,7 @@ ENV/
 .coverage
 htmlcov/
 
-# Logs
+# Logs & Data
 *.log
-data/raw/
+data/
+

@@ -24,7 +24,7 @@
         <p class="text-sm text-slate-500 dark:text-slate-400 mb-3">New promotions detected per week (average discount in brackets).</p>
         <div class="overflow-x-auto bg-white dark:bg-slate-800 rounded-xl shadow"><table id="trends" class="min-w-full text-sm"></table></div>
     </section>
-    {% if user.role in ('ANALYST', 'ADMIN') %}
+    {% if user and user.role in ('ANALYST', 'ADMIN') %}
     <section>
         <h2 class="text-lg font-bold mb-1">How fresh is the data?</h2>
         <p class="text-sm text-slate-500 dark:text-slate-400 mb-3">Status of each approved website. A source that is failing or stale means its promotions may be out of date, not that it has none.</p>

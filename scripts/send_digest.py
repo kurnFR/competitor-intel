@@ -1,5 +1,9 @@
-"""Send the promotion digest now (also runs weekly from the scheduler) via e-mail and/or webhook."""
 import sys
+from pathlib import Path
+
+_ROOT = Path(__file__).resolve().parent.parent
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
 
 from app.db.session import SessionLocal
 from app.services.digest import digest_configured, send_digest

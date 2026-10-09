@@ -6,6 +6,12 @@
 Exit code 1 if any check FAILS (so it can gate a deployment). WARN = worth fixing, INFO = for your information.
 """
 import sys
+from pathlib import Path
+
+# Ensure project root is in sys.path when script is executed directly
+_ROOT = Path(__file__).resolve().parent.parent
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
 
 from app.db.session import SessionLocal
 from app.services.preflight import FAIL, INFO, PASS, WARN, run_checks, summarize

@@ -60,13 +60,13 @@
                 <a href="/competitors" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-xs font-medium rounded-lg border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-building"></i> Competitors</a>
                 <a href="/regional" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-xs font-medium rounded-lg border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-map-location-dot"></i> Regions</a>
                 <a href="/insights" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-xs font-medium rounded-lg border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-chart-column"></i> Insights</a>
-                {% if user.role in ('ANALYST', 'ADMIN') %}
+                {% if user and user.role in ('ANALYST', 'ADMIN') %}
                 <a href="/compare" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-xs font-medium rounded-lg border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-scale-balanced"></i> Prices</a>
                 <a href="/review" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-xs font-medium rounded-lg border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-list-check"></i> Review</a>
                 <button onclick="exportData('csv')" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-xs font-medium rounded-lg border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-file-csv"></i> CSV</button>
                 <button onclick="exportData('xlsx')" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-xs font-medium rounded-lg border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-file-excel"></i> Excel</button>
                 {% endif %}
-                {% if user.role == 'ADMIN' %}
+                {% if user and user.role == 'ADMIN' %}
                 <a href="/admin" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-xs font-medium rounded-lg border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-user-shield"></i> Admin</a>
                 <button onclick="scanNow()" id="scan-button" class="px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 text-xs font-medium rounded-lg transition border border-emerald-400/30 flex items-center gap-1.5">
                     <i class="fa-solid fa-satellite-dish"></i> Scan now
@@ -76,8 +76,12 @@
                 <button onclick="fetchTop10(); fetchStats();" title="Reload promotions already stored in the database" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-medium rounded-lg transition border border-white/20 dark:border-slate-700 flex items-center gap-1.5">
                     <i class="fa-solid fa-arrows-rotate"></i> Refresh
                 </button>
+                {% if user %}
                 <a href="/account" title="My account" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-xs font-medium rounded-lg border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-user"></i> {{ user.username }}</a>
                 <button onclick="logout()" title="Sign out" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-xs font-medium rounded-lg border border-white/20"><i class="fa-solid fa-right-from-bracket"></i></button>
+                {% else %}
+                <a href="/login" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-xs font-medium rounded-lg border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-right-to-bracket"></i> Sign in</a>
+                {% endif %}
             </div>
         </div>
     </header>

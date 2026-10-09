@@ -7,7 +7,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.db.session import SessionLocal, engine
-from app.models.promotion import Promotion, PromotionObservation
+from app.models.promotion import Promotion, PromotionEvidence, PromotionObservation
 from app.models.scan_run import ScanRun
 from app.models.source import CrawlDocument, SourceRegistry
 from app.services.crawler.manager import run_all_crawlers
@@ -81,7 +81,9 @@ def _finish_run(run_id, status: str, *, summary: Optional[dict] = None, error: O
 
 def _touch_promotions_for_document(db: Session, document_id, now: datetime) -> int:
     """An unchanged page that was just re-fetched still confirms its promotions."""
-    ids = db.query(PromotionObservation.promotion_id).filter(PromotionObservation.document_id == document_id)
+    ids_obs = db.query(PromotionObservation.promotion_id).filter(PromotionObservation.document_id == document_id, PromotionObservation.promotion_id.isnot(None))
+    ids_ev = db.query(PromotionEvidence.promotion_id).filter(PromotionEvidence.document_id == document_id, PromotionEvidence.promotion_id.isnot(None))
+    ids = ids_obs.union(ids_ev)
     return (
         db.query(Promotion)
         .filter(Promotion.id.in_(ids), Promotion.status.in_(["ACTIVE", "UNKNOWN"]))

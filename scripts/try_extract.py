@@ -7,6 +7,11 @@ settings (LLM_BASE_URL, LLM_API_KEY, LLM_MODEL) to be configured.
 """
 import json
 import sys
+from pathlib import Path
+
+_ROOT = Path(__file__).resolve().parent.parent
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
 
 from app.services.extraction.llm_extractor import LLMExtractor
 

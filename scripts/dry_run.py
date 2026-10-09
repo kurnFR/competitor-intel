@@ -13,6 +13,11 @@ import argparse
 import json
 import sys
 from datetime import datetime, timezone
+from pathlib import Path
+
+_ROOT = Path(__file__).resolve().parent.parent
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
 
 from app.services.dry_run import run_dry
 
@@ -34,7 +39,14 @@ class Replay:
     def __init__(self, path: str):
         from app.schemas.ai import ExtractedPromotionItem
         data = json.load(open(path, encoding="utf-8"))
-        self.items = [ExtractedPromotionItem(**d) for d in (data["promotions"] if isinstance(data, dict) else data)]
+        raw = data["promotions"] if isinstance(data, dict) else data
+        items = []
+        for d in raw:
+            if isinstance(d, dict) and not d.get("evidence_quote"):
+                d = dict(d)
+                d["evidence_quote"] = d.get("product_name") or "Replayed evidence quote"
+            items.append(ExtractedPromotionItem(**d))
+        self.items = items
         self.used = False
 
     def extract_with_metadata(self, chunk):
