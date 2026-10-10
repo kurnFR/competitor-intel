@@ -319,6 +319,7 @@ is already stored.
 * **Crawler etiquette.** The crawler identifies itself with `CRAWLER_USER_AGENT` (add a contact URL/e-mail) and
   honours each site's `robots.txt` (`CRAWLER_RESPECT_ROBOTS=true`). Review each retailer's terms of use before
   enabling a source.
+* **Database version check.** At startup the app compares the database with the version the code needs and logs a clear message if they differ; `/health` returns 503 (not "ok") in that case, and pages show "The database needs upgrading" instead of a bare "Internal Server Error". `python -m scripts.check_schema` runs the same check. `scripts/start_server.sh` refuses to start on a mismatched database unless `AUTO_MIGRATE=true`.
 * **One scan at a time.** A PostgreSQL advisory lock stops the scheduler, manual scans and extra workers from
   overlapping. Scan status is tracked per process, so run a single uvicorn worker (`scripts/start_server.sh`).
 * **Unchanged pages** are not re-sent to the LLM; their promotions are simply marked as still seen. Use

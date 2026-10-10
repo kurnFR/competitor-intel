@@ -79,6 +79,10 @@ disk use and free space.
 
 ## Upgrading
 
+After **every** `git pull`, apply the database changes: `alembic upgrade head` (Docker does it automatically on start).
+`scripts/start_server.sh` checks this for you and refuses to start on a mismatched database; set `AUTO_MIGRATE=true` to let it upgrade
+the database itself (back up first on a real database).
+
 ```bash
 git pull
 docker compose up -d --build       # migrations run automatically on start
@@ -89,6 +93,7 @@ docker compose up -d --build       # migrations run automatically on start
 
 | Symptom | Likely cause |
 |---|---|
+| A page says **"The database needs upgrading"** (or you see "Internal Server Error" after updating) | The code is newer than the database. Back up, then run `alembic upgrade head` and restart. `python -m scripts.check_schema` says exactly what is wrong; `/health` returns 503 with the same message; the server prints it at startup. |
 | Cannot stay logged in on `http://` | `APP_ENV=production` sets Secure cookies; use HTTPS (or `SESSION_COOKIE_SECURE=false` for a private test only) |
 | "Scan" shows failed | `docker compose logs app` - usually the LLM endpoint or a source that is down |
 | A source shows FAILING/STALE (Admin page) | Site changed layout, blocks the bot, or robots.txt disallows it |
