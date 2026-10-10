@@ -1,11 +1,13 @@
 """FastAPI dependencies for authentication and authorisation."""
 from __future__ import annotations
 
+import logging
 import secrets
 from dataclasses import dataclass
 from typing import Optional
 
 from fastapi import Depends, Header, HTTPException, Request, status
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -14,6 +16,7 @@ from app.models.auth import User, UserSession
 from app.services import mfa as mfa_service
 from app.services.auth import resolve_session, role_allows
 
+logger = logging.getLogger(__name__)
 SESSION_COOKIE = "ci_session"
 UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
@@ -33,7 +36,14 @@ def client_ip(request: Request) -> str:
 
 
 def get_principal_optional(request: Request, db: Session = Depends(get_db)) -> Optional[Principal]:
-    resolved = resolve_session(db, request.cookies.get(SESSION_COOKIE))
+    try:
+        resolved = resolve_session(db, request.cookies.get(SESSION_COOKIE))
+    except SQLAlchemyError:
+        # e.g. an old login cookie while the database has not been upgraded: treat as "not signed in" so the sign-in page
+        # (and its setup message) is still reachable. The real error is logged.
+        logger.exception("Could not look up the login session; treating the visitor as signed out")
+        db.rollback()
+        resolved = None
     return Principal(*resolved) if resolved else None
 
 

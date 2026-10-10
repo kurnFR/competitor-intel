@@ -34,25 +34,39 @@ def read_page(path: str) -> str:
 
 
 class Replay:
-    """Stands in for the LLM: returns previously saved items so the rest of the pipeline can be tested without one."""
+    """Stands in for the LLM: returns previously saved items so the rest of the pipeline can be tested without one.
+
+    It applies the same evidence rule as a real extraction: the quote must appear in the page. Saved items that have no
+    quote get the product name as a stand-in (so older saved files still load); that is reported, because a real scan
+    requires a verbatim quote from the page.
+    """
 
     def __init__(self, path: str):
         from app.schemas.ai import ExtractedPromotionItem
         data = json.load(open(path, encoding="utf-8"))
         raw = data["promotions"] if isinstance(data, dict) else data
-        items = []
+        items, self.filled = [], []
         for d in raw:
             if isinstance(d, dict) and not d.get("evidence_quote"):
                 d = dict(d)
                 d["evidence_quote"] = d.get("product_name") or "Replayed evidence quote"
+                self.filled.append(d.get("product_name") or "?")
             items.append(ExtractedPromotionItem(**d))
         self.items = items
         self.used = False
 
     def extract_with_metadata(self, chunk):
         from app.services.extraction.llm_extractor import ExtractionResult
-        items, self.used = ([] if self.used else self.items), True
-        return ExtractionResult(items=items, rejected_items=[], raw_response="{}", model="replay",
+        from app.services.validation.validator import PromotionValidator
+        accepted, rejected = [], []
+        for item in ([] if self.used else self.items):
+            valid, reason = PromotionValidator.validate_evidence_quote(item, chunk)
+            if valid:
+                accepted.append(item)
+            else:
+                rejected.append({"error": reason, "item": item.model_dump(mode="json")})
+        self.used = True
+        return ExtractionResult(items=accepted, rejected_items=rejected, raw_response="{}", model="replay",
                                 extracted_at=datetime.now(timezone.utc), parser_status="SUCCESS")
 
 
@@ -91,11 +105,15 @@ def main() -> int:
     ap.add_argument("--extracted", help="JSON file of saved extraction output (skips the LLM)")
     ap.add_argument("--json", action="store_true", help="print the full report as JSON")
     args = ap.parse_args()
-    report = run_dry(read_page(args.page), extractor=Replay(args.extracted) if args.extracted else None, retailer_name=args.retailer)
+    replay = Replay(args.extracted) if args.extracted else None
+    report = run_dry(read_page(args.page), extractor=replay, retailer_name=args.retailer)
     if args.json:
         print(json.dumps(report, indent=2, default=str, ensure_ascii=False))
     else:
         print_report(report)
+        if replay is not None and replay.filled:
+            print(f"\nNOTE: {len(replay.filled)} saved item(s) had no evidence quote, so the product name was used instead "
+                  f"({', '.join(replay.filled[:3])}{'...' if len(replay.filled) > 3 else ''}). A real scan requires a verbatim quote from the page.")
     return 0 if report["summary"]["stored"] or not report["summary"]["extracted"] else 1
 
 
