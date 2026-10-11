@@ -68,6 +68,9 @@ class Settings(BaseSettings):
     # Crawler etiquette
     CRAWLER_USER_AGENT: str = "CompetitorIntelBot/1.0"
     CRAWLER_RESPECT_ROBOTS: bool = True
+    # DANGEROUS: lets the crawler fetch localhost / private-network addresses. Only for automated tests or a site you run
+    # yourself on an internal network. Leave off on any server where an administrator account could be compromised.
+    CRAWLER_ALLOW_PRIVATE_NETWORKS: bool = False
 
     # Engine Tuning
     # Default crawl frequency for newly added sources (each source then has its own schedule on the Admin page).
