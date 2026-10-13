@@ -36,21 +36,12 @@ def count_active_admins(db: Session) -> int:
 
 
 def _database(db: Session) -> Check:
+    from app.services.schema_check import schema_status
     db.execute(text("SELECT 1"))
-    from alembic.config import Config
-    from alembic.runtime.migration import MigrationContext
-    from alembic.script import ScriptDirectory
-
-    root = Path(__file__).resolve().parents[2]
-    config = Config(str(root / "alembic.ini"))
-    config.set_main_option("script_location", str(root / "migrations"))
-    heads = set(ScriptDirectory.from_config(config).get_heads())
-    context = MigrationContext.configure(db.connection(), opts={"version_table_schema": settings.DATABASE_SCHEMA})
-    current = set(context.get_current_heads())
-    if current == heads:
-        return Check("Database", PASS, f"Reachable and up to date (version {', '.join(sorted(current))}).")
-    return Check("Database", FAIL, f"Reachable, but the schema is at {sorted(current) or 'nothing'} and the code expects {sorted(heads)}.",
-                 "Back up the database, then run: alembic upgrade head")
+    st = schema_status(db.get_bind())
+    if st["ok"]:
+        return Check("Database", PASS, f"Reachable and up to date (version {', '.join(st['current'])}).")
+    return Check("Database", FAIL, st["message"], st["fix"])
 
 
 def _environment(db: Session) -> Check:
