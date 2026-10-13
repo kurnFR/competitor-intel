@@ -6,6 +6,8 @@ import socket
 from typing import Optional
 from urllib.parse import urlsplit
 
+from app.core.config import settings
+
 _BLOCKED_HOSTS = {"localhost", "localhost.localdomain", "metadata.google.internal"}
 
 
@@ -29,6 +31,8 @@ def validate_source_url(url: str, *, resolve: bool = True) -> str:
     host = (parts.hostname or "").lower().rstrip(".")
     if not host or "." not in host and not _is_ip(host):
         raise ValueError("Enter a full website address, for example https://www.example.com/promo")
+    if settings.CRAWLER_ALLOW_PRIVATE_NETWORKS:
+        return host
     if host in _BLOCKED_HOSTS or host.endswith((".local", ".internal", ".localhost")):
         raise ValueError("Internal addresses are not allowed.")
     if _is_ip(host):
@@ -62,6 +66,8 @@ def guard_request_url(url: str) -> None:
 
     A DNS failure is allowed through: the request itself will fail and be retried normally.
     """
+    if settings.CRAWLER_ALLOW_PRIVATE_NETWORKS:
+        return
     parts = urlsplit(str(url))
     host = (parts.hostname or "").lower().rstrip(".")
     if not host or host in _BLOCKED_HOSTS or host.endswith((".local", ".internal", ".localhost")):

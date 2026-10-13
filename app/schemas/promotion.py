@@ -22,8 +22,9 @@ class PromotionChangeEventOut(BaseModel):
     document_id: Optional[uuid.UUID] = None
     event_type: str
     field_name: Optional[str] = None
-    previous_value: Optional[Dict[str, Any]] = None
-    new_value: Optional[Dict[str, Any]] = None
+    # What changed is a number (price), a date, text (mechanic) or a structured value, so any JSON value is allowed.
+    previous_value: Optional[Any] = None
+    new_value: Optional[Any] = None
     change_impact: float
     observed_at: datetime
 

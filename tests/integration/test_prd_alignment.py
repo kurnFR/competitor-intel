@@ -56,6 +56,14 @@ def env():
     db.rollback()
     for s in sources:
         cleanup_source(db, s)
+    # promotions created without any source are not reached by cleanup_source
+    orphan_ids = [r[0] for r in db.query(Promotion.id).filter(Promotion.product_name.like(f"Zz{tag}%")).all()]
+    if orphan_ids:
+        from app.models.promotion_change import PromotionChangeEvent
+        from app.models.resolution import ReviewQueue
+        for model in (ReviewQueue, PromotionChangeEvent, PromotionEvidence, PromotionObservation):
+            db.query(model).filter(model.promotion_id.in_(orphan_ids)).delete(synchronize_session=False)
+        db.query(Promotion).filter(Promotion.id.in_(orphan_ids)).delete(synchronize_session=False)
     db.query(AuditLog).filter(AuditLog.username == name).delete(synchronize_session=False)
     db.query(User).filter(User.username == name).delete(synchronize_session=False)
     db.commit()

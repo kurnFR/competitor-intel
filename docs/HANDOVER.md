@@ -79,6 +79,12 @@ See `docs/PRD_ALIGNMENT.md` for a section-by-section status and the decisions th
 
 ## How it is tested
 
+`tests/integration/test_end_to_end.py` exercises the whole path for real: a fake retailer website and a fake OpenAI-style LLM server
+run locally; the real crawler fetches the page (reading robots.txt first and identifying itself), the real LLM client calls the fake
+model, and the real pipeline validates, matches and stores the result, which is then checked through the dashboard API. It covers a first
+scan, an unchanged re-scan, a price change, robots.txt blocking, and an LLM outage. It cannot tell you how good a *real* model is on *real*
+pages: that is what `scripts/dry_run.py` and `scripts/eval_extraction.py` are for.
+
 `python -m pytest tests` (needs PostgreSQL; see `.github/workflows/ci.yml`) runs about 200 tests: unit tests, API and
 security tests (login, sessions, CSRF, roles, lockout, 2FA, export safety), the pipeline against PostgreSQL, and
 migrations up and down. `tests/ui/` clicks through the real pages with a simulated browser.

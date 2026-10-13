@@ -105,6 +105,10 @@ def _api_key(db: Session) -> Check:
 
 
 def _crawler(db: Session) -> Check:
+    if settings.CRAWLER_ALLOW_PRIVATE_NETWORKS:
+        return Check("Crawler etiquette", FAIL, "CRAWLER_ALLOW_PRIVATE_NETWORKS is on: the crawler can reach localhost and internal networks "
+                     "(a compromised administrator account could use it to probe them).",
+                     "Set CRAWLER_ALLOW_PRIVATE_NETWORKS=false (it exists only for automated tests and self-hosted internal sites).")
     if not settings.CRAWLER_RESPECT_ROBOTS:
         return Check("Crawler etiquette", FAIL, "CRAWLER_RESPECT_ROBOTS is off: sites' robots.txt rules are being ignored.",
                      "Set CRAWLER_RESPECT_ROBOTS=true.")
