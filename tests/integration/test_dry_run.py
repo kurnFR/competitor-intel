@@ -116,3 +116,19 @@ def test_cli_helpers_replay_html_and_print(tmp_path, db, capsys):
     cli.print_report(report)
     out = capsys.readouterr().out
     assert "WOULD APPEAR ON THE DASHBOARD: NO" in out and "No competitor or brand could be matched" in out and "Nothing was saved." in out
+
+
+def test_replay_applies_the_same_evidence_rule_as_a_real_extraction(db, tmp_path):
+    import scripts.dry_run as cli
+    saved = tmp_path / "saved.json"
+    good = item().model_dump(mode="json")                                              # quote "diskon 30% jadi Rp 7.000" is in PAGE
+    invented = item(product_name="Zz Dry Invented", evidence_quote="a quote that is nowhere on the page").model_dump(mode="json")
+    no_quote = {k: v for k, v in item(product_name="Roma Kelapa 300g").model_dump(mode="json").items() if k != "evidence_quote"}
+    saved.write_text(json.dumps({"promotions": [good, invented, no_quote]}))
+    replay = cli.Replay(str(saved))
+    assert replay.filled == ["Roma Kelapa 300g"]                                      # older saved files still load, and it is noted
+    report = run_dry(PAGE, extractor=replay)
+    stored = {i["product"] for i in report["items"]}
+    assert "Zz Dry Roma Kelapa 300g" in stored and "Roma Kelapa 300g" in stored      # product name appears in the page: accepted
+    assert "Zz Dry Invented" not in stored                                            # invented quote: rejected, like a real scan
+    assert any("Zz Dry Invented" in str(r["item"]) for r in report["rejected"])

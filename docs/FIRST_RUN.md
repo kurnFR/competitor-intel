@@ -10,6 +10,9 @@ after each step and it tells you what is still missing.
 3. Apply database changes: `alembic upgrade head` (Docker: they run automatically on start).
    This also resets the old fake "Indonesia" geography on existing promotions to "Not stated".
 
+> **After every update, run `alembic upgrade head`.** If you skip it, pages show "The database needs upgrading" and `/health` returns 503.
+> `python -m scripts.check_schema` tells you whether the database matches the code.
+
 ## 2. Configure (`.env`)
 | Setting | Why |
 |---|---|

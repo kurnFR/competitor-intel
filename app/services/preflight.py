@@ -36,21 +36,12 @@ def count_active_admins(db: Session) -> int:
 
 
 def _database(db: Session) -> Check:
+    from app.services.schema_check import schema_status
     db.execute(text("SELECT 1"))
-    from alembic.config import Config
-    from alembic.runtime.migration import MigrationContext
-    from alembic.script import ScriptDirectory
-
-    root = Path(__file__).resolve().parents[2]
-    config = Config(str(root / "alembic.ini"))
-    config.set_main_option("script_location", str(root / "migrations"))
-    heads = set(ScriptDirectory.from_config(config).get_heads())
-    context = MigrationContext.configure(db.connection(), opts={"version_table_schema": settings.DATABASE_SCHEMA})
-    current = set(context.get_current_heads())
-    if current == heads:
-        return Check("Database", PASS, f"Reachable and up to date (version {', '.join(sorted(current))}).")
-    return Check("Database", FAIL, f"Reachable, but the schema is at {sorted(current) or 'nothing'} and the code expects {sorted(heads)}.",
-                 "Back up the database, then run: alembic upgrade head")
+    st = schema_status(db.get_bind())
+    if st["ok"]:
+        return Check("Database", PASS, f"Reachable and up to date (version {', '.join(st['current'])}).")
+    return Check("Database", FAIL, st["message"], st["fix"])
 
 
 def _environment(db: Session) -> Check:
@@ -105,6 +96,10 @@ def _api_key(db: Session) -> Check:
 
 
 def _crawler(db: Session) -> Check:
+    if settings.CRAWLER_ALLOW_PRIVATE_NETWORKS:
+        return Check("Crawler etiquette", FAIL, "CRAWLER_ALLOW_PRIVATE_NETWORKS is on: the crawler can reach localhost and internal networks "
+                     "(a compromised administrator account could use it to probe them).",
+                     "Set CRAWLER_ALLOW_PRIVATE_NETWORKS=false (it exists only for automated tests and self-hosted internal sites).")
     if not settings.CRAWLER_RESPECT_ROBOTS:
         return Check("Crawler etiquette", FAIL, "CRAWLER_RESPECT_ROBOTS is off: sites' robots.txt rules are being ignored.",
                      "Set CRAWLER_RESPECT_ROBOTS=true.")
