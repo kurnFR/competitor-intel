@@ -246,6 +246,49 @@ def test_regional_prices_endpoint_and_page(env):
     assert TestClient(app).get("/api/v1/promotions/regional-prices").status_code == 401
 
 
+def test_product_lookup_searches_stored_evidence_and_respects_source_approval(env):
+    approved = env.source()
+    evidence_source = env.source()
+    candidate = env.source(approved=False)
+    promotion = add_promotion(
+        env.db,
+        approved,
+        product_name=f"Zz{env.tag} Nissin Wafer Chocolate",
+        pack_size="160 g",
+        promo_price=8000,
+    )
+    document = CrawlDocument(source_id=evidence_source.id, url="https://evidence.test/nissin", text_content="verified Nissin promotion")
+    env.db.add(document)
+    env.db.flush()
+    evidence = env.db.query(PromotionEvidence).filter(PromotionEvidence.promotion_id == promotion.id).one()
+    evidence.document_id = document.id
+    add_promotion(env.db, approved, product_name=f"Zz{env.tag} Nissin Cracker Cheese", promo_price=7000)
+    add_promotion(env.db, candidate, product_name=f"Zz{env.tag} Nissin Wafer Candidate", promo_price=6000)
+    env.db.commit()
+
+    response = env.client().get("/api/v1/promotions/search", params={"q": "Nissin wafer"})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 1 and data["count"] == 1
+    (item,) = data["promotions"]
+    assert item["product_name"] == f"Zz{env.tag} Nissin Wafer Chocolate"
+    assert item["source_name"] == evidence_source.name
+    assert item["source_id"] == str(evidence_source.id)
+    assert item["source_url"] == "https://x.test/a"
+    assert item["evidence_quote"] == f"evidence for Zz{env.tag} Nissin Wafer Chocolate"
+    coverage_ids = {source["id"] for source in data["source_coverage"]}
+    assert str(approved.id) in coverage_ids and str(evidence_source.id) in coverage_ids
+    assert str(candidate.id) not in coverage_ids
+    matching_source = env.client().get(
+        "/api/v1/promotions/search", params={"q": "Nissin wafer", "source_id": str(evidence_source.id)}
+    ).json()
+    assert matching_source["total"] == 1
+    non_matching_source = env.client().get(
+        "/api/v1/promotions/search", params={"q": "Nissin wafer", "source_id": str(approved.id)}
+    ).json()
+    assert non_matching_source["total"] == 0
+
+
 def test_identity_and_optional_geography_gates(env, monkeypatch):
     src = env.source()
     n = lambda label: f"Zz{env.tag} {label}"

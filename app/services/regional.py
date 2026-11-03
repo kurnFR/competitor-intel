@@ -68,7 +68,9 @@ def build_regional_prices(promotions: List[Any]) -> Dict[str, Any]:
     # Products that differ by region first, widest gap first; then multi-region products; then the rest.
     products.sort(key=lambda x: (-(x["spread_pct"] or 0), -x["regions_compared"], (x["product"] or "").lower()))
     ordered = [r for r in REGION_ORDER if r in present_regions] + sorted(present_regions - set(REGION_ORDER))
+    verified = [p.last_verified_at for p in promotions if getattr(p, "last_verified_at", None) is not None]
     return {
+        "latest_verified_at": max(verified).isoformat() if verified else None,
         "regions": [{"code": r, "label": REGION_LABELS.get(r, r)} for r in ordered],
         "summary": {"products": len(products), "differ_by_region": sum(1 for x in products if x["differs_by_region"]),
                     "with_unstated_region": sum(1 for x in products if UNKNOWN in x["cells"])},

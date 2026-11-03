@@ -62,11 +62,37 @@ check("dashboard shows admin controls", !!$(p, "#scan-button") && !!p.d.querySel
 check("dashboard filled the table (or its empty state)", p.d.querySelector("#promo-table-body").children.length > 0);
 const stat = p.d.body.textContent;
 check("dashboard has no leftover template errors", !/undefined|\[object Object\]|NaN/.test(p.d.querySelector("#promo-table-body").textContent), p.d.querySelector("#promo-table-body").textContent.slice(0, 200));
+setVal($(p, "#product-lookup-query"), "Nissin wafer");
+await p.w.lookupProduct();
+check("product lookup returns a visible result state", !$(p, "#lookup-status").classList.contains("hidden") && p.errors.length === 0, $(p, "#lookup-status").textContent);
+check("dashboard provides compact promotion cards for narrow screens", !!$(p, "#promo-cards[role='list']") && $(p, ".results-scroll").classList.contains("hidden"));
+check("dashboard has one labelled primary navigation with an active page", !!$(p, 'nav[aria-label="Primary navigation"] [aria-current="page"][href="/"]'));
+check("dashboard navigation labels match the shared shell", !!$(p, 'a[href="/regional"]') && /Regional pricing/.test($(p, 'a[href="/regional"]').textContent) && /Price comparison/.test($(p, 'a[href="/compare"]').textContent));
+check("dashboard exposes a separate stored-source product lookup", !!$(p, "#product-lookup-form") && /does not start a crawl or search Google/.test($(p, "#product-lookup-title").parentElement.textContent));
+check("evidence view exposes modal dialog semantics", $(p, "#evidence-dialog").getAttribute("role") === "dialog" && $(p, "#evidence-dialog").getAttribute("aria-modal") === "true");
+check("all dashboard filters have associated labels", ["filter-category", "filter-industry", "filter-search", "filter-outlet", "filter-channel"].every(id => p.d.querySelector(`label[for="${id}"]`)));
+check("missing confidence values are presented as unknown", p.w.formatPercent(null) === "Unknown" && p.w.formatPercent(undefined) === "Unknown");
+{
+  const trigger = $(p, "#promo-cards button[aria-label^='View evidence']");
+  if (trigger) {
+    trigger.click();
+    check("evidence dialog opens and moves focus to close", $(p, "#evidence-modal").getAttribute("aria-hidden") === "false" && p.d.activeElement.id === "modal-close");
+    p.d.dispatchEvent(new p.w.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    check("Escape closes evidence dialog and restores focus", $(p, "#evidence-modal").getAttribute("aria-hidden") === "true" && p.d.activeElement === trigger);
+  }
+}
 
 // ---- 3. Other pages render and load data
 for (const [path, marker] of [["/insights", "Promotion activity by competitor"], ["/regional", "Regional pricing"], ["/competitors", "Competitors"], ["/compare", "Our prices vs competitor promotions"], ["/review", "Matches to confirm"], ["/admin", "Websites we scan"]]) {
   const q = await openPage(path); await sleep(700);
   check(`${path} renders with no script errors`, q.status === 200 && q.errors.length === 0 && q.d.body.textContent.includes(marker), (q.errors || []).join("|"));
+  if (path === "/regional" && q.status === 200) {
+    check("regional search and category controls have visible labels", !!q.d.querySelector('label[for="q"]') && !!q.d.querySelector('label[for="category"]'));
+    check("regional data panel has a live status region", !!q.d.querySelector('#regional-status[aria-live="polite"]'));
+    check("regional comparison table is keyboard reachable and named", q.d.querySelector('#grid-scroll[tabindex="0"][role="region"][aria-label]') !== null);
+    check("regional navigation marks the current page", q.d.querySelector('nav[aria-label="Primary navigation"] [aria-current="page"][href="/regional"]') !== null);
+    check("regional table source wording is not title-only", !/title=/.test(q.d.querySelector('#grid').innerHTML));
+  }
 }
 const adminPage = await openPage("/admin"); await sleep(800);
 check("admin page lists users and sources", adminPage.d.querySelectorAll("#users tr").length >= 1 && adminPage.d.querySelectorAll("#sources tr").length >= 1);
@@ -92,6 +118,7 @@ check("admin page lists security events", adminPage.d.querySelectorAll("#audit t
 // ---- 4. Account page: enrol two-factor through the UI
 p = await openPage("/account"); await sleep(500);
 check("account page loads without script errors", p.status === 200 && p.errors.length === 0, (p.errors || []).join("|"));
+check("account page offers a keyboard-visible route back to dashboard", !!$(p, 'main a[href="/"]') && /Back to dashboard/.test($(p, 'main a[href="/"]').textContent));
 check("2FA 'set up' button is offered", !$(p, "#mfa-off").classList.contains("hidden"));
 $(p, "#mfa-start").dispatchEvent(new p.w.Event("click")); await sleep(700);
 check("QR code and key are shown", !$(p, "#mfa-enroll").classList.contains("hidden") && $(p, "#mfa-qr").src.startsWith("data:image/svg+xml") && $(p, "#mfa-secret").textContent.length >= 16);

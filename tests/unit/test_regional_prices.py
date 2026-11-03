@@ -24,6 +24,16 @@ def test_prices_are_kept_per_region_and_never_merged():
     assert product["spread_pct"] == 25.3 and product["differs_by_region"] is True and product["regions_compared"] == 4
 
 
+def test_latest_verification_timestamp_is_reported_without_claiming_all_sources_are_fresh():
+    earlier = datetime(2026, 10, 1, tzinfo=timezone.utc)
+    latest = datetime(2026, 10, 3, tzinfo=timezone.utc)
+    data = build_regional_prices([
+        promo("Roma", "JAWA", 7900, last_verified_at=earlier),
+        promo("Roma", "SUMATERA", 8500, last_verified_at=latest),
+    ])
+    assert data["latest_verified_at"] == latest.isoformat()
+
+
 def test_unstated_region_is_separate_and_never_nationwide():
     data = build_regional_prices([promo("Roma", "UNKNOWN", 7000), promo("Roma", "JAWA", 7900)])
     (product,) = data["products"]
@@ -40,7 +50,7 @@ def test_different_pack_sizes_are_different_products():
 
 def test_promotions_without_a_computable_price_are_left_out():
     data = build_regional_prices([promo("Roma", "JAWA", None)])
-    assert data["products"] == [] and data["regions"] == []
+    assert data["products"] == [] and data["regions"] == [] and data["latest_verified_at"] is None
 
 
 def test_multiple_promotions_in_one_region_show_the_range_and_outlets():

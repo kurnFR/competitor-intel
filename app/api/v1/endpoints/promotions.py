@@ -2,14 +2,23 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional, List
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session, contains_eager
-from sqlalchemy import and_, func, or_
+from sqlalchemy import and_, func, or_, select
+from uuid import UUID
 from app.db.session import get_db
 from app.models.promotion import Promotion, PromotionEvidence
 from app.models.promotion_change import PromotionChangeEvent
 from app.models.entity import Competitor, Brand, Retailer
-from app.schemas.promotion import Top10Response, Top10PromotionItem, PromotionDetailOut, PromotionChangeEventOut
+from app.schemas.promotion import (
+    PromotionChangeEventOut,
+    PromotionDetailOut,
+    PromotionLookupItem,
+    PromotionLookupResponse,
+    SourceCoverageItem,
+    Top10PromotionItem,
+    Top10Response,
+)
 from fastapi.responses import Response
-from app.core.deps import require_role
+from app.core.deps import Principal, require_role
 from app.services.digest import build_digest
 from app.services.ranking.rescore import explain_scores
 from app.services.regional import build_regional_prices
@@ -17,6 +26,9 @@ from app.services.exporting import build_export
 from app.services.geography import REGION_LABELS, UNKNOWN
 from app.services.channels import display_channel, normalize_channel, retailer_types_for
 from app.services.promotions.visibility import live_promotion_filter
+from app.services.source_health import compute_health
+from app.services.crawler.manager import ADAPTERS
+from app.models.source import CrawlDocument, SourceRegistry
 
 router = APIRouter()
 
@@ -140,6 +152,147 @@ def get_top10_promotions(
         ))
     return Top10Response(generated_at=now.isoformat(), count=len(items), promotions=items)
 
+@router.get("/search", response_model=PromotionLookupResponse)
+def search_promotions(
+    q: str = Query(..., min_length=2, max_length=100, description="Product, brand, or competitor search; every term must match"),
+    category: Optional[str] = Query(None, max_length=50),
+    outlet: Optional[str] = Query(None, max_length=100),
+    source_id: Optional[UUID] = Query(None, description="Restrict results to one configured source"),
+    days: int = Query(90, ge=1, le=365),
+    limit: int = Query(25, ge=1, le=100),
+    offset: int = Query(0, ge=0, le=10000),
+    principal: Principal = Depends(require_role("VIEWER")),
+    db: Session = Depends(get_db),
+):
+    """Search eligible promotions already collected from approved sources; this does not crawl the web."""
+    terms = [term for term in q.strip().split() if term]
+    if not terms:
+        raise HTTPException(status_code=422, detail="Enter a product, brand, or competitor name.")
+    if len(terms) > 8:
+        raise HTTPException(status_code=422, detail="Search with eight terms or fewer.")
+
+    now = datetime.now(timezone.utc)
+    query = _filtered_query(db, now, days=days)
+    for term in terms:
+        query = query.filter(or_(
+            _ilike(Promotion.product_name, term),
+            _ilike(Promotion.promotion_title, term),
+            _ilike(Promotion.promotion_description, term),
+            _ilike(Promotion.promotion_type, term),
+            _ilike(Promotion.category, term),
+            _ilike(Brand.name, term),
+            _ilike(Competitor.name, term),
+            _ilike(Retailer.name, term),
+        ))
+    if category:
+        query = query.filter(_ilike(Promotion.category, category))
+    if outlet:
+        query = query.filter(_ilike(Retailer.name, outlet))
+    if source_id:
+        evidence_source_id = (
+            select(CrawlDocument.source_id)
+            .select_from(PromotionEvidence)
+            .outerjoin(CrawlDocument, CrawlDocument.id == PromotionEvidence.document_id)
+            .where(PromotionEvidence.promotion_id == Promotion.id)
+            .order_by(
+                PromotionEvidence.captured_at.desc(),
+                PromotionEvidence.created_at.desc(),
+                PromotionEvidence.id.desc(),
+            )
+            .limit(1)
+            .correlate(Promotion)
+            .scalar_subquery()
+        )
+        query = query.filter(func.coalesce(evidence_source_id, Promotion.source_id) == source_id)
+
+    total = query.order_by(None).count()
+    results = query.order_by(Promotion.last_verified_at.desc(), Promotion.rank_score.desc()).offset(offset).limit(limit).all()
+    evidence_by_promo = _latest_evidence(db, results)
+
+    document_ids = {e.document_id for e in evidence_by_promo.values() if e.document_id is not None}
+    source_id_by_document = {}
+    if document_ids:
+        source_id_by_document = dict(
+            db.query(CrawlDocument.id, CrawlDocument.source_id)
+            .filter(CrawlDocument.id.in_(document_ids))
+            .all()
+        )
+    result_source_ids = {
+        source_id_by_document.get(evidence_by_promo[p.id].document_id) or p.source_id
+        for p in results
+        if p.id in evidence_by_promo
+    }
+    result_source_ids.update(p.source_id for p in results if p.source_id is not None)
+    source_names = {
+        source.id: source.name
+        for source in db.query(SourceRegistry).filter(SourceRegistry.id.in_(result_source_ids)).all()
+    } if result_source_ids else {}
+
+    items = []
+    for p in results:
+        evidence = evidence_by_promo.get(p.id)
+        evidence_source_id = source_id_by_document.get(evidence.document_id) if evidence and evidence.document_id else None
+        resolved_source_id = evidence_source_id or p.source_id
+        dates_stated = p.start_date is not None or p.end_date is not None
+        valid_until = p.end_date.strftime("%Y-%m-%d") if p.end_date else (
+            "No end date stated" if dates_stated else "Dates not stated"
+        )
+        items.append(PromotionLookupItem(
+            id=p.id,
+            product_name=p.product_name,
+            brand=p.brand.name if p.brand else None,
+            competitor=p.competitor.name if p.competitor else None,
+            category=p.category,
+            pack_size=p.pack_size,
+            outlet=p.retailer.name if p.retailer else None,
+            channel=display_channel(p.channel, p.retailer.channel_type if p.retailer else None),
+            geography=p.geography or REGION_LABELS[UNKNOWN],
+            promotion_type=p.promotion_type,
+            regular_price=p.regular_price,
+            promo_price=p.promo_price,
+            discount_percentage=p.discount_percentage,
+            valid_from=p.start_date.strftime("%Y-%m-%d") if p.start_date else None,
+            valid_until=valid_until,
+            dates_stated=dates_stated,
+            last_verified=p.last_verified_at,
+            source_id=resolved_source_id,
+            source_name=source_names.get(resolved_source_id),
+            source_url=evidence.source_url if evidence else None,
+            evidence_quote=evidence.evidence_text if evidence else None,
+            source_reliability=p.source_reliability,
+            ai_confidence=p.ai_confidence,
+            rank_score=p.rank_score,
+        ))
+
+    source_coverage = None
+    if principal.user.role in {"ANALYST", "ADMIN"}:
+        active_sources = (
+            db.query(SourceRegistry)
+            .filter(SourceRegistry.is_active.is_(True), SourceRegistry.approval_status == "APPROVED",
+                    SourceRegistry.adapter_key.in_(ADAPTERS.keys()))
+            .order_by(SourceRegistry.name)
+            .limit(50)
+            .all()
+        )
+        source_coverage = [
+            SourceCoverageItem(
+                id=source.id,
+                name=source.name,
+                health=compute_health(source, now),
+                last_processed_at=source.last_processed_at,
+            )
+            for source in active_sources
+        ]
+    return PromotionLookupResponse(
+        query=q,
+        generated_at=now.isoformat(),
+        count=len(items),
+        total=total,
+        limit=limit,
+        offset=offset,
+        source_coverage=source_coverage,
+        promotions=items,
+    )
 
 
 

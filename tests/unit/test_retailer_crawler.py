@@ -1,4 +1,5 @@
 from app.services.crawler.retailer import PROFILES, RetailerPromotionCrawler
+from app.services.crawler.manager import ADAPTER_LABELS, ADAPTERS
 
 
 def _crawler_for(key):
@@ -36,6 +37,24 @@ def test_alfamart_matches_promo_and_catalog_keywords():
         "https://www.alfamart.co.id/katalog",
         "https://www.alfamart.co.id/promo-jsm",
     ]
+
+
+def test_klikindogrosir_finds_public_promotion_and_product_detail_links_same_origin():
+    crawler = _crawler_for("klikindogrosir")
+    crawler.source.base_url = "https://klikindogrosir.com/"
+    html = """
+    <a href="/promo-detail?promo=5419">Promo potongan biskuit</a>
+    <a href="/product_details/1580643">Nissin wafer product details</a>
+    <a href="https://example.com/promo">external promo</a>
+    <a href="/tentang-kami">Tentang Kami</a>
+    """
+    urls = crawler.discover_promotion_urls(html, "https://klikindogrosir.com/")
+    assert urls == [
+        "https://klikindogrosir.com/product_details/1580643",
+        "https://klikindogrosir.com/promo-detail?promo=5419",
+    ]
+    assert "klikindogrosir" in ADAPTERS
+    assert "branch-specific" in ADAPTER_LABELS["klikindogrosir"]
 
 
 def test_retailer_profile_rejects_unknown_retailer():

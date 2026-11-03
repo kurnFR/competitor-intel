@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 PROFILES = {
     "indomaret": {"keywords": ("promo", "promosi", "catalog", "katalog", "hemat", "jsm", "tebus")},
     "alfamart": {"keywords": ("promo", "promosi", "katalog", "catalog", "jsm", "serba", "tebus")},
+    "klikindogrosir": {"keywords": ("promo", "potongan", "diskon", "product_details", "promosi")},
 }
 
 

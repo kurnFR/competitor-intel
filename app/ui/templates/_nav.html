@@ -1,18 +1,18 @@
 <header class="bg-gradient-to-r from-blue-900 to-sky-600 text-white shadow">
     <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
         <a href="/" class="font-bold tracking-tight"><i class="fa-solid fa-chart-line text-amber-300 mr-2"></i>{{ app_name }}</a>
-        <nav class="flex flex-wrap items-center gap-2 text-xs font-medium">
-            <a href="/" class="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20">Dashboard</a>
-            <a href="/competitors" class="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20">Competitors</a>
-            <a href="/regional" class="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20">Regional pricing</a>
-            <a href="/insights" class="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20">Insights</a>
-            {% if user and user.role in ('ANALYST', 'ADMIN') %}<a href="/compare" class="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20">Price comparison</a><a href="/review" class="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20">Review</a>{% endif %}
-            {% if user and user.role == 'ADMIN' %}<a href="/admin" class="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20">Admin</a>{% endif %}
+        <nav aria-label="Primary navigation" class="flex flex-wrap items-center gap-2 text-sm font-medium">
+            <a href="/" {% if request.url.path == '/' %}aria-current="page"{% endif %} class="px-3 py-2 rounded-lg border {% if request.url.path == '/' %}bg-white/25 border-white/40 font-semibold{% else %}bg-white/10 border-white/10 hover:bg-white/20{% endif %}">Dashboard</a>
+            <a href="/competitors" {% if request.url.path == '/competitors' %}aria-current="page"{% endif %} class="px-3 py-2 rounded-lg border {% if request.url.path == '/competitors' %}bg-white/25 border-white/40 font-semibold{% else %}bg-white/10 border-white/10 hover:bg-white/20{% endif %}">Competitors</a>
+            <a href="/regional" {% if request.url.path == '/regional' %}aria-current="page"{% endif %} class="px-3 py-2 rounded-lg border {% if request.url.path == '/regional' %}bg-white/25 border-white/40 font-semibold{% else %}bg-white/10 border-white/10 hover:bg-white/20{% endif %}">Regional pricing</a>
+            <a href="/insights" {% if request.url.path == '/insights' %}aria-current="page"{% endif %} class="px-3 py-2 rounded-lg border {% if request.url.path == '/insights' %}bg-white/25 border-white/40 font-semibold{% else %}bg-white/10 border-white/10 hover:bg-white/20{% endif %}">Insights</a>
+            {% if user and user.role in ('ANALYST', 'ADMIN') %}<a href="/compare" {% if request.url.path == '/compare' %}aria-current="page"{% endif %} class="px-3 py-2 rounded-lg border {% if request.url.path == '/compare' %}bg-white/25 border-white/40 font-semibold{% else %}bg-white/10 border-white/10 hover:bg-white/20{% endif %}">Price comparison</a><a href="/review" {% if request.url.path == '/review' %}aria-current="page"{% endif %} class="px-3 py-2 rounded-lg border {% if request.url.path == '/review' %}bg-white/25 border-white/40 font-semibold{% else %}bg-white/10 border-white/10 hover:bg-white/20{% endif %}">Review</a>{% endif %}
+            {% if user and user.role == 'ADMIN' %}<a href="/admin" {% if request.url.path == '/admin' %}aria-current="page"{% endif %} class="px-3 py-2 rounded-lg border {% if request.url.path == '/admin' %}bg-white/25 border-white/40 font-semibold{% else %}bg-white/10 border-white/10 hover:bg-white/20{% endif %}">Admin</a>{% endif %}
             {% if user %}
-            <a href="/account" class="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20"><i class="fa-solid fa-user"></i> {{ user.username }}</a>
-            <button onclick="logout()" class="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20" title="Sign out"><i class="fa-solid fa-right-from-bracket"></i></button>
+            <a href="/account" {% if request.url.path == '/account' %}aria-current="page"{% endif %} class="px-3 py-2 min-h-11 rounded-lg border {% if request.url.path == '/account' %}bg-white/25 border-white/40 font-semibold{% else %}bg-white/10 border-white/10 hover:bg-white/20{% endif %}"><i class="fa-solid fa-user" aria-hidden="true"></i> {{ user.username }}</a>
+            <button onclick="logout()" class="px-3 py-2 min-h-11 rounded-lg bg-white/10 hover:bg-white/20" title="Sign out" aria-label="Sign out"><i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i></button>
             {% else %}
-            <a href="/login" class="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20"><i class="fa-solid fa-right-to-bracket"></i> Sign in</a>
+            <a href="/login" class="px-3 py-2 min-h-11 rounded-lg bg-white/10 hover:bg-white/20"><i class="fa-solid fa-right-to-bracket" aria-hidden="true"></i> Sign in</a>
             {% endif %}
         </nav>
     </div>

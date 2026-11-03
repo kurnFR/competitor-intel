@@ -4,7 +4,7 @@ An automated, AI-powered competitor marketing intelligence system for the Indone
 
 The platform continuously monitors retailer websites and promotional feeds, extracts structured commercial promotion data using an LLM gateway (9router), validates dates and prices against business rules, deduplicates multi-source observations, ranks activities by commercial impact, and serves the **Top 10 Active Competitor Promotions** via REST API and a web dashboard.
 
-The dashboard defaults to Industry `FMCG` and uses `Outlet` terminology. Its free-text search and filters query the stored Top 10 promotion data, including product, pack size, promotion mechanic, outlet, channel, geography, validity, and audit evidence. Channel values outside the verified taxonomy are displayed as `N/A` rather than inferred.
+The dashboard defaults to Industry `FMCG` and uses `Outlet` terminology. Its Top 10 filters query the ranked result set; **Find a product across sources** searches all eligible, stored promotions from approved active sources and shows exact evidence and source links. Product lookup does not crawl websites or query Google on demand; use an authorized scan to refresh stored evidence. Channel values outside the verified taxonomy are displayed as `N/A` rather than inferred.
 
 ---
 
@@ -113,6 +113,8 @@ PYTHONPATH=. python3 scripts/run_pipeline.py
 
 `Refresh` only reloads promotions already stored in PostgreSQL. To collect new promotion data, click `Scan now` in the dashboard or run the command above. The scan needs reachable source websites and, for AI extraction, the configured LLM gateway. Records without usable evidence are not treated as verified.
 
+The `KlikIndogrosir (wholesale, branch-specific)` adapter is available for admin source setup. Add `https://klikindogrosir.com/` as a candidate, review its public-access and terms/robots status, then approve it before it can be scanned. Prices can reflect the selected branch and box/carton quantity; verify both before comparing with retail prices.
+
 ### Starting the Web Server & Dashboard
 ```bash
 ./scripts/start_server.sh
@@ -137,6 +139,11 @@ Example Request:
 ```bash
 curl "http://localhost:8000/api/v1/promotions/top10?category=WAFER&retailer=Indomaret"
 ```
+
+### 1.1 Product lookup across configured sources
+`GET /api/v1/promotions/search?q=Nissin%20wafer`
+
+Searches eligible promotions already stored from approved, active sources. Every whitespace-separated query term must match at least one product, brand, competitor, retailer, or promotion field. Results are paginated (`limit` 1–100, default 25; `offset` default 0) and include source name, source URL, exact evidence quote, verification time, and source-health coverage for analyst/admin users. It does **not** make a live web/Google search or start a crawl. No result means no matching eligible stored observation was found, not that no market activity exists.
 
 ### 2. Promotion Audit Detail
 `GET /api/v1/promotions/{promotion_id}`

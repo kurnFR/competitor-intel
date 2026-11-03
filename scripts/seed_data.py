@@ -149,6 +149,7 @@ def seed_reference_data():
         retailers = [
             {"name": "Indomaret", "channel": "MINIMARKET", "website": "https://www.klikindomaret.com"},
             {"name": "Alfamart", "channel": "MINIMARKET", "website": "https://alfagift.id"},
+            {"name": "Indogrosir", "channel": "WHOLESALE", "website": "https://klikindogrosir.com"},
             {"name": "Superindo", "channel": "SUPERMARKET", "website": "https://www.superindo.co.id"},
             {"name": "Hypermart", "channel": "HYPERMARKET", "website": "https://shop.hypermart.co.id"},
             {"name": "Transmart", "channel": "HYPERMARKET", "website": "https://transmart.co.id"},
@@ -171,6 +172,19 @@ def seed_reference_data():
 
         # 3. Source Registry
         sources = [
+            {
+                "name": "KlikIndogrosir Wholesale Catalog",
+                "domain": "klikindogrosir.com",
+                "base_url": "https://klikindogrosir.com/",
+                "source_type": "RETAILER",
+                "tier": "TIER_2",
+                "reliability_score": 0.85,
+                "category": "WHOLESALE_CATALOG",
+                "crawl_frequency_minutes": 1440,
+                "approval_status": "CANDIDATE",
+                "is_active": False,
+                "adapter_key": "klikindogrosir",
+            },
             {
                 "name": "Superindo Promo Koran & Mingguan",
                 "domain": "superindo.co.id",
@@ -235,11 +249,11 @@ def seed_reference_data():
                     reliability_score=s_data["reliability_score"],
                     category=s_data["category"],
                     crawl_frequency_minutes=max(s_data["crawl_frequency_minutes"], 1440),
-                    adapter_key=ADAPTER_FOR_DOMAIN(s_data["domain"], s_data["source_type"]),
-                    approval_status="APPROVED",
+                    adapter_key=s_data.get("adapter_key") or ADAPTER_FOR_DOMAIN(s_data["domain"], s_data["source_type"]),
+                    approval_status=s_data.get("approval_status", "APPROVED"),
                     country="ID",
                     language="id",
-                    is_active=True
+                    is_active=s_data.get("is_active", True)
                 )
                 db.add(src)
 

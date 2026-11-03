@@ -17,6 +17,8 @@
     <style>
         .results-scroll { overflow-x: auto; width: 100%; }
         .results-scroll table { min-width: 1180px; }
+        header nav a, header [role="group"] > * { min-height: 44px; }
+        :focus-visible { outline: 3px solid #38bdf8; outline-offset: 2px; }
         .gradient-header {
             background: linear-gradient(135deg, #1e3a8a 0%, #0284c7 100%);
         }
@@ -37,7 +39,7 @@
 <body class="bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 antialiased min-h-screen flex flex-col transition-colors duration-200">
     <!-- Header -->
     <header class="gradient-header text-white shadow-lg sticky top-0 z-30 border-b border-white/10 dark:border-slate-800">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-wrap justify-between items-center gap-4">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col xl:flex-row xl:justify-between items-start xl:items-center gap-4">
             <div class="flex items-center space-x-3">
                 <div class="w-10 h-10 rounded-xl bg-white/20 dark:bg-slate-800 flex items-center justify-center backdrop-blur-sm border border-white/10">
                     <i class="fa-solid fa-chart-line text-xl text-amber-300"></i>
@@ -47,41 +49,50 @@
                     <p class="text-xs text-blue-100 dark:text-slate-400">FMCG Biscuit, Cracker, Wafer & Cookies Market Intelligence</p>
                 </div>
             </div>
-            <div class="flex items-center space-x-3">
-                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
-                    <span class="w-2 h-2 mr-2 bg-emerald-400 rounded-full animate-pulse"></span> Live System
+            <div class="w-full xl:w-auto flex flex-wrap items-center gap-2">
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-white/10 text-blue-50 border border-white/20" title="Verification time is shown for each promotion">
+                    <i class="fa-regular fa-clock mr-2" aria-hidden="true"></i> Verification shown per promotion
                 </span>
 
                 <!-- Dark Mode Toggle Button -->
-                <button onclick="toggleDarkMode()" id="theme-toggle" class="p-2 bg-white/10 hover:bg-white/20 dark:bg-slate-800 dark:hover:bg-slate-700 text-amber-300 dark:text-amber-400 rounded-xl transition border border-white/20 dark:border-slate-700 flex items-center justify-center w-9 h-9" title="Toggle Dark Mode">
+                <button onclick="toggleDarkMode()" id="theme-toggle" class="p-2 bg-white/10 hover:bg-white/20 dark:bg-slate-800 dark:hover:bg-slate-700 text-amber-300 dark:text-amber-400 rounded-xl transition border border-white/20 dark:border-slate-700 flex items-center justify-center w-11 h-11" title="Toggle dark mode" aria-label="Toggle dark mode" aria-pressed="false">
                     <i id="theme-icon" class="fa-solid fa-moon"></i>
                 </button>
 
-                <a href="/competitors" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-xs font-medium rounded-lg border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-building"></i> Competitors</a>
-                <a href="/regional" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-xs font-medium rounded-lg border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-map-location-dot"></i> Regions</a>
-                <a href="/insights" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-xs font-medium rounded-lg border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-chart-column"></i> Insights</a>
+                <nav aria-label="Primary navigation" class="w-full xl:w-auto flex flex-wrap items-center gap-2">
+                <a href="/" aria-current="page" class="px-3 py-2 bg-white/25 hover:bg-white/30 text-sm font-semibold rounded-lg border border-white/30 flex items-center gap-1.5"><i class="fa-solid fa-house" aria-hidden="true"></i> Dashboard</a>
+                <a href="/competitors" class="px-3 py-2 bg-white/10 hover:bg-white/20 text-sm font-medium rounded-lg border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-building" aria-hidden="true"></i> Competitors</a>
+                <a href="/regional" class="px-3 py-2 bg-white/10 hover:bg-white/20 text-sm font-medium rounded-lg border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-map-location-dot" aria-hidden="true"></i> Regional pricing</a>
+                <a href="/insights" class="px-3 py-2 bg-white/10 hover:bg-white/20 text-sm font-medium rounded-lg border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-chart-column" aria-hidden="true"></i> Insights</a>
                 {% if user and user.role in ('ANALYST', 'ADMIN') %}
-                <a href="/compare" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-xs font-medium rounded-lg border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-scale-balanced"></i> Prices</a>
-                <a href="/review" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-xs font-medium rounded-lg border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-list-check"></i> Review</a>
-                <button onclick="exportData('csv')" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-xs font-medium rounded-lg border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-file-csv"></i> CSV</button>
-                <button onclick="exportData('xlsx')" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-xs font-medium rounded-lg border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-file-excel"></i> Excel</button>
+                <a href="/compare" class="px-3 py-2 bg-white/10 hover:bg-white/20 text-sm font-medium rounded-lg border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-scale-balanced" aria-hidden="true"></i> Price comparison</a>
+                <a href="/review" class="px-3 py-2 bg-white/10 hover:bg-white/20 text-sm font-medium rounded-lg border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-list-check" aria-hidden="true"></i> Review</a>
                 {% endif %}
                 {% if user and user.role == 'ADMIN' %}
-                <a href="/admin" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-xs font-medium rounded-lg border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-user-shield"></i> Admin</a>
-                <button onclick="scanNow()" id="scan-button" class="px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 text-xs font-medium rounded-lg transition border border-emerald-400/30 flex items-center gap-1.5">
-                    <i class="fa-solid fa-satellite-dish"></i> Scan now
+                <a href="/admin" class="px-3 py-2 bg-white/10 hover:bg-white/20 text-sm font-medium rounded-lg border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-user-shield" aria-hidden="true"></i> Admin</a>
+                {% endif %}
+                </nav>
+                <div class="flex flex-wrap items-center gap-2" role="group" aria-label="Dashboard actions">
+                {% if user and user.role == 'ADMIN' %}
+                <button onclick="scanNow()" id="scan-button" class="px-3 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-100 text-sm font-medium rounded-lg transition border border-emerald-300/50 flex items-center gap-1.5">
+                    <i class="fa-solid fa-satellite-dish" aria-hidden="true"></i> Scan now
                 </button>
+                {% endif %}
+                {% if user and user.role in ('ANALYST', 'ADMIN') %}
+                <button onclick="exportData('csv')" class="px-3 py-2 bg-white/10 hover:bg-white/20 text-sm font-medium rounded-lg border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-file-csv" aria-hidden="true"></i> CSV</button>
+                <button onclick="exportData('xlsx')" class="px-3 py-2 bg-white/10 hover:bg-white/20 text-sm font-medium rounded-lg border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-file-excel" aria-hidden="true"></i> Excel</button>
                 {% endif %}
 
-                <button onclick="fetchTop10(); fetchStats();" title="Reload promotions already stored in the database" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-medium rounded-lg transition border border-white/20 dark:border-slate-700 flex items-center gap-1.5">
-                    <i class="fa-solid fa-arrows-rotate"></i> Refresh
+                <button onclick="fetchTop10(); fetchStats();" title="Reload promotions already stored in the database" class="px-3 py-2 bg-white/10 hover:bg-white/20 dark:bg-slate-800 dark:hover:bg-slate-700 text-sm font-medium rounded-lg transition border border-white/20 dark:border-slate-700 flex items-center gap-1.5">
+                    <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i> Refresh
                 </button>
                 {% if user %}
-                <a href="/account" title="My account" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-xs font-medium rounded-lg border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-user"></i> {{ user.username }}</a>
-                <button onclick="logout()" title="Sign out" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-xs font-medium rounded-lg border border-white/20"><i class="fa-solid fa-right-from-bracket"></i></button>
+                <a href="/account" title="My account" class="px-3 py-2 bg-white/10 hover:bg-white/20 text-sm font-medium rounded-lg border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-user" aria-hidden="true"></i> {{ user.username }}</a>
+                <button onclick="logout()" title="Sign out" aria-label="Sign out" class="px-3 py-2 bg-white/10 hover:bg-white/20 text-sm font-medium rounded-lg border border-white/20"><i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i></button>
                 {% else %}
-                <a href="/login" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-xs font-medium rounded-lg border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-right-to-bracket"></i> Sign in</a>
+                <a href="/login" class="px-3 py-2 bg-white/10 hover:bg-white/20 text-sm font-medium rounded-lg border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-right-to-bracket" aria-hidden="true"></i> Sign in</a>
                 {% endif %}
+                </div>
             </div>
         </div>
     </header>
@@ -135,13 +146,14 @@
                 </div>
             </div>
         </div>
+        <p id="stats-status" class="hidden text-sm text-rose-800 dark:text-rose-200 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900 rounded-lg px-4 py-3" role="status" aria-live="polite"></p>
 
         <!-- Filter Bar -->
         <div class="bg-white dark:bg-slate-900 p-4 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 flex flex-wrap gap-4 items-center justify-between transition-colors">
             <div class="flex flex-wrap gap-3 items-center">
                 <div>
-                    <label class="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Category</label>
-                    <select id="filter-category" onchange="fetchTop10()" class="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-lg px-3 py-2 font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                    <label for="filter-category" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wider mb-1">Category</label>
+                    <select id="filter-category" onchange="fetchTop10()" class="min-h-11 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-lg px-3 py-2 font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none">
                         <option value="">All Categories</option>
                         <option value="BISCUIT">Biscuit</option>
                         <option value="CRACKER">Cracker</option>
@@ -151,18 +163,18 @@
                     </select>
                 </div>
                 <div>
-                    <label class="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Industry *</label>
-                    <select id="filter-industry" onchange="fetchTop10()" required class="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-lg px-3 py-2 font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                    <label for="filter-industry" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wider mb-1">Industry</label>
+                    <select id="filter-industry" onchange="fetchTop10()" class="min-h-11 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-lg px-3 py-2 font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none">
                         <option value="FMCG" selected>FMCG</option>
                     </select>
                 </div>
                 <div>
-                    <label class="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Search</label>
-                    <input id="filter-search" onkeydown="if(event.key==='Enter') fetchTop10()" placeholder="All products, outlets, promotions..." class="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-lg px-3 py-2 font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                    <label for="filter-search" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wider mb-1">Search</label>
+                    <input id="filter-search" onkeydown="if(event.key==='Enter') fetchTop10()" placeholder="All products, outlets, promotions..." class="min-h-11 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-lg px-3 py-2 font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none">
                 </div>
                 <div>
-                    <label class="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Outlet</label>
-                    <select id="filter-outlet" onchange="fetchTop10()" class="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-lg px-3 py-2 font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                    <label for="filter-outlet" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wider mb-1">Outlet</label>
+                    <select id="filter-outlet" onchange="fetchTop10()" class="min-h-11 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-lg px-3 py-2 font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none">
                         <option value="">All Outlets</option>
                         <option value="Indomaret">Indomaret</option>
                         <option value="Alfamart">Alfamart</option>
@@ -172,8 +184,8 @@
                     </select>
                 </div>
                 <div>
-                    <label class="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Channel</label>
-                    <select id="filter-channel" onchange="fetchTop10()" class="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-lg px-3 py-2 font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                    <label for="filter-channel" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wider mb-1">Channel</label>
+                    <select id="filter-channel" onchange="fetchTop10()" class="min-h-11 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-lg px-3 py-2 font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none">
                         <option value="">All Channels</option><option>Retail</option><option>Modern Trade</option><option>General Trade</option><option>E-commerce</option><option>Wholesale</option><option>Distributor</option><option>Foodservice</option><option>N/A</option>
                     </select>
                 </div>
@@ -183,6 +195,20 @@
                 <span>Rule: Active &le; 3 Months &bull; Deduplicated &bull; Ranked by Commercial Impact</span>
             </div>
         </div>
+
+        <section class="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 p-5 space-y-4" aria-labelledby="product-lookup-title">
+            <div>
+                <h2 id="product-lookup-title" class="text-lg font-bold text-slate-900 dark:text-white">Find a product across sources</h2>
+                <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">Search stored, verified promotions from approved and active sources, including wholesale sources after they are scanned. This does not start a crawl or search Google.</p>
+            </div>
+            <form id="product-lookup-form" class="flex flex-col sm:flex-row gap-2" onsubmit="event.preventDefault(); lookupProduct();">
+                <label for="product-lookup-query" class="sr-only">Product, brand, or competitor</label>
+                <input id="product-lookup-query" type="search" minlength="2" maxlength="100" placeholder="Try: Nissin wafer" class="min-h-11 flex-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" required>
+                <button id="product-lookup-button" type="submit" class="min-h-11 px-5 rounded-lg bg-blue-700 hover:bg-blue-800 text-white text-sm font-semibold focus-visible:ring-2 focus-visible:ring-sky-500">Find promotions</button>
+            </form>
+            <p id="lookup-status" class="hidden rounded-lg border px-4 py-3 text-sm" role="status" aria-live="polite"></p>
+            <div id="lookup-results" class="space-y-3" aria-live="polite"></div>
+        </section>
 
         <!-- Top 10 Table -->
         <div class="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden transition-colors">
@@ -194,11 +220,13 @@
                     </h2>
                     <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Ranked using PRD multi-factor scoring (Strength, Reliability, Freshness, Relevance, AI Confidence)</p>
                 </div>
-                <span id="gen-timestamp" class="text-xs text-slate-400 dark:text-slate-500"></span>
+                <span id="gen-timestamp" class="text-xs text-slate-600 dark:text-slate-300 text-right" aria-live="polite"></span>
             </div>
 
-            <div class="results-scroll" tabindex="0" aria-label="Scrollable promotion results">
+            <div id="promo-cards" class="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 xl:hidden" role="list" aria-label="Promotion results"></div>
+            <div class="results-scroll hidden xl:block" tabindex="0" aria-label="Scrollable promotion results">
                 <table class="w-full text-left text-sm">
+                    <caption class="sr-only">Top active promotions ranked by commercial impact. Select a verification status to view evidence.</caption>
                     <thead class="bg-slate-50/80 dark:bg-slate-800/80 text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wider font-semibold border-b border-slate-100 dark:border-slate-800">
                         <tr>
                             <th class="py-3.5 px-4 w-12 text-center">Rank</th>
@@ -212,11 +240,11 @@
                             <th class="py-3.5 px-4">Channel</th>
                             <th class="py-3.5 px-4">Geography</th>
                             <th class="py-3.5 px-4">Valid Until</th>
-                            <th class="py-3.5 px-4 text-center">Score</th>
+                            <th class="py-3.5 px-4 text-center">Impact Score</th>
                             <th class="py-3.5 px-4 text-center">Audit Status</th>
                         </tr>
                     </thead>
-                    <tbody id="promo-table-body" class="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
+                    <tbody id="promo-table-body" class="divide-y divide-slate-100 dark:divide-slate-800 font-medium" aria-live="polite">
                         <tr>
                             <td colspan="13" class="py-12 text-center text-slate-400 dark:text-slate-500">
                                 <i class="fa-solid fa-circle-notch fa-spin text-2xl text-blue-500 mb-2"></i>
@@ -230,14 +258,14 @@
     </main>
 
     <!-- Evidence Modal -->
-    <div id="evidence-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-        <div class="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-2xl w-full p-6 space-y-4 border border-slate-200 dark:border-slate-800 transition-colors">
+    <div id="evidence-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4" aria-hidden="true">
+        <section id="evidence-dialog" role="dialog" aria-modal="true" aria-labelledby="evidence-title" tabindex="-1" class="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 space-y-4 border border-slate-200 dark:border-slate-800 transition-colors">
             <div class="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-3">
-                <h3 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <h3 id="evidence-title" class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
                     <i class="fa-solid fa-fingerprint text-blue-600 dark:text-blue-400"></i>
                     Audit Evidence & Verification
                 </h3>
-                <button onclick="closeModal()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-lg">
+                <button id="modal-close" onclick="closeModal()" aria-label="Close evidence dialog" class="text-slate-500 hover:text-slate-800 dark:text-slate-300 dark:hover:text-white text-lg p-2 rounded-lg focus-visible:ring-2 focus-visible:ring-sky-500">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>
@@ -245,6 +273,10 @@
                 <div>
                     <span class="text-xs text-slate-400 dark:text-slate-500 uppercase font-bold tracking-wider">Product</span>
                     <div id="modal-product" class="text-sm font-semibold text-slate-800 dark:text-slate-100 mt-0.5"></div>
+                </div>
+                <div>
+                    <span class="text-xs text-slate-500 dark:text-slate-400 uppercase font-bold tracking-wider">Last verified</span>
+                    <div id="modal-verified" class="text-sm font-semibold text-slate-800 dark:text-slate-100 mt-0.5"></div>
                 </div>
                 <div>
                     <span class="text-xs text-slate-400 dark:text-slate-500 uppercase font-bold tracking-wider">Exact Source Quote</span>
@@ -276,7 +308,7 @@
             <div class="pt-2 flex justify-end">
                 <button onclick="closeModal()" class="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-semibold rounded-lg text-slate-700 dark:text-slate-200 transition">Close</button>
             </div>
-        </div>
+        </section>
     </div>
 
     <script>
@@ -289,9 +321,12 @@
             } catch (e) { return null; }
         }
 
+        let lastEvidenceTrigger = null;
+
         function updateThemeIcon() {
             const isDark = document.documentElement.classList.contains('dark');
             const icon = document.getElementById('theme-icon');
+            document.getElementById('theme-toggle').setAttribute('aria-pressed', String(isDark));
             if (isDark) {
                 icon.className = 'fa-solid fa-sun';
             } else {
@@ -306,16 +341,21 @@
         }
 
         async function fetchStats() {
+            const status = document.getElementById('stats-status');
             try {
                 const res = await api('/api/v1/stats/');
+                if (!res.ok) throw new Error('Stats request failed');
                 const data = await res.json();
                 document.getElementById('stat-active').textContent = data.active_promotions;
                 document.getElementById('stat-competitors').textContent = data.competitors_tracked;
                 document.getElementById('stat-brands').textContent = data.brands_tracked;
                 document.getElementById('stat-retailers').textContent = data.retailers_tracked;
                 document.getElementById('stat-expiring').textContent = data.expiring_soon_7days;
+                status.classList.add('hidden');
             } catch (e) {
                 console.error("Error fetching stats:", e);
+                status.textContent = 'Summary counts could not be loaded. Use Refresh to try again.';
+                status.classList.remove('hidden');
             }
         }
 
@@ -358,19 +398,96 @@
             if (channel) url += `channel=${encodeURIComponent(channel)}&`;
             if (search) url += `q=${encodeURIComponent(search)}&`;
 
+            const tbody = document.getElementById('promo-table-body');
+            const cards = document.getElementById('promo-cards');
+            tbody.innerHTML = '<tr><td colspan="13" class="py-10 text-center text-slate-600 dark:text-slate-300"><i class="fa-solid fa-circle-notch fa-spin mr-2" aria-hidden="true"></i>Loading promotions…</td></tr>';
+            cards.innerHTML = '<p class="md:col-span-2 py-8 text-center text-slate-600 dark:text-slate-300" role="status"><i class="fa-solid fa-circle-notch fa-spin mr-2" aria-hidden="true"></i>Loading promotions…</p>';
             try {
                 const res = await api(url);
+                if (!res.ok) throw new Error('Promotions request failed');
                 const data = await res.json();
                 currentPromotions = data.promotions || [];
                 renderTable(currentPromotions);
                 if (data.generated_at) {
-                    document.getElementById('gen-timestamp').textContent = 'Updated ' + new Date(data.generated_at).toLocaleTimeString();
+                    const loadedAt = new Date(data.generated_at);
+                    const verified = currentPromotions.map(p => p.last_verified ? new Date(p.last_verified) : null).filter(d => d && !Number.isNaN(d.getTime()));
+                    const latest = verified.length ? new Date(Math.max(...verified.map(d => d.getTime()))).toLocaleString() : 'Unknown';
+                    document.getElementById('gen-timestamp').textContent = `Results loaded ${loadedAt.toLocaleString()} · latest verification in these results: ${latest}`;
                 }
             } catch (e) {
                 console.error("Error fetching Top 10:", e);
-                document.getElementById('promo-table-body').innerHTML = `
-                    <tr><td colspan="13" class="py-8 text-center text-rose-500 font-semibold">Failed to load promotions. Please try again.</td></tr>
-                `;
+                tbody.innerHTML = '<tr><td colspan="13" class="py-8 text-center text-rose-700 dark:text-rose-300 font-semibold">Promotion data could not be loaded. <button onclick="fetchTop10()" class="underline underline-offset-2 focus-visible:ring-2 focus-visible:ring-sky-500 rounded">Retry</button></td></tr>';
+                cards.innerHTML = '<div class="md:col-span-2 rounded-xl border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/30 p-5 text-center text-rose-800 dark:text-rose-200" role="alert"><p class="font-semibold">Promotion data could not be loaded.</p><button onclick="fetchTop10()" class="mt-2 px-4 py-2 rounded-lg border border-rose-300 dark:border-rose-800 font-semibold underline underline-offset-2 focus-visible:ring-2 focus-visible:ring-sky-500">Retry</button></div>';
+                document.getElementById('gen-timestamp').textContent = 'Results unavailable';
+            }
+        }
+
+        async function lookupProduct() {
+            const query = document.getElementById('product-lookup-query').value.trim();
+            const status = document.getElementById('lookup-status');
+            const results = document.getElementById('lookup-results');
+            const button = document.getElementById('product-lookup-button');
+            if (query.length < 2) {
+                status.className = 'rounded-lg border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/30 px-4 py-3 text-sm text-amber-900 dark:text-amber-100';
+                status.textContent = 'Enter at least two characters to search.';
+                status.classList.remove('hidden');
+                return;
+            }
+            status.className = 'rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 px-4 py-3 text-sm text-slate-700 dark:text-slate-200';
+            status.textContent = 'Searching saved promotion evidence…';
+            status.classList.remove('hidden');
+            results.replaceChildren();
+            button.disabled = true;
+            try {
+                const params = new URLSearchParams({q: query, limit: '50'});
+                const response = await api('/api/v1/promotions/search?' + params);
+                if (!response.ok) throw new Error('Product search failed');
+                const data = await response.json();
+                const coverage = data.source_coverage;
+                const coveragePreview = coverage ? coverage.slice(0, 5).map(s => `${s.name} (${s.health.replace(/_/g, ' ').toLowerCase()}${s.last_processed_at ? `, checked ${formatVerified(s.last_processed_at)}` : ', not scanned yet'})`).join('; ') : '';
+                const coverageMore = coverage && coverage.length > 5 ? `; +${coverage.length - 5} more` : '';
+                const sourceSummary = coverage === null
+                    ? 'Source health details are available to analyst users.'
+                    : coverage.length
+                        ? `${coverage.length} approved source(s): ${coveragePreview}${coverageMore}`
+                        : 'No approved, active sources with a supported adapter are configured.';
+                if (!data.total) {
+                    status.className = 'rounded-lg border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/30 px-4 py-3 text-sm text-amber-900 dark:text-amber-100';
+                    status.textContent = `No verified stored promotions matched “${query}”. ${sourceSummary} Search only sees collected data; an admin can run Scan now after reviewing source coverage.`;
+                    return;
+                }
+                status.className = 'rounded-lg border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/30 px-4 py-3 text-sm text-emerald-900 dark:text-emerald-100';
+                status.textContent = `Found ${data.total} verified stored promotion(s) for “${query}”. ${sourceSummary}`;
+                results.innerHTML = data.promotions.map(item => {
+                    const sourceUrl = safeHttpUrl(item.source_url);
+                    const sourceLink = sourceUrl ? `<a href="${esc(sourceUrl)}" target="_blank" rel="noopener noreferrer" class="font-semibold text-blue-700 dark:text-blue-300 underline underline-offset-2">Open source evidence</a>` : '<span class="text-slate-600 dark:text-slate-300">No source URL stored</span>';
+                    return `<article class="rounded-xl border border-slate-200 dark:border-slate-700 p-4 bg-slate-50 dark:bg-slate-800/60">
+                        <div class="flex flex-wrap items-start justify-between gap-3">
+                            <div><h3 class="font-bold text-slate-900 dark:text-white">${esc(item.product_name)}</h3><p class="text-sm text-slate-700 dark:text-slate-200">${esc(item.brand || 'Unknown brand')} · ${esc(item.competitor || 'Unknown competitor')} · ${esc(item.pack_size || 'Pack size unknown')}</p></div>
+                            <span class="rounded-full px-3 py-1 text-xs font-semibold bg-blue-100 dark:bg-blue-950 text-blue-900 dark:text-blue-100">${esc(item.promotion_type.replace(/_/g, ' '))}</span>
+                        </div>
+                        <dl class="mt-3 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                            <div><dt class="text-xs font-semibold text-slate-600 dark:text-slate-300">Promo price</dt><dd class="font-bold text-emerald-800 dark:text-emerald-300">${esc(formatIDR(item.promo_price))}</dd></div>
+                            <div><dt class="text-xs font-semibold text-slate-600 dark:text-slate-300">Outlet / channel</dt><dd class="text-slate-900 dark:text-slate-100">${esc(item.outlet || 'Unknown')} · ${esc(item.channel)}</dd></div>
+                            <div><dt class="text-xs font-semibold text-slate-600 dark:text-slate-300">Area</dt><dd class="text-slate-900 dark:text-slate-100">${esc(item.geography)}</dd></div>
+                            <div><dt class="text-xs font-semibold text-slate-600 dark:text-slate-300">Validity</dt><dd class="text-slate-900 dark:text-slate-100">${esc(item.valid_from || 'Start not stated')} – ${esc(item.valid_until)}</dd></div>
+                        </dl>
+                        <blockquote class="mt-3 rounded-lg border-l-4 border-sky-500 bg-white dark:bg-slate-900 p-3 text-sm text-slate-800 dark:text-slate-100">${esc(item.evidence_quote || 'No evidence quote stored.')}</blockquote>
+                        <div class="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-700 dark:text-slate-200"><span>Source: <strong>${esc(item.source_name || 'Unknown source')}</strong> · Verified ${esc(formatVerified(item.last_verified))} · Confidence ${esc(formatPercent(item.ai_confidence))}</span>${sourceLink}</div>
+                    </article>`;
+                }).join('');
+                if (data.total > data.count) {
+                    const more = document.createElement('p');
+                    more.className = 'text-sm text-slate-600 dark:text-slate-300';
+                    more.textContent = `Showing ${data.count} of ${data.total} matches. Narrow the search for more specific results.`;
+                    results.append(more);
+                }
+            } catch (error) {
+                console.error('Product lookup failed:', error);
+                status.className = 'rounded-lg border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/30 px-4 py-3 text-sm text-rose-900 dark:text-rose-100';
+                status.textContent = 'Product search could not be completed. Retry in a moment.';
+            } finally {
+                button.disabled = false;
             }
         }
 
@@ -406,16 +523,35 @@
         }
 
         function formatIDR(val) {
-            if (!val) return '-';
+            if (val == null) return 'No evidence';
             return 'Rp' + Number(val).toLocaleString('id-ID');
+        }
+
+        function formatVerified(value) {
+            if (!value) return 'Unknown';
+            const date = new Date(value);
+            return Number.isNaN(date.getTime()) ? 'Unknown' : date.toLocaleString();
+        }
+
+        function formatPercent(value) {
+            return value == null || !Number.isFinite(Number(value)) ? 'Unknown' : `${(Number(value) * 100).toFixed(0)}%`;
+        }
+
+        function formatValidity(p) {
+            if (p.dates_stated === false) return 'Dates not stated';
+            const start = p.valid_from || 'Start not stated';
+            const end = p.valid_until || 'End not stated';
+            return `${start} – ${end}`;
         }
 
         function renderTable(promos) {
             const tbody = document.getElementById('promo-table-body');
+            const cards = document.getElementById('promo-cards');
             if (!promos || promos.length === 0) {
                 tbody.innerHTML = `
-                    <tr><td colspan="13" class="py-12 text-center text-slate-400 dark:text-slate-500">No active promotions found matching criteria.</td></tr>
+                    <tr><td colspan="13" class="py-12 text-center text-slate-600 dark:text-slate-300">No active promotions match these filters. Try removing a filter.</td></tr>
                 `;
+                cards.innerHTML = '<p class="md:col-span-2 py-12 text-center text-slate-600 dark:text-slate-300" role="status">No active promotions match these filters. Try removing a filter.</p>';
                 return;
             }
 
@@ -430,7 +566,7 @@
                     <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-400 border border-rose-200/50 dark:border-rose-900/50">
                         ${esc(p.effective_discount)}% OFF
                     </span>
-                ` : '<span class="text-slate-300 dark:text-slate-600">-</span>';
+                ` : (p.effective_discount == null ? '<span class="text-slate-700 dark:text-slate-300">Unknown</span>' : '<span class="text-slate-700 dark:text-slate-300">No discount</span>');
 
                 return `
                     <tr class="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition">
@@ -466,29 +602,56 @@
                         </td>
                         <td class="py-3.5 px-4 text-xs">${esc(p.channel || 'N/A')}</td>
                         <td class="py-3.5 px-4 text-xs">${esc(p.geography || 'N/A')}</td>
-                        <td class="py-3.5 px-4 text-xs text-slate-600 dark:text-slate-400 font-mono">
-                            ${p.dates_stated === false ? '<span class="italic">' + esc(p.valid_until) + '</span>' : esc(p.valid_from || '-') + ' to ' + esc(p.valid_until || '-')}
+                        <td class="py-3.5 px-4 text-xs text-slate-700 dark:text-slate-300 font-mono">
+                            <div>${esc(formatValidity(p))}</div><div class="mt-1 text-[11px] font-sans text-slate-600 dark:text-slate-400">Verified ${esc(formatVerified(p.last_verified))}</div>
                         </td>
                         <td class="py-3.5 px-4 text-center">
                             <span class="text-xs font-bold text-slate-700 dark:text-slate-300">${(p.rank_score * 100).toFixed(1)}</span>
                         </td>
                         <td class="py-3.5 px-4 text-center">
-                            <button onclick="openModal(${idx})" class="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-100 hover:bg-blue-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 hover:text-blue-700 dark:hover:text-blue-300 text-[11px] transition" title="View audit evidence">
+                            <button onclick="openModal(${idx})" aria-label="View evidence for ${esc(p.product_name)}" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-blue-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 hover:text-blue-800 dark:hover:text-blue-200 text-xs font-medium transition focus-visible:ring-2 focus-visible:ring-sky-500" title="View audit evidence">
                                 <i class="fa-solid fa-magnifying-glass"></i> ${esc(p.source_status || 'Unverified source')}
                             </button>
                         </td>
                     </tr>
                 `;
             }).join('');
+
+            cards.innerHTML = promos.map((p, idx) => `
+                <article role="listitem" class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 shadow-sm">
+                    <div class="flex items-start justify-between gap-3">
+                        <div class="min-w-0">
+                            <p class="text-xs font-semibold text-slate-600 dark:text-slate-300">#${esc(p.rank)} · ${esc(p.brand || p.competitor || 'Unknown competitor')}</p>
+                            <h3 class="mt-1 font-bold text-slate-900 dark:text-white">${esc(p.product_name || 'Unknown product')}</h3>
+                            <p class="text-sm text-slate-600 dark:text-slate-300">${esc(p.competitor || 'Unknown competitor')} · ${esc(p.pack_size || p.category || 'Unknown pack size')}</p>
+                        </div>
+                        <span class="shrink-0 rounded-md bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-900 px-2 py-1 text-xs font-semibold text-blue-800 dark:text-blue-200">${esc((p.promotion_type || 'Unknown promotion').replace(/_/g, ' '))}</span>
+                    </div>
+                    <div class="mt-4 flex items-end justify-between gap-3">
+                        <div><p class="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">Promo price</p><p class="text-xl font-bold text-emerald-700 dark:text-emerald-300">${esc(formatIDR(p.promo_price))}</p></div>
+                        <div class="text-right"><p class="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">Saving</p><p class="font-bold text-slate-900 dark:text-white">${p.effective_discount == null ? 'Unknown' : `${esc(p.effective_discount)}%`}</p></div>
+                    </div>
+                    <dl class="mt-4 grid grid-cols-2 gap-x-3 gap-y-3 border-t border-slate-200 dark:border-slate-700 pt-3 text-sm">
+                        <div><dt class="text-xs font-semibold text-slate-600 dark:text-slate-400">Outlet</dt><dd class="mt-0.5 text-slate-900 dark:text-slate-100">${esc(p.outlet || p.retailer || 'Unknown')}</dd></div>
+                        <div><dt class="text-xs font-semibold text-slate-600 dark:text-slate-400">Area</dt><dd class="mt-0.5 text-slate-900 dark:text-slate-100">${esc(p.geography || 'Not stated')}</dd></div>
+                        <div><dt class="text-xs font-semibold text-slate-600 dark:text-slate-400">Validity</dt><dd class="mt-0.5 text-slate-900 dark:text-slate-100">${esc(formatValidity(p))}</dd></div>
+                        <div><dt class="text-xs font-semibold text-slate-600 dark:text-slate-400">Last verified</dt><dd class="mt-0.5 text-slate-900 dark:text-slate-100">${esc(formatVerified(p.last_verified))}</dd></div>
+                    </dl>
+                    <div class="mt-4 flex items-center justify-between gap-3">
+                        <span class="text-xs text-slate-600 dark:text-slate-300">Impact score <strong>${(p.rank_score * 100).toFixed(1)} / 100</strong></span>
+                        <button onclick="openModal(${idx})" aria-label="View evidence for ${esc(p.product_name)}" class="min-h-11 px-3 py-2 rounded-lg bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/60 dark:hover:bg-blue-900 text-blue-800 dark:text-blue-200 text-sm font-semibold focus-visible:ring-2 focus-visible:ring-sky-500"><i class="fa-solid fa-magnifying-glass mr-1" aria-hidden="true"></i> Evidence</button>
+                    </div>
+                </article>`).join('');
         }
 
         function openModal(idx) {
             const p = currentPromotions[idx];
             if (!p) return;
             document.getElementById('modal-product').textContent = `${p.brand ? p.brand + ' - ' : ''}${p.product_name}`;
+            document.getElementById('modal-verified').textContent = formatVerified(p.last_verified);
             document.getElementById('modal-evidence').textContent = p.evidence_quote || "No exact quote captured.";
-            document.getElementById('modal-confidence').textContent = `${(p.ai_confidence * 100).toFixed(0)}%`;
-            document.getElementById('modal-reliability').textContent = `${(p.source_reliability * 100).toFixed(0)}%`;
+            document.getElementById('modal-confidence').textContent = formatPercent(p.ai_confidence);
+            document.getElementById('modal-reliability').textContent = formatPercent(p.source_reliability);
             const modalUrl = document.getElementById('modal-url');
             renderScoreBreakdown(p.score_breakdown);
             const safeUrl = safeHttpUrl(p.source_url);
@@ -496,12 +659,37 @@
             modalUrl.rel = 'noopener noreferrer';
             modalUrl.classList.toggle('hidden', !safeUrl);
             document.getElementById('modal-url-text').textContent = p.source_url || 'Unverified source: no audit link available';
-            document.getElementById('evidence-modal').classList.remove('hidden');
+            lastEvidenceTrigger = document.activeElement;
+            const modal = document.getElementById('evidence-modal');
+            modal.classList.remove('hidden');
+            modal.setAttribute('aria-hidden', 'false');
+            document.body.classList.add('overflow-hidden');
+            document.getElementById('modal-close').focus();
         }
 
         function closeModal() {
-            document.getElementById('evidence-modal').classList.add('hidden');
+            const modal = document.getElementById('evidence-modal');
+            if (modal.classList.contains('hidden')) return;
+            modal.classList.add('hidden');
+            modal.setAttribute('aria-hidden', 'true');
+            document.body.classList.remove('overflow-hidden');
+            if (lastEvidenceTrigger && document.contains(lastEvidenceTrigger)) lastEvidenceTrigger.focus();
         }
+
+        document.addEventListener('keydown', event => {
+            const modal = document.getElementById('evidence-modal');
+            if (modal.classList.contains('hidden')) return;
+            if (event.key === 'Escape') { event.preventDefault(); closeModal(); return; }
+            if (event.key !== 'Tab') return;
+            const controls = [...document.getElementById('evidence-dialog').querySelectorAll('a[href]:not(.hidden), button:not([disabled])')];
+            if (!controls.length) { event.preventDefault(); document.getElementById('evidence-dialog').focus(); return; }
+            const first = controls[0], last = controls[controls.length - 1];
+            if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+            else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+        });
+        document.getElementById('evidence-modal').addEventListener('click', event => {
+            if (event.target.id === 'evidence-modal') closeModal();
+        });
 
         // Initialize on load
         updateThemeIcon();

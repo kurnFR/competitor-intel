@@ -22,12 +22,14 @@ ADAPTERS: Dict[str, Callable[[Session, SourceRegistry], BaseCrawler]] = {
     "superindo": lambda db, src: SuperindoCrawler(db, src),
     "indomaret": lambda db, src: RetailerPromotionCrawler(db, src, "indomaret"),
     "alfamart": lambda db, src: RetailerPromotionCrawler(db, src, "alfamart"),
+    "klikindogrosir": lambda db, src: RetailerPromotionCrawler(db, src, "klikindogrosir"),
     "generic_catalog": lambda db, src: AggregatorCrawler(db, src),
 }
 ADAPTER_LABELS = {
     "superindo": "Superindo (tuned)",
     "indomaret": "Indomaret / KlikIndomaret (tuned)",
     "alfamart": "Alfamart / Alfagift (tuned)",
+    "klikindogrosir": "KlikIndogrosir (wholesale, branch-specific)",
     "generic_catalog": "Generic catalog reader (least reliable - verify the results)",
 }
 

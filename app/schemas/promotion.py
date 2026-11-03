@@ -69,6 +69,51 @@ class Top10Response(BaseModel):
     promotions: List[Top10PromotionItem]
 
 
+class PromotionLookupItem(BaseModel):
+    id: uuid.UUID
+    product_name: str
+    brand: Optional[str] = None
+    competitor: Optional[str] = None
+    category: str
+    pack_size: Optional[str] = None
+    outlet: Optional[str] = None
+    channel: str
+    geography: str
+    promotion_type: str
+    regular_price: Optional[float] = None
+    promo_price: Optional[float] = None
+    discount_percentage: Optional[float] = None
+    valid_from: Optional[str] = None
+    valid_until: str
+    dates_stated: bool
+    last_verified: datetime
+    source_id: Optional[uuid.UUID] = None
+    source_name: Optional[str] = None
+    source_url: Optional[str] = None
+    evidence_quote: Optional[str] = None
+    source_reliability: float
+    ai_confidence: float
+    rank_score: float
+
+
+class SourceCoverageItem(BaseModel):
+    id: uuid.UUID
+    name: str
+    health: str
+    last_processed_at: Optional[datetime] = None
+
+
+class PromotionLookupResponse(BaseModel):
+    query: str
+    generated_at: str
+    count: int
+    total: int
+    limit: int
+    offset: int
+    source_coverage: Optional[List[SourceCoverageItem]] = None
+    promotions: List[PromotionLookupItem]
+
+
 class PromotionDetailOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
