@@ -188,11 +188,14 @@ def old_database(monkeypatch):
     engine = create_engine(url)
     import hashlib
     with engine.begin() as conn:
+        conn.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto"))
+        u_id = str(uuid.uuid4())
         conn.execute(text("INSERT INTO competitor_intel.users (id, username, password_hash, role, is_active, must_change_password, failed_login_count, "
-                          "password_changed_at, created_at, updated_at) VALUES (gen_random_uuid(), 'olduser', 'x', 'ADMIN', true, false, 0, now(), now(), now())"))
+                          "password_changed_at, created_at, updated_at) VALUES (:u_id, 'olduser', 'x', 'ADMIN', true, false, 0, now(), now(), now())"),
+                     {"u_id": u_id})
         conn.execute(text("INSERT INTO competitor_intel.user_sessions (id, user_id, token_hash, csrf_token, created_at, last_seen_at, expires_at) "
-                          "SELECT gen_random_uuid(), id, :h, 'c', now(), now(), now() + interval '8 hours' FROM competitor_intel.users WHERE username = 'olduser'"),
-                     {"h": hashlib.sha256(b"oldcookie").hexdigest()})
+                          "VALUES (:s_id, :u_id, :h, 'c', now(), now(), now() + interval '8 hours')"),
+                     {"s_id": str(uuid.uuid4()), "u_id": u_id, "h": hashlib.sha256(b"oldcookie").hexdigest()})
     from app.db import session as session_module
     original_bind = SessionLocal.kw.get("bind")
     monkeypatch.setattr(session_module, "engine", engine)

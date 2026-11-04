@@ -129,7 +129,7 @@ def get_top10_promotions(
         latest_evidence = evidence_by_promo.get(p.id)
         dates_stated = p.start_date is not None or p.end_date is not None
         if p.end_date:
-            valid_until = p.end_date.strftime("%Y-%m-%d")
+            valid_until = p.end_date.astimezone(timezone.utc).strftime("%Y-%m-%d")
         else:
             valid_until = "No end date stated" if dates_stated else "Dates not stated"
         items.append(Top10PromotionItem(
@@ -234,7 +234,7 @@ def search_promotions(
         evidence_source_id = source_id_by_document.get(evidence.document_id) if evidence and evidence.document_id else None
         resolved_source_id = evidence_source_id or p.source_id
         dates_stated = p.start_date is not None or p.end_date is not None
-        valid_until = p.end_date.strftime("%Y-%m-%d") if p.end_date else (
+        valid_until = p.end_date.astimezone(timezone.utc).strftime("%Y-%m-%d") if p.end_date else (
             "No end date stated" if dates_stated else "Dates not stated"
         )
         items.append(PromotionLookupItem(
@@ -310,7 +310,7 @@ def _export_rows(db: Session, promotions) -> list:
             "promotion_type": p.promotion_type, "regular_price": p.regular_price, "promo_price": p.promo_price,
             "discount": p.discount_percentage,
             "valid_from": p.start_date.strftime("%Y-%m-%d") if p.start_date else None,
-            "valid_until": p.end_date.strftime("%Y-%m-%d") if p.end_date else None,
+            "valid_until": p.end_date.astimezone(timezone.utc).strftime("%Y-%m-%d") if p.end_date else None,
             "dates_stated": "Yes" if dates_stated else "No", "score": p.rank_score, "confidence": p.ai_confidence,
             "source_url": ev.source_url if ev else None, "evidence": ev.evidence_text if ev else None,
             "last_verified": p.last_verified_at.strftime("%Y-%m-%d %H:%M") if p.last_verified_at else None,
