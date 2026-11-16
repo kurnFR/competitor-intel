@@ -154,6 +154,7 @@ def get_bi_feed(
     category: Optional[str] = None,
     competitor: Optional[str] = None,
     retailer: Optional[str] = None,
+    outlet: Optional[str] = None,
     region: Optional[str] = None,
     campaign: Optional[str] = None,
     days: int = Query(90, ge=1, le=365),
@@ -165,11 +166,12 @@ def get_bi_feed(
     from app.services.bi_export import build_bi_feed, export_bi_feed_csv, BI_FEED_COLUMNS
 
     now = datetime.now(timezone.utc)
+    retailer_target = retailer or outlet
     rows = build_bi_feed(
         db,
         category=category,
         competitor_id=competitor,
-        retailer_name=retailer,
+        retailer_name=retailer_target,
         region=region,
         campaign_code=campaign,
         days=days,
@@ -181,7 +183,7 @@ def get_bi_feed(
         csv_content = export_bi_feed_csv(rows)
         filename = f"competitor_promotions_bi_{now.strftime('%Y%m%d_%H%M%S')}.csv"
         return Response(
-            content=csv_content.encode("utf-8-sig"),
+            content=csv_content.encode("utf-8"),
             media_type="text/csv; charset=utf-8",
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
@@ -194,7 +196,7 @@ def get_bi_feed(
             "filters": {
                 "category": category,
                 "competitor": competitor,
-                "retailer": retailer,
+                "retailer": retailer_target,
                 "region": region,
                 "campaign": campaign,
                 "days": days,

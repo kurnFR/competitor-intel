@@ -91,3 +91,19 @@ def test_no_false_positive():
     }
     tags = detect_campaign_tags(data)
     assert len(tags) == 0
+
+
+def test_detect_campaign_tags_from_orm_evidence():
+    from app.models.promotion import Promotion, PromotionEvidence
+
+    p = Promotion(product_name="Khong Guan Assorted", category="BISCUIT")
+    p.evidence_items = [PromotionEvidence(evidence_text="Katalog Promo JSM Indomaret Jumat Sabtu Minggu")]
+    tags = detect_campaign_tags(p)
+    codes = [t["code"] for t in tags]
+    assert "JSM_WEEKEND" in codes
+
+    p2 = Promotion(product_name="Monde Cookies", category="COOKIE")
+    p2.evidence_items = [PromotionEvidence(evidence_text="Promo Berkah Ramadhan Sambut Idul Fitri")]
+    tags2 = detect_campaign_tags(p2)
+    codes2 = [t["code"] for t in tags2]
+    assert "RAMADHAN_LEBARAN" in codes2

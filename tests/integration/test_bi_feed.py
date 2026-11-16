@@ -163,14 +163,33 @@ def test_bi_feed_csv(bi_client):
     assert "text/csv" in resp.headers["Content-Type"]
     assert "attachment; filename=" in resp.headers.get("Content-Disposition", "")
 
+    # Ensure single UTF-8 BOM, not double BOM
+    assert resp.content.startswith(b"\xef\xbb\xbfpromotion_id")
+    assert not resp.content.startswith(b"\xef\xbb\xbf\xef\xbb\xbf")
+
     # Decode CSV content
     text = resp.content.decode("utf-8-sig")
     reader = csv.DictReader(io.StringIO(text))
     rows = list(reader)
     assert len(rows) >= 2
+    assert reader.fieldnames[0] == "promotion_id"
     assert "product_name" in reader.fieldnames
     assert "campaign_codes" in reader.fieldnames
     assert "price_per_100g" in reader.fieldnames
+
+
+def test_bi_feed_outlet_filter(bi_client):
+    client, p1_id, p2_id, comp_id = bi_client
+    resp = client.get(f"/api/v1/stats/bi-feed?outlet=BIRet_&competitor={comp_id}")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["meta"]["filters"]["retailer"] == "BIRet_"
+    assert len(data["data"]) >= 2
+
+    # Non-existent outlet returns empty
+    resp_empty = client.get(f"/api/v1/stats/bi-feed?outlet=NonExistentOutletXYZ&competitor={comp_id}")
+    assert resp_empty.status_code == 200
+    assert len(resp_empty.json()["data"]) == 0
 
 
 def test_bi_feed_campaign_filter(bi_client):

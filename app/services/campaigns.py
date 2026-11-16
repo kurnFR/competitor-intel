@@ -134,6 +134,8 @@ def _extract_text_corpus(obj: Any) -> str:
             "promotion_description",
             "evidence_quote",
             "evidence",
+            "evidence_text",
+            "verbatim_quote",
             "gift_description",
             "category",
             "brand",
@@ -142,6 +144,24 @@ def _extract_text_corpus(obj: Any) -> str:
             val = obj.get(key)
             if val and isinstance(val, str):
                 parts.append(val)
+        if "evidence_items" in obj and isinstance(obj["evidence_items"], list):
+            for ev in obj["evidence_items"]:
+                if isinstance(ev, dict):
+                    q = (
+                        ev.get("evidence_text")
+                        or ev.get("verbatim_quote")
+                        or ev.get("evidence_quote")
+                    )
+                    if q and isinstance(q, str):
+                        parts.append(q)
+                elif hasattr(ev, "evidence_text") or hasattr(ev, "verbatim_quote") or hasattr(ev, "evidence_quote"):
+                    q = (
+                        getattr(ev, "evidence_text", None)
+                        or getattr(ev, "verbatim_quote", None)
+                        or getattr(ev, "evidence_quote", None)
+                    )
+                    if q and isinstance(q, str):
+                        parts.append(q)
         return " ".join(parts)
 
     # Object / ORM model
@@ -159,7 +179,18 @@ def _extract_text_corpus(obj: Any) -> str:
     # Relations or nested
     if hasattr(obj, "evidence_items") and obj.evidence_items:
         for ev in obj.evidence_items:
-            q = getattr(ev, "verbatim_quote", None) or getattr(ev, "evidence_quote", None)
+            if isinstance(ev, dict):
+                q = (
+                    ev.get("evidence_text")
+                    or ev.get("verbatim_quote")
+                    or ev.get("evidence_quote")
+                )
+            else:
+                q = (
+                    getattr(ev, "evidence_text", None)
+                    or getattr(ev, "verbatim_quote", None)
+                    or getattr(ev, "evidence_quote", None)
+                )
             if q and isinstance(q, str):
                 parts.append(q)
 

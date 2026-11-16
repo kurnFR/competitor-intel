@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from sqlalchemy.orm import Session, contains_eager
+from sqlalchemy.orm import Session, contains_eager, selectinload
 
 from app.models.entity import Brand, Competitor, Retailer
 from app.models.own_product import OwnProduct
@@ -94,6 +94,7 @@ def build_bi_feed(
             contains_eager(Promotion.competitor),
             contains_eager(Promotion.brand),
             contains_eager(Promotion.retailer),
+            selectinload(Promotion.evidence_items),
         )
     )
 
