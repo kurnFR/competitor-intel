@@ -46,7 +46,7 @@
             <p class="text-sm font-semibold text-emerald-700">Two-factor sign-in is on.</p>
             <p class="text-sm text-slate-600 dark:text-slate-300">Save these recovery codes somewhere safe (password manager or printed). Each works once if you lose your phone. <strong>They will not be shown again.</strong></p>
             <pre id="mfa-code-list" class="bg-slate-100 dark:bg-slate-900 rounded p-3 text-sm select-all"></pre>
-            <a href="/" class="inline-block text-blue-600 hover:underline text-sm">Continue to the dashboard</a>
+            <a href="/" class="inline-block text-blue-600 hover:underline text-sm">Back to dashboard</a>
         </div>
         <div id="mfa-on" class="hidden">
             <p class="text-sm text-emerald-700 mb-3"><i class="fa-solid fa-shield-halved"></i> Two-factor sign-in is on.</p>
@@ -58,7 +58,7 @@
                 </form></details>
         </div>
         <div class="mt-4 flex justify-between text-sm">
-            {% if not user.must_change_password %}<a class="text-blue-600 hover:underline" href="/">Back to dashboard</a>{% else %}<span></span>{% endif %}
+            <a class="text-blue-600 hover:underline" href="/">Back to dashboard</a>
             <button onclick="logout()" class="text-slate-500 hover:underline">Sign out</button>
         </div>
     </main>

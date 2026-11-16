@@ -59,6 +59,11 @@ class Settings(BaseSettings):
     DIGEST_DAY_OF_WEEK: str = "mon"
     DIGEST_HOUR: int = 8
 
+    # Commercial & Marketing Alert Thresholds
+    ALERT_PRICE_SHOCK_DISCOUNT_PCT: float = 20.0     # Alert when competitor discount is >= 20%
+    ALERT_UNDERCUT_GAP_PCT: float = -15.0            # Alert when competitor price per 100g undercuts our product by >= 15%
+    ALERT_DISRUPTIVE_PROMOS: bool = True             # Alert on BOGO and severe promotional mechanics
+
     # Required for privileged endpoints (POST /api/v1/pipeline/run). If empty the
     # endpoint is disabled. Generate one with:
     #   python -c "import secrets; print(secrets.token_urlsafe(32))"

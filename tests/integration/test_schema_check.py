@@ -204,7 +204,12 @@ def old_database(monkeypatch):
     SessionLocal.configure(bind=original_bind)
     engine.dispose()
     with admin.connect() as conn:
-        conn.execute(text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
+        conn.execute(text(f"""
+            SELECT pg_terminate_backend(pid)
+            FROM pg_stat_activity
+            WHERE datname = '{name}' AND pid <> pg_backend_pid()
+        """))
+        conn.execute(text(f'DROP DATABASE IF EXISTS "{name}"'))
     admin.dispose()
 
 

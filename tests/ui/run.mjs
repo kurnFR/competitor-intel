@@ -1,5 +1,6 @@
+import { existsSync } from "fs";
 import { JSDOM, VirtualConsole } from "jsdom";
-const BASE = "http://127.0.0.1:8766";
+const BASE = process.env.BASE_URL || "http://127.0.0.1:8766";
 const jar = new Map();
 const results = [];
 const check = (name, ok, extra = "") => { results.push(ok); console.log((ok ? "PASS " : "FAIL ") + name + (ok ? "" : "  <-- " + extra)); };
@@ -124,7 +125,8 @@ $(p, "#mfa-start").dispatchEvent(new p.w.Event("click")); await sleep(700);
 check("QR code and key are shown", !$(p, "#mfa-enroll").classList.contains("hidden") && $(p, "#mfa-qr").src.startsWith("data:image/svg+xml") && $(p, "#mfa-secret").textContent.length >= 16);
 const secret = $(p, "#mfa-secret").textContent;
 import { execSync } from "child_process";
-const code = (offset) => execSync(`python3 -c "import pyotp,time;print(pyotp.TOTP('${secret}').at((int(time.time())//30+${offset})*30))"`).toString().trim();
+const pyBin = process.env.PYTHON || (process.env.VIRTUAL_ENV ? `${process.env.VIRTUAL_ENV}/bin/python` : (existsSync(".venv/bin/python") ? ".venv/bin/python" : "python3"));
+const code = (offset) => execSync(`${pyBin} -c "import pyotp,time;print(pyotp.TOTP('${secret}').at((int(time.time())//30+${offset})*30))"`).toString().trim();
 setVal($(p, "#mfa-enable-form").elements["code"], "000000"); submit(p, $(p, "#mfa-enable-form")); await sleep(600);
 check("wrong enrolment code shows an error", !$(p, "#mfa-msg").classList.contains("hidden") && /not correct/.test($(p, "#mfa-msg").textContent), $(p, "#mfa-msg").textContent);
 setVal($(p, "#mfa-enable-form").elements["code"], code(0)); submit(p, $(p, "#mfa-enable-form")); await sleep(900);

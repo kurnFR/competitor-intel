@@ -266,7 +266,7 @@ def test_product_lookup_searches_stored_evidence_and_respects_source_approval(en
     add_promotion(env.db, candidate, product_name=f"Zz{env.tag} Nissin Wafer Candidate", promo_price=6000)
     env.db.commit()
 
-    response = env.client().get("/api/v1/promotions/search", params={"q": "Nissin wafer"})
+    response = env.client().get("/api/v1/promotions/search", params={"q": f"Zz{env.tag} Nissin wafer"})
     assert response.status_code == 200
     data = response.json()
     assert data["total"] == 1 and data["count"] == 1
@@ -280,7 +280,7 @@ def test_product_lookup_searches_stored_evidence_and_respects_source_approval(en
     assert str(approved.id) in coverage_ids and str(evidence_source.id) in coverage_ids
     assert str(candidate.id) not in coverage_ids
     matching_source = env.client().get(
-        "/api/v1/promotions/search", params={"q": "Nissin wafer", "source_id": str(evidence_source.id)}
+        "/api/v1/promotions/search", params={"q": f"Zz{env.tag} Nissin wafer", "source_id": str(evidence_source.id)}
     ).json()
     assert matching_source["total"] == 1
     non_matching_source = env.client().get(

@@ -1,4 +1,5 @@
 from datetime import datetime, timezone, timedelta
+from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -145,3 +146,85 @@ def source_health(db: Session = Depends(get_db)):
         rows.append({"name": s.name, "domain": s.domain, "health": _health(s, now), "scan_every_minutes": s.crawl_frequency_minutes,
                      "last_processed_at": s.last_processed_at.isoformat() if s.last_processed_at else None})
     return {"generated_at": now.isoformat(), "sources": rows}
+
+
+@router.get("/bi-feed")
+def get_bi_feed(
+    format: str = Query("json", pattern="^(json|csv)$"),
+    category: Optional[str] = None,
+    competitor: Optional[str] = None,
+    retailer: Optional[str] = None,
+    region: Optional[str] = None,
+    campaign: Optional[str] = None,
+    days: int = Query(90, ge=1, le=365),
+    active_only: bool = True,
+    db: Session = Depends(get_db),
+):
+    """Automated Executive BI Feed for Tableau, PowerBI, and Excel."""
+    from fastapi.responses import Response
+    from app.services.bi_export import build_bi_feed, export_bi_feed_csv, BI_FEED_COLUMNS
+
+    now = datetime.now(timezone.utc)
+    rows = build_bi_feed(
+        db,
+        category=category,
+        competitor_id=competitor,
+        retailer_name=retailer,
+        region=region,
+        campaign_code=campaign,
+        days=days,
+        active_only=active_only,
+        now=now,
+    )
+
+    if format == "csv":
+        csv_content = export_bi_feed_csv(rows)
+        filename = f"competitor_promotions_bi_{now.strftime('%Y%m%d_%H%M%S')}.csv"
+        return Response(
+            content=csv_content.encode("utf-8-sig"),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    return {
+        "meta": {
+            "generated_at": now.isoformat(),
+            "total_records": len(rows),
+            "columns": BI_FEED_COLUMNS,
+            "filters": {
+                "category": category,
+                "competitor": competitor,
+                "retailer": retailer,
+                "region": region,
+                "campaign": campaign,
+                "days": days,
+                "active_only": active_only,
+            },
+        },
+        "data": rows,
+    }
+
+
+@router.get("/campaigns")
+def list_campaigns():
+    """List all tracked FMCG seasonal and promotional campaign classifications."""
+    from app.services.campaigns import get_available_campaigns
+    return {"campaigns": get_available_campaigns()}
+
+
+@router.get("/shrinkflation")
+def get_shrinkflation(
+    days: int = Query(180, ge=30, le=730),
+    min_downsize_pct: float = Query(5.0, ge=1.0, le=50.0),
+    db: Session = Depends(get_db),
+):
+    """Detect competitor pack downsizing and stealth price-per-gram inflation."""
+    from app.services.shrinkflation import detect_shrinkflation
+
+    now = datetime.now(timezone.utc)
+    events = detect_shrinkflation(db, days=days, min_downsize_pct=min_downsize_pct, now=now)
+    return {
+        "generated_at": now.isoformat(),
+        "total_signals": len(events),
+        "signals": events,
+    }

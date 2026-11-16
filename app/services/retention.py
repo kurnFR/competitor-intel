@@ -32,7 +32,8 @@ def document_days() -> int:
 
 
 def run_retention(db: Session, *, dry_run: bool = False, now: Optional[datetime] = None,
-                  store: Optional[RawDocumentStore] = None) -> Dict[str, Any]:
+                  store: Optional[RawDocumentStore] = None,
+                  source_id: Optional[Any] = None) -> Dict[str, Any]:
     now = now or datetime.now(timezone.utc)
     store = store or get_raw_document_store()
     cutoff = now - timedelta(days=document_days())
@@ -40,12 +41,14 @@ def run_retention(db: Session, *, dry_run: bool = False, now: Optional[datetime]
     newer = aliased(CrawlDocument)
     has_newer_version = exists().where(and_(newer.source_id == CrawlDocument.source_id, newer.url == CrawlDocument.url,
                                             newer.retrieved_at > CrawlDocument.retrieved_at))
-    candidates = (
+    q = (
         db.query(CrawlDocument)
         .filter(CrawlDocument.retrieved_at < cutoff, has_newer_version,
                 (CrawlDocument.text_content.isnot(None)) | (CrawlDocument.raw_content_uri.isnot(None)))
-        .all()
     )
+    if source_id is not None:
+        q = q.filter(CrawlDocument.source_id == source_id)
+    candidates = q.all()
     purge_ids = {d.id for d in candidates}
     # A stored file may be shared by several page records; keep it while any record we are NOT purging still points at it.
     still_used = {u for (u,) in db.query(CrawlDocument.raw_content_uri).filter(
@@ -59,9 +62,13 @@ def run_retention(db: Session, *, dry_run: bool = False, now: Optional[datetime]
         deletable = uri is not None and uri not in still_used
         if deletable and uri not in seen_files:
             seen_files.add(uri)
-            freed = (doc.raw_content_size_bytes or 0) if dry_run else store.delete(uri)
-            bytes_freed += freed
-            files += 1
+            try:
+                freed = (doc.raw_content_size_bytes or 0) if dry_run else store.delete(uri)
+                bytes_freed += freed
+                files += 1
+            except ValueError as exc:
+                logger.warning("Could not delete raw document %s: %s", uri, exc)
+                deletable = False
         if not dry_run:
             doc.text_content = None
             if deletable:

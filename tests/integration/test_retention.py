@@ -54,7 +54,7 @@ def reload(env, d):
 
 def only_mine(env):
     """run_retention works on the whole database; these assertions look at this test's pages."""
-    return run_retention(env.db, store=env.store)
+    return run_retention(env.db, store=env.store, source_id=env.src.id)
 
 
 def test_old_pages_lose_files_and_text_but_keep_their_record(env):

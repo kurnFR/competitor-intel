@@ -54,7 +54,12 @@ def scratch():
 
     yield type("S", (), dict(alembic=staticmethod(alembic), engine=create_engine(url)))
     admin_conn = admin.connect()
-    admin_conn.execute(text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
+    admin_conn.execute(text(f"""
+        SELECT pg_terminate_backend(pid)
+        FROM pg_stat_activity
+        WHERE datname = '{name}' AND pid <> pg_backend_pid()
+    """))
+    admin_conn.execute(text(f'DROP DATABASE IF EXISTS "{name}"'))
     admin_conn.close()
     admin.dispose()
 
