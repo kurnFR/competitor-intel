@@ -88,6 +88,7 @@ def detect(db: Session, *, now: Optional[datetime] = None) -> List[AlertEvent]:
 
 
 def _detect_commercial_alerts(db: Session, now: datetime) -> List[AlertEvent]:
+    from sqlalchemy import cast, String, select
     from app.core.config import settings
     from app.models.entity import Competitor, Retailer
     from app.models.promotion import Promotion
@@ -100,11 +101,20 @@ def _detect_commercial_alerts(db: Session, now: datetime) -> List[AlertEvent]:
     # 1. Price Shock: competitor discounts >= threshold (default 20%)
     shock_threshold = getattr(settings, "ALERT_PRICE_SHOCK_DISCOUNT_PCT", 20.0)
     if shock_threshold and shock_threshold > 0:
+        already_alerted_price_shocks = (
+            select(AlertEvent.subject_id)
+            .filter(AlertEvent.kind == "PRICE_SHOCK", AlertEvent.subject_id.isnot(None))
+        )
         deep_promos = (
             db.query(Promotion)
             .outerjoin(Competitor, Promotion.competitor_id == Competitor.id)
             .outerjoin(Retailer, Promotion.retailer_id == Retailer.id)
-            .filter(live_filter, Promotion.discount_percentage >= shock_threshold)
+            .filter(
+                live_filter,
+                Promotion.discount_percentage >= shock_threshold,
+                ~cast(Promotion.id, String).in_(already_alerted_price_shocks),
+            )
+            .order_by(Promotion.last_seen_at.desc(), Promotion.id.desc())
             .limit(50)
             .all()
         )
@@ -130,11 +140,20 @@ def _detect_commercial_alerts(db: Session, now: datetime) -> List[AlertEvent]:
 
     # 2. Disruptive Promotion: BOGO (BUY_X_GET_Y)
     if getattr(settings, "ALERT_DISRUPTIVE_PROMOS", True):
+        already_alerted_bogo = (
+            select(AlertEvent.subject_id)
+            .filter(AlertEvent.kind == "DISRUPTIVE_PROMO", AlertEvent.subject_id.isnot(None))
+        )
         bogo_promos = (
             db.query(Promotion)
             .outerjoin(Competitor, Promotion.competitor_id == Competitor.id)
             .outerjoin(Retailer, Promotion.retailer_id == Retailer.id)
-            .filter(live_filter, Promotion.promotion_type == "BUY_X_GET_Y")
+            .filter(
+                live_filter,
+                Promotion.promotion_type == "BUY_X_GET_Y",
+                ~cast(Promotion.id, String).in_(already_alerted_bogo),
+            )
+            .order_by(Promotion.last_seen_at.desc(), Promotion.id.desc())
             .limit(50)
             .all()
         )
