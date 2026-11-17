@@ -15,6 +15,7 @@ from app.services.pipeline_core import process_document
 from app.services.entity_resolution.resolver import EntityResolver
 from app.services.extraction.llm_extractor import LLMExtractor
 from app.services.ranking.rescore import rescore_promotions
+from app.workers.expiration import run_expiration_check
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("Pipeline")
@@ -80,13 +81,31 @@ def _finish_run(run_id, status: str, *, summary: Optional[dict] = None, error: O
 
 
 def _touch_promotions_for_document(db: Session, document_id, now: datetime) -> int:
-    """An unchanged page that was just re-fetched still confirms its promotions."""
+    """An unchanged page that was just re-fetched still confirms its promotions.
+
+    Promotions whose explicit end date has already passed must NOT be re-confirmed as active.
+    """
+    from sqlalchemy import or_
     ids_obs = db.query(PromotionObservation.promotion_id).filter(PromotionObservation.document_id == document_id, PromotionObservation.promotion_id.isnot(None))
     ids_ev = db.query(PromotionEvidence.promotion_id).filter(PromotionEvidence.document_id == document_id, PromotionEvidence.promotion_id.isnot(None))
     ids = ids_obs.union(ids_ev)
+
+    # Immediately expire promotions that have ended
+    db.query(Promotion).filter(
+        Promotion.id.in_(ids),
+        Promotion.end_date.isnot(None),
+        Promotion.end_date < now,
+        Promotion.status != "EXPIRED",
+    ).update({"status": "EXPIRED", "updated_at": now}, synchronize_session=False)
+
+    # Only touch promotions that are truly still active / valid
     return (
         db.query(Promotion)
-        .filter(Promotion.id.in_(ids), Promotion.status.in_(["ACTIVE", "UNKNOWN"]))
+        .filter(
+            Promotion.id.in_(ids),
+            Promotion.status.in_(["ACTIVE", "UNKNOWN"]),
+            or_(Promotion.end_date.is_(None), Promotion.end_date >= now),
+        )
         .update({"last_seen_at": now, "last_verified_at": now}, synchronize_session=False)
     )
 
@@ -181,6 +200,12 @@ def run_pipeline(
             if ok and sid is not None:
                 db.query(SourceRegistry).filter(SourceRegistry.id == sid).update({"last_processed_at": finished}, synchronize_session=False)
         db.commit()
+
+        # Mark expired and unlisted promotions immediately following source processing
+        try:
+            run_expiration_check(db)
+        except Exception:
+            logger.exception("Error checking expired promotions post-run")
 
         # Keep freshness-based ranking current after this run.
         rescored = rescore_promotions(db)

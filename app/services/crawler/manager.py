@@ -81,7 +81,10 @@ def run_all_crawlers(db: Session, *, only_due: bool = False) -> List[CrawlDocume
             crawler = get_crawler_for_source(db, src)
             docs = crawler.crawl()
             all_docs.extend(docs)
-            logger.info("Source %s produced %s documents.", src.name, len(docs))
+            if not docs:
+                logger.warning("Source %s produced 0 documents; check source connectivity or crawler adapter.", src.name)
+            else:
+                logger.info("Source %s produced %s documents.", src.name, len(docs))
         except Exception as exc:
             logger.exception("Failed crawling source %s: %s", src.name, exc)
             db.rollback()

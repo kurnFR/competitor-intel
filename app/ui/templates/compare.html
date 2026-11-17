@@ -1,85 +1,1235 @@
 <!DOCTYPE html>
 <html lang="en">
-<head><title>Price comparison - {{ app_name }}</title>{% include "_head.html" %}</head>
-<body class="bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 min-h-screen">
+<head>
+    <title>Executive Price Comparison & Competitive Strategy - {{ app_name }}</title>
+    {% include "_head.html" %}
+    <style>
+        .badge-undercut { background-color: rgba(225, 29, 72, 0.12); color: #e11d48; border: 1px solid rgba(225, 29, 72, 0.25); }
+        .dark .badge-undercut { background-color: rgba(225, 29, 72, 0.2); color: #fb7185; border-color: rgba(225, 29, 72, 0.35); }
+        .badge-competitive { background-color: rgba(16, 185, 129, 0.12); color: #059669; border: 1px solid rgba(16, 185, 129, 0.25); }
+        .dark .badge-competitive { background-color: rgba(16, 185, 129, 0.2); color: #34d399; border-color: rgba(16, 185, 129, 0.35); }
+        .gradient-banner { background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 50%, #0369a1 100%); }
+    </style>
+</head>
+<body class="bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 min-h-screen flex flex-col font-sans transition-colors duration-200">
 {% include "_nav.html" %}
-<main class="max-w-7xl mx-auto px-4 py-6 space-y-8">
-    <div id="msg" role="alert" class="hidden rounded-md px-3 py-2 text-sm"></div>
-    <section>
-        <h2 class="text-lg font-bold mb-1">Our prices vs competitor promotions</h2>
-        <p class="text-sm text-slate-500 dark:text-slate-400 mb-4">Compared per 100 g so different pack sizes are fair. Only promotions with a computable price and a pack size within half to double of ours are shown. A negative gap means the competitor is cheaper than us.</p>
-        <div id="summary" class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4"></div>
-        <div id="results" class="space-y-3"></div>
-    </section>
-    <section>
-        <h2 class="text-lg font-bold mb-3">Our products</h2>
-        <form id="add-form" class="bg-white dark:bg-slate-800 rounded-xl shadow p-4 grid grid-cols-2 md:grid-cols-6 gap-3 items-end mb-4">
-            <label class="text-xs font-medium col-span-2">Name<input name="name" required maxlength="255" class="mt-1 w-full rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-700 px-2 py-1.5 text-sm"></label>
-            <label class="text-xs font-medium">Category<select name="category" class="mt-1 w-full rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-700 px-2 py-1.5 text-sm"><option>BISCUIT</option><option>CRACKER</option><option>COOKIE</option><option>WAFER</option><option>SNACK</option></select></label>
-            <label class="text-xs font-medium">Pack size (e.g. 300g)<input name="pack_size" maxlength="50" class="mt-1 w-full rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-700 px-2 py-1.5 text-sm"></label>
-            <label class="text-xs font-medium">Shelf price (Rp)<input name="regular_price" type="number" min="1" step="any" required class="mt-1 w-full rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-700 px-2 py-1.5 text-sm"></label>
-            <button class="rounded bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold py-2">Add</button>
-        </form>
-        <div class="flex flex-wrap items-center gap-3 mb-4 text-sm">
-            <label class="px-3 py-1.5 rounded bg-slate-200 dark:bg-slate-700 cursor-pointer"><i class="fa-solid fa-file-arrow-up"></i> Import CSV
-                <input id="csv-file" type="file" accept=".csv,text/csv" class="hidden"></label>
-            <button onclick="downloadTemplate()" class="text-blue-600 hover:underline">Download CSV template</button>
+
+<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 flex-1 w-full">
+    <!-- Message Banner -->
+    <div id="msg" role="alert" class="hidden rounded-xl px-4 py-3 text-sm font-medium shadow-sm transition"></div>
+
+    <!-- Executive Hero / Header -->
+    <div class="gradient-banner rounded-2xl p-6 text-white shadow-lg flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6 border border-white/10">
+        <div class="space-y-1">
+            <div class="flex items-center gap-2">
+                <span class="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider bg-amber-400 text-slate-900">Executive View</span>
+                <span class="text-xs text-blue-200 font-medium" id="header-timestamp">Real-time Benchmark</span>
+            </div>
+            <h1 class="text-2xl lg:text-3xl font-extrabold tracking-tight">Executive Price Comparison & Competitive Strategy</h1>
+            <p class="text-sm text-blue-100 max-w-2xl">
+                Benchmarking our regular shelf & promotional pricing per 100 g against competitor moves. Instant drilldowns by Category, Brand, Competitor, and Retailer Outlet.
+            </p>
         </div>
-        <div class="overflow-x-auto bg-white dark:bg-slate-800 rounded-xl shadow"><table class="min-w-full text-sm"><thead class="bg-slate-100 dark:bg-slate-700"><tr>
-            <th class="p-3 text-left">Product</th><th class="p-3 text-left">Category</th><th class="p-3 text-left">Pack</th><th class="p-3 text-right">Price</th><th class="p-3"></th></tr></thead><tbody id="products"></tbody></table></div>
+        <div class="flex flex-wrap items-center gap-2.5">
+            <button onclick="toggleSimulator()" id="btn-toggle-sim" class="px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-sm shadow-md transition flex items-center gap-2">
+                <i class="fa-solid fa-calculator"></i> What-If Simulator
+            </button>
+            <button onclick="openProductModal()" class="px-4 py-2.5 rounded-xl bg-white/15 hover:bg-white/25 text-white font-semibold text-sm border border-white/20 transition flex items-center gap-2">
+                <i class="fa-solid fa-tags"></i> Manage Campaigns
+            </button>
+            <div class="inline-flex rounded-xl shadow-sm border border-white/20 overflow-hidden bg-white/10 p-0.5">
+                <button onclick="exportData('csv')" title="Download formatted executive comparison table as CSV" class="px-3 py-2 text-xs font-medium hover:bg-white/20 text-white transition flex items-center gap-1.5">
+                    <i class="fa-solid fa-file-csv"></i> CSV
+                </button>
+                <button onclick="exportData('xlsx')" title="Download formatted executive comparison table as Excel" class="px-3 py-2 text-xs font-medium hover:bg-white/20 text-white transition flex items-center gap-1.5 border-l border-white/20">
+                    <i class="fa-solid fa-file-excel"></i> Excel
+                </button>
+            </div>
+            <button onclick="refresh()" title="Refresh comparison data" class="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white transition flex items-center justify-center">
+                <i class="fa-solid fa-arrows-rotate"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- 1. Executive Overview Metrics Cards -->
+    <section aria-labelledby="exec-overview-title">
+        <h2 id="exec-overview-title" class="sr-only">Executive Market Overview</h2>
+        <div id="summary" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <!-- Card 1: Overall Price Index vs Market -->
+            <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-sm border border-slate-200 dark:border-slate-800 flex flex-col justify-between">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Price Index vs Market</span>
+                    <span class="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 flex items-center justify-center text-sm">
+                        <i class="fa-solid fa-scale-balanced"></i>
+                    </span>
+                </div>
+                <div class="my-2">
+                    <div class="text-3xl font-extrabold text-slate-900 dark:text-white" id="stat-price-index">100.0</div>
+                    <div class="text-xs mt-1" id="stat-price-index-badge">
+                        <span class="font-semibold text-slate-500">Calculating index...</span>
+                    </div>
+                </div>
+                <div class="text-[11px] text-slate-400 dark:text-slate-500 border-t border-slate-100 dark:border-slate-800 pt-2">
+                    Base 100 = Promo Parity (&gt;100: Premium, &lt;100: Cheaper)
+                </div>
+            </div>
+
+            <!-- Card 2: % Products Under Price Pressure -->
+            <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-sm border border-slate-200 dark:border-slate-800 flex flex-col justify-between">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Under Price Pressure</span>
+                    <span class="w-8 h-8 rounded-lg bg-rose-50 dark:bg-rose-950 text-rose-600 dark:text-rose-400 flex items-center justify-center text-sm">
+                        <i class="fa-solid fa-arrow-trend-down"></i>
+                    </span>
+                </div>
+                <div class="my-2">
+                    <div class="text-3xl font-extrabold text-rose-600 dark:text-rose-400" id="stat-pressure-pct">0%</div>
+                    <div class="text-xs font-medium text-slate-500 dark:text-slate-400 mt-1" id="stat-pressure-count">
+                        0 products undercut
+                    </div>
+                </div>
+                <div class="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                    <div id="stat-pressure-bar" class="bg-rose-500 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+                </div>
+            </div>
+
+            <!-- Card 3: Deepest Competitor Discount by Category -->
+            <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-sm border border-slate-200 dark:border-slate-800 flex flex-col justify-between">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Deepest Competitor Discount</span>
+                    <span class="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400 flex items-center justify-center text-sm">
+                        <i class="fa-solid fa-fire"></i>
+                    </span>
+                </div>
+                <div class="my-2">
+                    <div class="text-3xl font-extrabold text-amber-600 dark:text-amber-400" id="stat-deepest-discount">--%</div>
+                    <div class="text-xs text-slate-600 dark:text-slate-300 font-medium truncate mt-1" id="stat-deepest-detail">
+                        Scanning promotions...
+                    </div>
+                </div>
+                <div id="category-discount-chips" class="flex flex-wrap gap-1 text-[10px] border-t border-slate-100 dark:border-slate-800 pt-2"></div>
+            </div>
+
+            <!-- Card 4: Competitor Promo Frequency -->
+            <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-sm border border-slate-200 dark:border-slate-800 flex flex-col justify-between">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Competitor Promo Frequency</span>
+                    <span class="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-sm">
+                        <i class="fa-solid fa-chart-simple"></i>
+                    </span>
+                </div>
+                <div class="my-2">
+                    <div class="text-3xl font-extrabold text-indigo-600 dark:text-indigo-400" id="stat-promo-freq">0 Active</div>
+                    <div class="text-xs text-slate-500 dark:text-slate-400 mt-1" id="stat-promo-sub">
+                        Tracking market frequency...
+                    </div>
+                </div>
+                <div class="text-[11px] text-slate-400 dark:text-slate-500 border-t border-slate-100 dark:border-slate-800 pt-2 flex items-center justify-between">
+                    <span id="stat-expiring-soon">0 expiring &le; 7d</span>
+                    <span class="text-emerald-600 dark:text-emerald-400 font-medium">Live Feed</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 5. Interactive 'What-If Promo Simulator' Widget -->
+    <section id="simulator-section" class="bg-gradient-to-br from-indigo-950/90 via-slate-900 to-slate-950 text-white rounded-2xl p-6 shadow-xl border border-indigo-500/20 transition-all">
+        <div class="flex flex-wrap items-center justify-between gap-4 border-b border-indigo-800/40 pb-4 mb-5">
+            <div>
+                <h3 class="text-lg font-bold flex items-center gap-2 text-white">
+                    <span class="w-8 h-8 rounded-xl bg-amber-400/20 text-amber-300 flex items-center justify-center text-sm border border-amber-300/30">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i>
+                    </span>
+                    Interactive What-If Promo Simulator
+                </h3>
+                <p class="text-xs text-indigo-200 mt-0.5">
+                    Model candidate price cuts, discount percentages, or Buy 1 Get 1 promotions to project your market rank and calculate the target price to eliminate competitor undercuts.
+                </p>
+            </div>
+            <button onclick="toggleSimulator()" class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-indigo-200 transition">
+                <i class="fa-solid fa-chevron-up mr-1" id="sim-toggle-icon"></i> Minimize
+            </button>
+        </div>
+
+        <div id="sim-body" class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <!-- Left inputs (5 cols) -->
+            <div class="lg:col-span-5 space-y-4 bg-white/5 rounded-xl p-4 border border-white/10">
+                <div>
+                    <label for="sim-product-select" class="block text-xs font-semibold uppercase tracking-wider text-indigo-200 mb-1">Select Product to Simulate</label>
+                    <select id="sim-product-select" onchange="onSimProductChange()" class="w-full text-sm bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white font-medium focus:ring-2 focus:ring-amber-400 focus:outline-none">
+                        <option value="">-- Choose from our products --</option>
+                    </select>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label for="sim-category" class="block text-xs font-medium text-slate-300 mb-1">Category</label>
+                        <select id="sim-category" onchange="triggerSimulate()" class="w-full text-sm bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white">
+                            <option>BISCUIT</option><option>CRACKER</option><option>COOKIE</option><option>WAFER</option><option>SNACK</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="sim-pack-size" class="block text-xs font-medium text-slate-300 mb-1">Pack Size</label>
+                        <input id="sim-pack-size" value="300g" onchange="triggerSimulate()" placeholder="e.g. 300g" class="w-full text-sm bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label for="sim-regular-price" class="block text-xs font-medium text-slate-300 mb-1">Current Regular Price (Rp)</label>
+                        <input id="sim-regular-price" type="number" step="100" min="100" value="12000" oninput="onRegularPriceInput()" class="w-full text-sm bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono">
+                    </div>
+                    <div>
+                        <label for="sim-promo-type" class="block text-xs font-medium text-slate-300 mb-1">Promotion Mechanic</label>
+                        <select id="sim-promo-type" onchange="onSimPromoTypeChange()" class="w-full text-sm bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white">
+                            <option value="DISCOUNT">Percentage Discount</option>
+                            <option value="DIRECT_PRICE">Direct Promo Price</option>
+                            <option value="BUY_X_GET_Y">Buy 1 Get 1 (B1G1)</option>
+                            <option value="BUNDLE">Bundle / Multi-pack</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Discount slider & candidate price -->
+                <div id="sim-discount-group" class="space-y-2 pt-1 border-t border-white/10">
+                    <div class="flex justify-between items-center text-xs">
+                        <label for="sim-discount-range" class="font-semibold text-amber-300">Target Discount: <span id="sim-discount-label" class="text-sm font-bold">20%</span></label>
+                        <span id="sim-calc-price" class="font-mono text-emerald-400 font-bold">Rp 9,600</span>
+                    </div>
+                    <input id="sim-discount-range" type="range" min="0" max="60" step="5" value="20" oninput="onSimDiscountInput(this.value)" class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-400">
+                </div>
+
+                <div id="sim-direct-group" class="hidden space-y-1 pt-1 border-t border-white/10">
+                    <label for="sim-promo-price" class="block text-xs font-semibold text-amber-300">Simulated Promo Shelf Price (Rp)</label>
+                    <input id="sim-promo-price" type="number" step="100" min="100" value="9600" oninput="triggerSimulate()" class="w-full text-sm bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono">
+                </div>
+
+                <div id="sim-b1g1-group" class="hidden grid grid-cols-2 gap-3 pt-1 border-t border-white/10">
+                    <div>
+                        <label for="sim-buy-q" class="block text-xs text-slate-300">Buy Quantity</label>
+                        <input id="sim-buy-q" type="number" min="1" value="1" onchange="triggerSimulate()" class="w-full text-sm bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white">
+                    </div>
+                    <div>
+                        <label for="sim-free-q" class="block text-xs text-slate-300">Free Quantity</label>
+                        <input id="sim-free-q" type="number" min="1" value="1" onchange="triggerSimulate()" class="w-full text-sm bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white">
+                    </div>
+                </div>
+
+                <div class="pt-2 flex items-center justify-between gap-2">
+                    <button onclick="triggerSimulate()" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs font-bold text-white transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-play"></i> Recalculate
+                    </button>
+                    <button onclick="applySimToCampaign()" id="btn-apply-sim" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-xs font-bold text-white transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-check"></i> Apply to Campaign Manager
+                    </button>
+                </div>
+            </div>
+
+            <!-- Right results forecast (7 cols) -->
+            <div class="lg:col-span-7 flex flex-col justify-between space-y-4 bg-slate-900/80 rounded-xl p-5 border border-indigo-400/20">
+                <div class="grid grid-cols-3 gap-3 text-center">
+                    <div class="bg-slate-950/60 rounded-xl p-3 border border-white/5">
+                        <div class="text-[11px] uppercase tracking-wider text-slate-400">Market Rank</div>
+                        <div class="text-2xl font-black text-amber-300 mt-1" id="sim-res-rank">#--</div>
+                        <div class="text-[10px] text-slate-400" id="sim-res-rank-delta">vs current</div>
+                    </div>
+                    <div class="bg-slate-950/60 rounded-xl p-3 border border-white/5">
+                        <div class="text-[11px] uppercase tracking-wider text-slate-400">Competitor Undercuts</div>
+                        <div class="text-2xl font-black text-rose-400 mt-1" id="sim-res-undercuts">--</div>
+                        <div class="text-[10px] text-slate-400" id="sim-res-undercuts-delta">eliminated</div>
+                    </div>
+                    <div class="bg-slate-950/60 rounded-xl p-3 border border-white/5">
+                        <div class="text-[11px] uppercase tracking-wider text-slate-400">Target for Rank #1</div>
+                        <div class="text-lg font-black text-emerald-400 mt-1" id="sim-res-target-price">--</div>
+                        <div class="text-[10px] text-slate-400" id="sim-res-target-unit">per pack</div>
+                    </div>
+                </div>
+
+                <div class="bg-indigo-950/40 rounded-xl p-4 border border-indigo-500/20">
+                    <div class="flex items-center justify-between mb-1.5">
+                        <span class="text-xs font-bold text-amber-300 uppercase tracking-wider">Executive Scenario Impact</span>
+                        <span id="sim-res-position-badge" class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-400/30">SIMULATION</span>
+                    </div>
+                    <p id="sim-res-summary" class="text-xs text-indigo-100 leading-relaxed font-medium">
+                        Select a product or enter candidate pricing to simulate market positioning against live competitor promotions.
+                    </p>
+                </div>
+
+                <div>
+                    <div class="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2 flex items-center justify-between">
+                        <span>Benchmark Promotions in this Category</span>
+                        <span class="text-[11px] font-normal text-slate-400" id="sim-comp-count">0 comparable</span>
+                    </div>
+                    <div id="sim-comp-list" class="space-y-1.5 max-h-40 overflow-y-auto pr-1 text-xs">
+                        <div class="text-slate-500 italic py-2">No competitor matches computed yet.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 3. Multi-Source Drilldown Filter Bar -->
+    <section class="bg-white dark:bg-slate-900 rounded-2xl p-4 shadow-sm border border-slate-200 dark:border-slate-800 space-y-3 transition-colors" aria-labelledby="filters-title">
+        <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-2">
+            <h3 id="filters-title" class="text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                <i class="fa-solid fa-filter text-blue-600 dark:text-blue-400"></i> Multi-Source Drilldown Filters
+            </h3>
+            <div class="flex items-center gap-2">
+                <span id="filter-active-count" class="text-[11px] text-slate-500 dark:text-slate-400">Showing all</span>
+                <button onclick="resetFilters()" class="text-xs text-blue-600 dark:text-blue-400 hover:underline">Reset</button>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <!-- Category -->
+            <div>
+                <label for="filter-category" class="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 uppercase mb-1">Category</label>
+                <select id="filter-category" onchange="applyFilters()" class="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-2 text-slate-800 dark:text-slate-100 font-medium">
+                    <option value="">All Categories</option>
+                    <option value="BISCUIT">Biscuit</option>
+                    <option value="CRACKER">Cracker</option>
+                    <option value="COOKIE">Cookie</option>
+                    <option value="WAFER">Wafer</option>
+                    <option value="SNACK">Snack</option>
+                </select>
+            </div>
+
+            <!-- Brand -->
+            <div>
+                <label for="filter-brand" class="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 uppercase mb-1">Brand</label>
+                <select id="filter-brand" onchange="applyFilters()" class="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-2 text-slate-800 dark:text-slate-100 font-medium">
+                    <option value="">All Brands</option>
+                </select>
+            </div>
+
+            <!-- Competitor -->
+            <div>
+                <label for="filter-competitor" class="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 uppercase mb-1">Competitor</label>
+                <select id="filter-competitor" onchange="applyFilters()" class="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-2 text-slate-800 dark:text-slate-100 font-medium">
+                    <option value="">All Competitors</option>
+                </select>
+            </div>
+
+            <!-- Retailer / Outlet -->
+            <div>
+                <label for="filter-retailer" class="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 uppercase mb-1">Retailer / Source</label>
+                <select id="filter-retailer" onchange="applyFilters()" class="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-2 text-slate-800 dark:text-slate-100 font-medium">
+                    <option value="">All Outlets</option>
+                    <option value="Indomaret">Indomaret</option>
+                    <option value="Alfamart">Alfamart</option>
+                    <option value="Superindo">Superindo</option>
+                    <option value="Hypermart">Hypermart</option>
+                    <option value="Yogya">Yogya Supermarket</option>
+                </select>
+            </div>
+
+            <!-- Validity Period -->
+            <div>
+                <label for="filter-validity" class="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 uppercase mb-1">Validity Period</label>
+                <select id="filter-validity" onchange="applyFilters()" class="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-2 text-slate-800 dark:text-slate-100 font-medium">
+                    <option value="">All Active</option>
+                    <option value="EXPIRING_SOON">Expiring &le; 7 Days</option>
+                    <option value="STATED_DATES">Stated Dates Only</option>
+                    <option value="ONGOING">Ongoing / Indefinite</option>
+                </select>
+            </div>
+
+            <!-- Pressure Status -->
+            <div>
+                <label for="filter-pressure" class="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 uppercase mb-1">Pressure Status</label>
+                <select id="filter-pressure" onchange="applyFilters()" class="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-2 text-slate-800 dark:text-slate-100 font-medium">
+                    <option value="">All Products</option>
+                    <option value="UNDER_PRESSURE">Facing Price Undercut</option>
+                    <option value="COMPETITIVE">Competitive / Lead</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-2 pt-1">
+            <div class="relative flex-1">
+                <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs"></i>
+                <input id="filter-search" oninput="applyFilters()" placeholder="Filter comparison by product name, SKU, or promotion text..." class="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg pl-8 pr-3 py-2 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+            </div>
+        </div>
+    </section>
+
+    <!-- 4. Price Comparison Matrix View -->
+    <section aria-labelledby="comparison-title" class="space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+                <h2 id="comparison-title" class="text-xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                    <i class="fa-solid fa-scale-balanced text-blue-600"></i> Our prices vs competitor promotions
+                </h2>
+                <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Compared per 100 g so different pack sizes are fair. Only promotions with a computable price and a pack size within 0.5x to 2.0x of ours are shown. A negative gap means the competitor is cheaper than us.
+                </p>
+            </div>
+            <div class="flex items-center gap-2 text-xs">
+                <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full badge-undercut font-bold">
+                    <i class="fa-solid fa-circle-exclamation text-[10px]"></i> Competitor Cheaper
+                </span>
+                <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full badge-competitive font-bold">
+                    <i class="fa-solid fa-circle-check text-[10px]"></i> We Lead / Competitive
+                </span>
+            </div>
+        </div>
+
+        <div id="results" class="space-y-4" aria-live="polite">
+            <div class="bg-white dark:bg-slate-900 rounded-2xl p-8 text-center text-slate-400 border border-slate-200 dark:border-slate-800">
+                <i class="fa-solid fa-circle-notch fa-spin text-2xl text-blue-600 mb-2"></i>
+                <p>Loading price comparison...</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- 2. Interactive Own Product & Promotion Manager (Portfolio Table & Modal trigger) -->
+    <section class="bg-white dark:bg-slate-900 rounded-2xl p-6 shadow-sm border border-slate-200 dark:border-slate-800 space-y-4 transition-colors" aria-labelledby="own-products-title">
+        <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
+            <div>
+                <h2 id="own-products-title" class="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <i class="fa-solid fa-boxes-stacked text-blue-600 dark:text-blue-400"></i>
+                    Own Product & Promotion Campaign Manager
+                </h2>
+                <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Maintain our regular shelf prices and active promotional campaigns (Discount, Buy 1 Get 1, Bundle, Validity Period) with real-time recalculation of competitor gaps.
+                </p>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+                <button onclick="openProductModal()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm">
+                    <i class="fa-solid fa-plus"></i> Add Product & Campaign
+                </button>
+                <label class="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer transition flex items-center gap-1.5 border border-slate-200 dark:border-slate-700">
+                    <i class="fa-solid fa-file-arrow-up"></i> Import CSV
+                    <input id="csv-file" type="file" accept=".csv,text/csv" class="hidden">
+                </label>
+                <button onclick="downloadTemplate()" class="px-3 py-2 rounded-xl text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline">
+                    Template
+                </button>
+            </div>
+        </div>
+
+        <!-- Quick Add Form (compact inline backup) -->
+        <form id="add-form" class="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-4 grid grid-cols-2 md:grid-cols-6 gap-3 items-end border border-slate-200/80 dark:border-slate-700">
+            <label class="text-xs font-medium col-span-2 text-slate-700 dark:text-slate-300">Product Name<input name="name" required maxlength="255" placeholder="e.g. Biskuit Kelapa 300g" class="mt-1 w-full rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-700 px-3 py-1.5 text-xs text-slate-900 dark:text-white"></label>
+            <label class="text-xs font-medium text-slate-700 dark:text-slate-300">Category<select name="category" class="mt-1 w-full rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-700 px-3 py-1.5 text-xs text-slate-900 dark:text-white"><option>BISCUIT</option><option>CRACKER</option><option>COOKIE</option><option>WAFER</option><option>SNACK</option></select></label>
+            <label class="text-xs font-medium text-slate-700 dark:text-slate-300">Pack Size<input name="pack_size" maxlength="50" placeholder="e.g. 300g" class="mt-1 w-full rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-700 px-3 py-1.5 text-xs text-slate-900 dark:text-white"></label>
+            <label class="text-xs font-medium text-slate-700 dark:text-slate-300">Shelf Price (Rp)<input name="regular_price" type="number" min="1" step="any" required placeholder="12500" class="mt-1 w-full rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-700 px-3 py-1.5 text-xs text-slate-900 dark:text-white font-mono"></label>
+            <button type="submit" class="rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-2 shadow-sm transition">Quick Add</button>
+        </form>
+
+        <!-- Portfolio Table -->
+        <div class="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
+            <table class="min-w-full text-xs text-left">
+                <thead class="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 uppercase font-semibold border-b border-slate-200 dark:border-slate-700">
+                    <tr>
+                        <th class="p-3">Product & SKU</th>
+                        <th class="p-3">Category</th>
+                        <th class="p-3">Pack Size</th>
+                        <th class="p-3 text-right">Regular Price</th>
+                        <th class="p-3">Active Promotional Campaign</th>
+                        <th class="p-3">Campaign Validity</th>
+                        <th class="p-3 text-right">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="products" class="divide-y divide-slate-100 dark:divide-slate-800 font-medium"></tbody>
+            </table>
+        </div>
     </section>
 </main>
+
+<!-- Interactive Product & Campaign Manager Modal -->
+<div id="product-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div role="dialog" aria-modal="true" aria-labelledby="modal-title" class="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-xl w-full max-h-[90vh] overflow-y-auto p-6 space-y-4 border border-slate-200 dark:border-slate-800">
+        <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+            <h3 id="modal-title" class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <i class="fa-solid fa-tags text-blue-600"></i> Manage Product & Campaign
+            </h3>
+            <button onclick="closeProductModal()" class="text-slate-400 hover:text-slate-700 dark:hover:text-white text-lg p-1">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+
+        <form id="product-modal-form" onsubmit="saveProductModal(event)" class="space-y-4 text-xs">
+            <input type="hidden" id="modal-prod-id" value="">
+
+            <div class="grid grid-cols-2 gap-3">
+                <div class="col-span-2">
+                    <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Product Name *</label>
+                    <input id="modal-name" required maxlength="255" placeholder="e.g. Biskuit Kelapa MyBrand" class="w-full text-sm rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white">
+                </div>
+                <div>
+                    <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Brand</label>
+                    <input id="modal-brand" maxlength="120" placeholder="e.g. MyBrand" class="w-full text-sm rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white">
+                </div>
+                <div>
+                    <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">SKU / Code</label>
+                    <input id="modal-sku" maxlength="64" placeholder="e.g. SKU-1001" class="w-full text-sm rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white">
+                </div>
+                <div>
+                    <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Category</label>
+                    <select id="modal-category" class="w-full text-sm rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white">
+                        <option>BISCUIT</option><option>CRACKER</option><option>COOKIE</option><option>WAFER</option><option>SNACK</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Pack Size (e.g. 300g) *</label>
+                    <input id="modal-pack-size" maxlength="50" placeholder="300g" class="w-full text-sm rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white">
+                </div>
+                <div class="col-span-2">
+                    <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Regular Shelf Price (Rp) *</label>
+                    <input id="modal-regular-price" type="number" step="100" min="1" required placeholder="12000" class="w-full text-sm rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white font-mono">
+                </div>
+            </div>
+
+            <!-- Campaign Validity & Mechanics Section -->
+            <div class="border-t border-slate-200 dark:border-slate-800 pt-4 space-y-3">
+                <div class="flex items-center justify-between">
+                    <span class="font-bold text-slate-800 dark:text-slate-200 text-sm flex items-center gap-1.5">
+                        <i class="fa-solid fa-bullhorn text-amber-500"></i> Promotional Campaign Settings
+                    </span>
+                    <button type="button" onclick="clearModalCampaign()" class="text-[11px] text-rose-600 hover:underline">Clear Campaign</button>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Promotion Type</label>
+                        <select id="modal-promo-type" class="w-full text-sm rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white">
+                            <option value="REGULAR">Regular (No Campaign)</option>
+                            <option value="DISCOUNT">Discount</option>
+                            <option value="BUY_X_GET_Y">Buy 1 Get 1 / Buy X Get Y</option>
+                            <option value="BUNDLE">Bundle</option>
+                            <option value="SPECIAL_PRICE">Special Price</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Promo Price (Rp)</label>
+                        <input id="modal-promo-price" type="number" step="100" min="1" placeholder="e.g. 9600" class="w-full text-sm rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white font-mono">
+                    </div>
+                    <div>
+                        <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Campaign Start Date</label>
+                        <input id="modal-start-date" type="date" class="w-full text-sm rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white">
+                    </div>
+                    <div>
+                        <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Campaign End Date</label>
+                        <input id="modal-end-date" type="date" class="w-full text-sm rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white">
+                    </div>
+                    <div class="col-span-2">
+                        <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Campaign Mechanic Note</label>
+                        <input id="modal-mechanic" maxlength="100" placeholder="e.g. Weekend Special, Ramadan Flash Sale" class="w-full text-sm rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white">
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
+                <button type="button" onclick="closeProductModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-lg font-semibold text-slate-700 dark:text-slate-300 transition">Cancel</button>
+                <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold shadow transition">Save Product & Campaign</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <script>
     const msg = document.getElementById('msg');
-    function flash(text, ok) { msg.textContent = text; msg.className = 'rounded-md px-3 py-2 text-sm ' + (ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'); }
-    const rp = n => n == null ? '-' : 'Rp' + Number(n).toLocaleString('id-ID', {maximumFractionDigits: 0});
-    const card = (label, value, color) => `<div class="bg-white dark:bg-slate-800 rounded-xl shadow p-4"><div class="text-2xl font-bold ${color}">${esc(value)}</div><div class="text-sm text-slate-500">${esc(label)}</div></div>`;
+    let comparisonData = { products: [], summary: {}, aggregations: {} };
+    let rawOwnProducts = [];
+    let simTimeout = null;
 
+    function flash(text, ok) {
+        msg.textContent = text;
+        msg.className = 'rounded-xl px-4 py-3 text-sm font-medium shadow-sm transition ' +
+            (ok ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800' :
+                  'bg-rose-50 dark:bg-rose-950/50 text-rose-800 dark:text-rose-200 border border-rose-200 dark:border-rose-800');
+        msg.classList.remove('hidden');
+        setTimeout(() => msg.classList.add('hidden'), 5000);
+    }
+
+    const rp = n => n == null ? '-' : 'Rp' + Number(n).toLocaleString('id-ID', {maximumFractionDigits: 0});
+
+    function toggleSimulator() {
+        const sec = document.getElementById('sim-body');
+        const icon = document.getElementById('sim-toggle-icon');
+        if (sec.classList.contains('hidden')) {
+            sec.classList.remove('hidden');
+            icon.className = 'fa-solid fa-chevron-up mr-1';
+        } else {
+            sec.classList.add('hidden');
+            icon.className = 'fa-solid fa-chevron-down mr-1';
+        }
+    }
+
+    // Export comparison table
+    function exportData(format) {
+        const params = new URLSearchParams();
+        const cat = document.getElementById('filter-category').value;
+        const brand = document.getElementById('filter-brand').value;
+        const comp = document.getElementById('filter-competitor').value;
+        const ret = document.getElementById('filter-retailer').value;
+        if (cat) params.set('category', cat);
+        if (brand) params.set('brand', brand);
+        if (comp) params.set('competitor', comp);
+        if (ret) params.set('retailer', ret);
+        params.set('format', format);
+        window.location.href = '/api/v1/compare/export?' + params.toString();
+    }
+
+    // Render Executive Overview
+    function renderOverview(summary) {
+        // 1. Price Index vs Market
+        const idxEl = document.getElementById('stat-price-index');
+        const idxBadge = document.getElementById('stat-price-index-badge');
+        const pIdx = summary.price_index_vs_market != null ? summary.price_index_vs_market : 100.0;
+        const gap = summary.price_index_gap_pct != null ? summary.price_index_gap_pct : (pIdx - 100.0);
+        idxEl.textContent = pIdx.toFixed(1);
+
+        if (gap > 0.5) {
+            idxBadge.innerHTML = `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-400">+${gap.toFixed(1)}% Premium vs Market</span>`;
+        } else if (gap < -0.5) {
+            idxBadge.innerHTML = `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400">${gap.toFixed(1)}% Competitive Advantage</span>`;
+        } else {
+            idxBadge.innerHTML = `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">Market Promo Parity</span>`;
+        }
+
+        // 2. Under Price Pressure
+        const pressPct = summary.pct_under_pressure != null ? summary.pct_under_pressure : 0;
+        document.getElementById('stat-pressure-pct').textContent = `${pressPct}%`;
+        document.getElementById('stat-pressure-count').textContent =
+            `${summary.under_pressure || 0} of ${summary.own_products || 0} products undercut`;
+        document.getElementById('stat-pressure-bar').style.width = `${Math.min(100, pressPct)}%`;
+
+        // 3. Deepest Discount by Category
+        const deepestEl = document.getElementById('stat-deepest-discount');
+        const deepestDetail = document.getElementById('stat-deepest-detail');
+        const chips = document.getElementById('category-discount-chips');
+        const deepestByCat = summary.deepest_discount_by_category || {};
+        const overall = summary.deepest_overall_discount;
+
+        if (overall && overall.discount_pct) {
+            deepestEl.textContent = `${overall.discount_pct.toFixed(0)}% OFF`;
+            deepestDetail.textContent = `${overall.category} · ${overall.product || ''} (${overall.outlet || 'Market'})`;
+        } else {
+            deepestEl.textContent = '--%';
+            deepestDetail.textContent = 'No competitor discount promos';
+        }
+
+        const cats = ['BISCUIT', 'CRACKER', 'COOKIE', 'WAFER', 'SNACK'];
+        chips.innerHTML = cats.map(c => {
+            const item = deepestByCat[c];
+            if (item && item.discount_pct) {
+                return `<button onclick="filterByCat('${c}')" class="px-2 py-0.5 rounded bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-900 font-semibold hover:opacity-80">${c}: -${item.discount_pct.toFixed(0)}%</button>`;
+            }
+            return `<span class="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-400">${c}: --</span>`;
+        }).join('');
+
+        // 4. Competitor Promo Frequency
+        const freq = summary.promo_frequency || {};
+        const total = summary.active_competitor_promotions || 0;
+        document.getElementById('stat-promo-freq').textContent = `${total} Active`;
+        document.getElementById('stat-promo-sub').textContent =
+            `Avg ${freq.avg_promos_per_brand || '0'} promos / brand across ${freq.brands_tracked || '0'} brands`;
+        document.getElementById('stat-expiring-soon').textContent =
+            `${freq.expiring_soon_count || 0} expiring \u2264 7d`;
+    }
+
+    function filterByCat(c) {
+        document.getElementById('filter-category').value = c;
+        applyFilters();
+    }
+
+    // Load comparison
     async function loadComparison() {
-        const d = await (await api('/api/v1/compare/')).json();
-        document.getElementById('summary').innerHTML = card('Our products', d.summary.own_products, '') +
-            card('Undercut by a competitor promotion', d.summary.under_pressure, 'text-rose-600') +
-            card('Need a pack size to compare', d.summary.not_comparable, 'text-amber-600');
-        document.getElementById('results').innerHTML = d.products.map(p => {
-            const rows = p.comparable.map(m => `<tr class="border-t border-slate-100 dark:border-slate-700 ${m.undercuts_us ? 'bg-rose-50/60 dark:bg-rose-900/10' : ''}">
-                <td class="p-2">${esc(m.competitor || m.brand || '-')}</td><td class="p-2">${esc(m.product)}<div class="text-xs text-slate-500">${esc(m.pack_size)} · ${esc(m.outlet || 'n/a')}${m.dates_stated ? '' : ' · dates not stated'}</div></td>
-                <td class="p-2 text-right">${rp(m.effective_pack_price)}</td><td class="p-2 text-right">${rp(m.price_per_100g)}</td>
-                <td class="p-2 text-right font-semibold ${m.gap_pct < 0 ? 'text-rose-600' : 'text-emerald-600'}">${m.gap_pct > 0 ? '+' : ''}${esc(m.gap_pct)}%</td></tr>`).join('');
-            const body = p.note ? `<p class="text-sm text-amber-600 p-3">${esc(p.note)}</p>` :
-                (rows ? `<table class="min-w-full text-sm"><thead class="text-xs text-slate-500"><tr><th class="p-2 text-left">Competitor</th><th class="p-2 text-left">Promotion</th><th class="p-2 text-right">Pack price</th><th class="p-2 text-right">Per 100 g</th><th class="p-2 text-right">Gap vs us</th></tr></thead><tbody>${rows}</tbody></table>` : '<p class="text-sm text-slate-400 p-3">No comparable competitor promotion right now.</p>');
-            return `<div class="bg-white dark:bg-slate-800 rounded-xl shadow overflow-hidden"><div class="p-3 flex flex-wrap justify-between gap-2 border-b border-slate-100 dark:border-slate-700">
-                <div><span class="font-semibold">${esc(p.name)}</span> <span class="text-xs text-slate-500">${esc(p.pack_size || '')} · ${esc(p.category)}</span></div>
-                <div class="text-sm">${rp(p.regular_price)}${p.price_per_100g != null ? ' · ' + rp(p.price_per_100g) + ' /100 g' : ''}${p.undercut_count ? ` · <span class="text-rose-600 font-semibold">${esc(p.undercut_count)} cheaper</span>` : ''}</div></div>${body}</div>`;
-        }).join('') || '<p class="text-slate-400">Add your products below to start comparing.</p>';
+        const cat = document.getElementById('filter-category')?.value || '';
+        const brand = document.getElementById('filter-brand')?.value || '';
+        const comp = document.getElementById('filter-competitor')?.value || '';
+        const ret = document.getElementById('filter-retailer')?.value || '';
+        const params = new URLSearchParams();
+        if (cat) params.set('category', cat);
+        if (brand) params.set('brand', brand);
+        if (comp) params.set('competitor', comp);
+        if (ret) params.set('retailer', ret);
+
+        const r = await api('/api/v1/compare/?' + params.toString());
+        if (!r.ok) { flash('Could not load comparison: ' + await errText(r), false); return; }
+        comparisonData = await r.json();
+
+        if (comparisonData.generated_at) {
+            document.getElementById('header-timestamp').textContent =
+                `Updated ${new Date(comparisonData.generated_at).toLocaleTimeString()}`;
+        }
+
+        renderOverview(comparisonData.summary || {});
+        populateFilterOptions(comparisonData);
+        applyFilters();
     }
+
+    function populateFilterOptions(data) {
+        const brandSel = document.getElementById('filter-brand');
+        const compSel = document.getElementById('filter-competitor');
+        const currBrand = brandSel.value;
+        const currComp = compSel.value;
+
+        // Populate Brands
+        const brandList = (data.aggregations?.by_brand || []).map(b => b.brand).filter(Boolean);
+        (data.products || []).forEach(p => { if (p.brand && !brandList.includes(p.brand)) brandList.push(p.brand); });
+        brandList.sort();
+
+        brandSel.innerHTML = '<option value="">All Brands</option>' +
+            brandList.map(b => `<option value="${esc(b)}" ${b === currBrand ? 'selected' : ''}>${esc(b)}</option>`).join('');
+
+        // Populate Competitors
+        const compList = (data.aggregations?.by_competitor || []).map(c => c.competitor).filter(Boolean);
+        compList.sort();
+        compSel.innerHTML = '<option value="">All Competitors</option>' +
+            compList.map(c => `<option value="${esc(c)}" ${c === currComp ? 'selected' : ''}>${esc(c)}</option>`).join('');
+    }
+
+    // Apply Client-Side Drilldowns & Search
+    function applyFilters() {
+        const cat = document.getElementById('filter-category').value.toUpperCase();
+        const brand = document.getElementById('filter-brand').value.toLowerCase();
+        const comp = document.getElementById('filter-competitor').value.toLowerCase();
+        const ret = document.getElementById('filter-retailer').value.toLowerCase();
+        const val = document.getElementById('filter-validity').value;
+        const press = document.getElementById('filter-pressure').value;
+        const search = document.getElementById('filter-search').value.toLowerCase().trim();
+
+        let filtered = (comparisonData.products || []).slice();
+
+        // Filter products
+        if (cat) filtered = filtered.filter(p => (p.category || '').toUpperCase() === cat);
+        if (brand) filtered = filtered.filter(p => (p.brand || '').toLowerCase().includes(brand) || (p.comparable || []).some(m => (m.brand || '').toLowerCase().includes(brand)));
+        if (comp) filtered = filtered.filter(p => (p.comparable || []).some(m => (m.competitor || '').toLowerCase().includes(comp)));
+        if (ret) filtered = filtered.filter(p => (p.comparable || []).some(m => (m.outlet || '').toLowerCase().includes(ret)));
+
+        if (press === 'UNDER_PRESSURE') filtered = filtered.filter(p => p.undercut_count > 0);
+        else if (press === 'COMPETITIVE') filtered = filtered.filter(p => p.undercut_count === 0 && p.price_per_100g != null);
+
+        if (search) {
+            filtered = filtered.filter(p =>
+                (p.name || '').toLowerCase().includes(search) ||
+                (p.sku || '').toLowerCase().includes(search) ||
+                (p.comparable || []).some(m => (m.product || '').toLowerCase().includes(search) || (m.competitor || '').toLowerCase().includes(search))
+            );
+        }
+
+        // Validity filter on matches
+        if (val) {
+            filtered = filtered.map(p => {
+                const matches = (p.comparable || []).filter(m => {
+                    if (val === 'EXPIRING_SOON') return m.validity_status === 'EXPIRING_SOON';
+                    if (val === 'STATED_DATES') return m.dates_stated === true;
+                    if (val === 'ONGOING') return m.validity_status === 'ONGOING' || !m.dates_stated;
+                    return true;
+                });
+                return Object.assign({}, p, { comparable: matches, undercut_count: matches.filter(m => m.undercuts_us).length });
+            });
+        }
+
+        renderMatrix(filtered);
+        document.getElementById('filter-active-count').textContent =
+            `Showing ${filtered.length} of ${comparisonData.products.length} products`;
+    }
+
+    function resetFilters() {
+        document.getElementById('filter-category').value = '';
+        document.getElementById('filter-brand').value = '';
+        document.getElementById('filter-competitor').value = '';
+        document.getElementById('filter-retailer').value = '';
+        document.getElementById('filter-validity').value = '';
+        document.getElementById('filter-pressure').value = '';
+        document.getElementById('filter-search').value = '';
+        applyFilters();
+    }
+
+    // Render Matrix with Visual Status Indicators
+    function renderMatrix(products) {
+        const container = document.getElementById('results');
+        if (!products.length) {
+            container.innerHTML = `
+                <div class="bg-white dark:bg-slate-900 rounded-2xl p-10 text-center text-slate-400 border border-slate-200 dark:border-slate-800">
+                    <i class="fa-solid fa-filter-circle-xmark text-3xl mb-3 text-slate-300"></i>
+                    <p class="font-medium text-slate-600 dark:text-slate-300">No products match the selected drilldown filters.</p>
+                    <button onclick="resetFilters()" class="mt-2 text-xs text-blue-600 hover:underline">Reset filters</button>
+                </div>`;
+            return;
+        }
+
+        container.innerHTML = products.map(p => {
+            const hasPromo = p.has_active_promo;
+            const undercutBadge = p.undercut_count > 0 ?
+                `<span class="badge-undercut px-2.5 py-1 rounded-full text-xs font-bold inline-flex items-center gap-1">
+                    <i class="fa-solid fa-arrow-down"></i> ${esc(p.undercut_count)} Cheaper ${p.largest_gap_pct != null ? `(${esc(p.largest_gap_pct)}%)` : ''}
+                </span>` :
+                (p.price_per_100g ? `<span class="badge-competitive px-2.5 py-1 rounded-full text-xs font-bold inline-flex items-center gap-1"><i class="fa-solid fa-check"></i> Competitive Lead</span>` : '');
+
+            const ourPromoBadge = hasPromo ?
+                `<div class="mt-1 flex items-center gap-2">
+                    <span class="px-2 py-0.5 rounded text-[11px] font-bold bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border border-amber-300/40">
+                        <i class="fa-solid fa-bullhorn text-[10px]"></i> Live Campaign: ${rp(p.promo_price)} (${esc(p.promo_type)})
+                    </span>
+                    <span class="text-[11px] text-slate-400">${rp(p.promo_price_per_100g)}/100g</span>
+                </div>` : '';
+
+            // Competitor rows
+            const rows = (p.comparable || []).map(m => {
+                // Validity status badge
+                let valBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">Active</span>';
+                if (m.validity_status === 'EXPIRING_SOON') {
+                    const days = m.days_remaining != null ? ` (${m.days_remaining}d left)` : '';
+                    valBadge = `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300"><i class="fa-regular fa-clock mr-1"></i>Expiring Soon${days}</span>`;
+                } else if (m.validity_status === 'ONGOING' || !m.dates_stated) {
+                    valBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">Ongoing</span>';
+                }
+
+                // Source Outlet badge
+                const outletBadge = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-200/50 dark:border-blue-900/50">
+                    <i class="fa-solid fa-shop text-[10px]"></i> ${esc(m.outlet || 'Unknown')}
+                </span>`;
+
+                // Undercut badge
+                const gapBadge = m.gap_pct < 0 ?
+                    `<span class="badge-undercut px-2.5 py-1 rounded-full text-xs font-black inline-flex items-center gap-1">${esc(m.gap_pct)}%</span>` :
+                    `<span class="badge-competitive px-2.5 py-1 rounded-full text-xs font-bold inline-flex items-center gap-1">+${esc(m.gap_pct)}%</span>`;
+
+                const promoTypeBadge = m.promotion_type ?
+                    `<span class="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">${esc(m.promotion_type.replace(/_/g, ' '))}</span>` : '';
+
+                return `
+                    <tr class="border-t border-slate-100 dark:border-slate-800 hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition ${m.undercuts_us ? 'bg-rose-50/40 dark:bg-rose-950/20' : ''}">
+                        <td class="p-3">
+                            <div class="font-bold text-slate-900 dark:text-white">${esc(m.competitor || m.brand || 'Competitor')}</div>
+                            <div class="text-[11px] text-slate-500">${esc(m.brand || '')}</div>
+                        </td>
+                        <td class="p-3">
+                            <div class="font-semibold text-slate-800 dark:text-slate-200">${esc(m.product)}</div>
+                            <div class="text-[11px] text-slate-500 mt-0.5 flex flex-wrap items-center gap-1.5">
+                                <span>${esc(m.pack_size || '')}</span>
+                                ${promoTypeBadge}
+                                ${m.dates_stated ? `<span class="text-slate-400">· ${esc(m.valid_until || '')}</span>` : ''}
+                            </div>
+                        </td>
+                        <td class="p-3">${outletBadge}</td>
+                        <td class="p-3">${valBadge}</td>
+                        <td class="p-3 text-right">
+                            <div class="font-bold text-slate-900 dark:text-white font-mono">${rp(m.effective_pack_price)}</div>
+                            ${m.regular_pack_price ? `<div class="text-[10px] text-slate-400 line-through font-mono">${rp(m.regular_pack_price)}</div>` : ''}
+                        </td>
+                        <td class="p-3 text-right font-mono font-bold text-slate-700 dark:text-slate-300">${rp(m.price_per_100g)}</td>
+                        <td class="p-3 text-right">${gapBadge}</td>
+                    </tr>
+                `;
+            }).join('');
+
+            const tableOrNote = p.note ?
+                `<div class="p-4 text-xs font-semibold text-amber-600 dark:text-amber-400 bg-amber-50/50 dark:bg-amber-950/30 flex items-center gap-2"><i class="fa-solid fa-circle-exclamation"></i> ${esc(p.note)}</div>` :
+                (rows ? `
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full text-xs text-left">
+                            <thead class="bg-slate-50 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 uppercase font-semibold border-b border-slate-100 dark:border-slate-800">
+                                <tr>
+                                    <th class="p-3">Competitor</th>
+                                    <th class="p-3">Promotion Details</th>
+                                    <th class="p-3">Outlet</th>
+                                    <th class="p-3">Validity Status</th>
+                                    <th class="p-3 text-right">Pack Price</th>
+                                    <th class="p-3 text-right">Per 100 g</th>
+                                    <th class="p-3 text-right">Undercut Gap</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100 dark:divide-slate-800 font-medium">${rows}</tbody>
+                        </table>
+                    </div>
+                ` : `<div class="p-5 text-xs text-slate-400 italic text-center">No comparable active competitor promotions match this product.</div>`);
+
+            return `
+                <div class="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden transition-colors">
+                    <div class="p-4 sm:p-5 flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-800/30">
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <span class="font-extrabold text-base text-slate-900 dark:text-white">${esc(p.name)}</span>
+                                ${p.sku ? `<span class="px-2 py-0.5 rounded text-[10px] font-mono bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">${esc(p.sku)}</span>` : ''}
+                                <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300">${esc(p.category)}</span>
+                            </div>
+                            <div class="text-xs text-slate-500 mt-1 flex flex-wrap items-center gap-2">
+                                <span>Shelf Price: <strong class="text-slate-800 dark:text-slate-200">${rp(p.regular_price)}</strong></span>
+                                ${p.pack_size ? `<span>· Pack: ${esc(p.pack_size)}</span>` : ''}
+                                ${p.price_per_100g ? `<span>· <strong class="text-blue-600 dark:text-blue-400">${rp(p.price_per_100g)}/100g</strong></span>` : ''}
+                            </div>
+                            ${ourPromoBadge}
+                        </div>
+                        <div class="flex items-center gap-3">
+                            ${undercutBadge}
+                            <button onclick="editProduct('${esc(p.id)}')" class="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 transition flex items-center gap-1.5 border border-slate-200 dark:border-slate-700">
+                                <i class="fa-solid fa-pen-to-square"></i> Campaign
+                            </button>
+                        </div>
+                    </div>
+                    ${tableOrNote}
+                </div>
+            `;
+        }).join('');
+    }
+
+    // Load Products portfolio table
     async function loadProducts() {
-        const items = await (await api('/api/v1/compare/products')).json();
-        document.getElementById('products').innerHTML = items.map(p => `<tr class="border-t border-slate-100 dark:border-slate-700">
-            <td class="p-3">${esc(p.name)}${p.sku ? ' <span class="text-xs text-slate-400">' + esc(p.sku) + '</span>' : ''}</td><td class="p-3">${esc(p.category)}</td><td class="p-3">${esc(p.pack_size || '-')}</td>
-            <td class="p-3 text-right"><input value="${esc(p.regular_price)}" type="number" min="1" step="any" onchange="patch('${esc(p.id)}', {regular_price: parseFloat(this.value)})" class="w-28 text-right rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-700 px-2 py-1"></td>
-            <td class="p-3 text-right"><button onclick="removeProduct('${esc(p.id)}')" class="text-rose-600 text-xs hover:underline">Delete</button></td></tr>`).join('') ||
-            '<tr><td colspan="5" class="p-6 text-center text-slate-400">No products yet.</td></tr>';
+        const r = await api('/api/v1/compare/products');
+        if (!r.ok) return;
+        rawOwnProducts = await r.json();
+
+        // Update Simulator dropdown
+        const simSelect = document.getElementById('sim-product-select');
+        const currSim = simSelect.value;
+        simSelect.innerHTML = '<option value="">-- Choose from our products --</option>' +
+            rawOwnProducts.map(p => `<option value="${esc(p.id)}" ${p.id === currSim ? 'selected' : ''}>${esc(p.name)} (${esc(p.pack_size || p.category)}) - ${rp(p.regular_price)}</option>`).join('');
+
+        const tbody = document.getElementById('products');
+        tbody.innerHTML = rawOwnProducts.map(p => {
+            const hasPromo = p.promo_price != null;
+            const promoInfo = hasPromo ?
+                `<div><strong class="text-amber-600 dark:text-amber-400 font-mono">${rp(p.promo_price)}</strong> <span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 font-bold">${esc(p.promo_type)}</span></div>` :
+                '<span class="text-slate-400">Regular shelf price</span>';
+
+            const validityInfo = (p.promo_start_date || p.promo_end_date) ?
+                `<div class="text-[11px] text-slate-600 dark:text-slate-400">${esc(p.promo_start_date ? p.promo_start_date.slice(0, 10) : 'Start')} &ndash; ${esc(p.promo_end_date ? p.promo_end_date.slice(0, 10) : 'Ongoing')}</div>` :
+                '<span class="text-slate-400">--</span>';
+
+            return `
+                <tr class="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition">
+                    <td class="p-3">
+                        <div class="font-bold text-slate-900 dark:text-white">${esc(p.name)}</div>
+                        ${p.sku ? `<div class="text-[10px] text-slate-400 font-mono">${esc(p.sku)}</div>` : ''}
+                    </td>
+                    <td class="p-3"><span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">${esc(p.category)}</span></td>
+                    <td class="p-3">${esc(p.pack_size || '-')}</td>
+                    <td class="p-3 text-right">
+                        <input value="${esc(p.regular_price)}" type="number" min="1" step="100" onchange="patch('${esc(p.id)}', {regular_price: parseFloat(this.value)})" class="w-24 text-right rounded-lg border border-slate-300 dark:border-slate-700 dark:bg-slate-800 px-2 py-1 font-mono text-xs">
+                    </td>
+                    <td class="p-3">${promoInfo}</td>
+                    <td class="p-3">${validityInfo}</td>
+                    <td class="p-3 text-right space-x-2">
+                        <button onclick="editProduct('${esc(p.id)}')" class="text-blue-600 dark:text-blue-400 hover:underline text-xs font-semibold">Edit Campaign</button>
+                        <button onclick="removeProduct('${esc(p.id)}')" class="text-rose-600 hover:underline text-xs font-semibold">Delete</button>
+                    </td>
+                </tr>
+            `;
+        }).join('') || '<tr><td colspan="7" class="p-6 text-center text-slate-400">No products configured yet. Add your products to compare.</td></tr>';
     }
-    async function refresh() { await Promise.all([loadComparison(), loadProducts()]); }
-    async function patch(id, body) { const r = await api('/api/v1/compare/products/' + id, {method: 'PATCH', json: body}); flash(r.ok ? 'Saved.' : await errText(r), r.ok); refresh(); }
-    async function removeProduct(id) { if (!confirm('Delete this product?')) return; const r = await api('/api/v1/compare/products/' + id, {method: 'DELETE'}); flash(r.ok ? 'Deleted.' : await errText(r), r.ok); refresh(); }
+
+    async function refresh() {
+        await Promise.all([loadComparison(), loadProducts()]);
+    }
+
+    async function patch(id, body) {
+        const r = await api('/api/v1/compare/products/' + id, {method: 'PATCH', json: body});
+        flash(r.ok ? 'Product updated.' : await errText(r), r.ok);
+        refresh();
+    }
+
+    async function removeProduct(id) {
+        if (!confirm('Are you sure you want to delete this product?')) return;
+        const r = await api('/api/v1/compare/products/' + id, {method: 'DELETE'});
+        flash(r.ok ? 'Product deleted.' : await errText(r), r.ok);
+        refresh();
+    }
+
+    // Modal Handling
+    function openProductModal(prod = null) {
+        const form = document.getElementById('product-modal-form');
+        form.reset();
+        if (prod) {
+            document.getElementById('modal-title').innerHTML = '<i class="fa-solid fa-pen-to-square text-blue-600"></i> Edit Product & Campaign';
+            document.getElementById('modal-prod-id').value = prod.id;
+            document.getElementById('modal-name').value = prod.name || '';
+            document.getElementById('modal-brand').value = prod.brand || '';
+            document.getElementById('modal-sku').value = prod.sku || '';
+            document.getElementById('modal-category').value = prod.category || 'BISCUIT';
+            document.getElementById('modal-pack-size').value = prod.pack_size || '';
+            document.getElementById('modal-regular-price').value = prod.regular_price || '';
+            document.getElementById('modal-promo-type').value = prod.promo_type || 'REGULAR';
+            document.getElementById('modal-promo-price').value = prod.promo_price || '';
+            document.getElementById('modal-start-date').value = prod.promo_start_date ? prod.promo_start_date.slice(0, 10) : '';
+            document.getElementById('modal-end-date').value = prod.promo_end_date ? prod.promo_end_date.slice(0, 10) : '';
+            document.getElementById('modal-mechanic').value = prod.promo_mechanic || '';
+        } else {
+            document.getElementById('modal-title').innerHTML = '<i class="fa-solid fa-plus text-blue-600"></i> Add Product & Campaign';
+            document.getElementById('modal-prod-id').value = '';
+            document.getElementById('modal-category').value = 'BISCUIT';
+            document.getElementById('modal-promo-type').value = 'REGULAR';
+        }
+        document.getElementById('product-modal').classList.remove('hidden');
+    }
+
+    function editProduct(id) {
+        const p = rawOwnProducts.find(x => x.id === id);
+        if (p) openProductModal(p);
+    }
+
+    function closeProductModal() {
+        document.getElementById('product-modal').classList.add('hidden');
+    }
+
+    function clearModalCampaign() {
+        document.getElementById('modal-promo-type').value = 'REGULAR';
+        document.getElementById('modal-promo-price').value = '';
+        document.getElementById('modal-start-date').value = '';
+        document.getElementById('modal-end-date').value = '';
+        document.getElementById('modal-mechanic').value = '';
+    }
+
+    async function saveProductModal(e) {
+        e.preventDefault();
+        const id = document.getElementById('modal-prod-id').value;
+        const body = {
+            name: document.getElementById('modal-name').value.trim(),
+            brand: document.getElementById('modal-brand').value.trim() || null,
+            sku: document.getElementById('modal-sku').value.trim() || null,
+            category: document.getElementById('modal-category').value,
+            pack_size: document.getElementById('modal-pack-size').value.trim() || null,
+            regular_price: parseFloat(document.getElementById('modal-regular-price').value),
+            promo_type: document.getElementById('modal-promo-type').value,
+            promo_price: document.getElementById('modal-promo-price').value ? parseFloat(document.getElementById('modal-promo-price').value) : null,
+            promo_start_date: document.getElementById('modal-start-date').value || null,
+            promo_end_date: document.getElementById('modal-end-date').value || null,
+            promo_mechanic: document.getElementById('modal-mechanic').value.trim() || null,
+        };
+
+        let r;
+        if (id) {
+            r = await api('/api/v1/compare/products/' + id, {method: 'PATCH', json: body});
+        } else {
+            r = await api('/api/v1/compare/products', {method: 'POST', json: body});
+        }
+
+        if (r.ok) {
+            flash(id ? 'Campaign updated.' : 'Product and campaign created.', true);
+            closeProductModal();
+            refresh();
+        } else {
+            flash(await errText(r), false);
+        }
+    }
+
+    // What-If Simulator Logic
+    function onSimProductChange() {
+        const id = document.getElementById('sim-product-select').value;
+        if (!id) return;
+        const p = rawOwnProducts.find(x => x.id === id);
+        if (!p) return;
+
+        document.getElementById('sim-category').value = p.category;
+        document.getElementById('sim-pack-size').value = p.pack_size || '300g';
+        document.getElementById('sim-regular-price').value = p.regular_price;
+        if (p.promo_price) {
+            document.getElementById('sim-promo-price').value = p.promo_price;
+            const disc = Math.round((1 - p.promo_price / p.regular_price) * 100);
+            if (disc > 0 && disc <= 60) {
+                document.getElementById('sim-discount-range').value = disc;
+                document.getElementById('sim-discount-label').textContent = `${disc}%`;
+            }
+        }
+        recalcSimPrice();
+        triggerSimulate();
+    }
+
+    function onSimPromoTypeChange() {
+        const type = document.getElementById('sim-promo-type').value;
+        document.getElementById('sim-discount-group').classList.toggle('hidden', type !== 'DISCOUNT');
+        document.getElementById('sim-direct-group').classList.toggle('hidden', type !== 'DIRECT_PRICE');
+        document.getElementById('sim-b1g1-group').classList.toggle('hidden', type !== 'BUY_X_GET_Y');
+        recalcSimPrice();
+        triggerSimulate();
+    }
+
+    function onSimDiscountInput(val) {
+        document.getElementById('sim-discount-label').textContent = `${val}%`;
+        recalcSimPrice();
+        triggerSimulate();
+    }
+
+    function onRegularPriceInput() {
+        recalcSimPrice();
+        triggerSimulate();
+    }
+
+    function recalcSimPrice() {
+        const reg = parseFloat(document.getElementById('sim-regular-price').value) || 0;
+        const disc = parseFloat(document.getElementById('sim-discount-range').value) || 0;
+        const calcPrice = Math.round(reg * (1 - disc / 100));
+        document.getElementById('sim-calc-price').textContent = rp(calcPrice);
+    }
+
+    function triggerSimulate() {
+        if (simTimeout) clearTimeout(simTimeout);
+        simTimeout = setTimeout(runSimulation, 250);
+    }
+
+    async function runSimulation() {
+        const prodId = document.getElementById('sim-product-select').value || null;
+        const category = document.getElementById('sim-category').value;
+        const packSize = document.getElementById('sim-pack-size').value;
+        const regPrice = parseFloat(document.getElementById('sim-regular-price').value) || 10000;
+        const pType = document.getElementById('sim-promo-type').value;
+
+        let promoPrice = null;
+        let discPct = null;
+        let buyQ = null, freeQ = null;
+
+        if (pType === 'DISCOUNT') {
+            discPct = parseFloat(document.getElementById('sim-discount-range').value) || 0;
+            promoPrice = Math.round(regPrice * (1 - discPct / 100));
+        } else if (pType === 'DIRECT_PRICE') {
+            promoPrice = parseFloat(document.getElementById('sim-promo-price').value) || regPrice;
+        } else if (pType === 'BUY_X_GET_Y') {
+            buyQ = parseInt(document.getElementById('sim-buy-q').value) || 1;
+            freeQ = parseInt(document.getElementById('sim-free-q').value) || 1;
+            promoPrice = regPrice;
+        }
+
+        const body = {
+            product_id: prodId,
+            category: category,
+            pack_size: packSize,
+            regular_price: regPrice,
+            candidate_promo_price: promoPrice,
+            candidate_promo_type: pType === 'DIRECT_PRICE' ? 'DISCOUNT' : pType,
+            candidate_discount_percentage: discPct,
+            buy_quantity: buyQ,
+            free_quantity: freeQ,
+        };
+
+        try {
+            const r = await api('/api/v1/compare/simulate', {method: 'POST', json: body});
+            if (!r.ok) return;
+            const res = await r.json();
+            renderSimulationResults(res);
+        } catch (e) {
+            console.error('Simulation error', e);
+        }
+    }
+
+    function renderSimulationResults(res) {
+        const pos = res.projected_position || {};
+        const rankEl = document.getElementById('sim-res-rank');
+        const rankDeltaEl = document.getElementById('sim-res-rank-delta');
+        const undercutsEl = document.getElementById('sim-res-undercuts');
+        const undercutsDeltaEl = document.getElementById('sim-res-undercuts-delta');
+        const targetPriceEl = document.getElementById('sim-res-target-price');
+        const targetUnitEl = document.getElementById('sim-res-target-unit');
+        const posBadge = document.getElementById('sim-res-position-badge');
+        const summaryEl = document.getElementById('sim-res-summary');
+        const compList = document.getElementById('sim-comp-list');
+
+        rankEl.textContent = `#${pos.market_rank || 1}`;
+        if (pos.current_rank != null && pos.current_rank !== pos.market_rank) {
+            const diff = pos.current_rank - pos.market_rank;
+            rankDeltaEl.textContent = `${diff > 0 ? '+' : ''}${diff} spots vs current (#${pos.current_rank})`;
+            rankDeltaEl.className = diff > 0 ? 'text-[10px] text-emerald-400 font-bold' : 'text-[10px] text-rose-400 font-bold';
+        } else {
+            rankDeltaEl.textContent = `of ${pos.total_comparable + 1} products`;
+            rankDeltaEl.className = 'text-[10px] text-slate-400';
+        }
+
+        undercutsEl.textContent = `${pos.projected_undercut_count || 0}`;
+        if (pos.undercut_change != null && pos.undercut_change < 0) {
+            undercutsDeltaEl.textContent = `${Math.abs(pos.undercut_change)} undercuts eliminated!`;
+            undercutsDeltaEl.className = 'text-[10px] text-emerald-400 font-bold';
+        } else {
+            undercutsDeltaEl.textContent = `competitors cheaper`;
+            undercutsDeltaEl.className = 'text-[10px] text-slate-400';
+        }
+
+        if (pos.target_pack_price_for_rank_1) {
+            targetPriceEl.textContent = rp(pos.target_pack_price_for_rank_1);
+            targetUnitEl.textContent = `${rp(pos.target_unit_price_for_rank_1)}/100g`;
+        } else {
+            targetPriceEl.textContent = 'Already #1';
+            targetUnitEl.textContent = 'Cheapest in category';
+        }
+
+        posBadge.textContent = (pos.market_position || 'COMPETITIVE').replace(/_/g, ' ');
+        summaryEl.textContent = res.impact_summary || 'Scenario calculated.';
+
+        // Competitor matches
+        const matches = res.comparable_promotions || [];
+        document.getElementById('sim-comp-count').textContent = `${matches.length} comparable`;
+        if (matches.length) {
+            compList.innerHTML = matches.map(m => `
+                <div class="flex items-center justify-between p-2 rounded bg-slate-950/40 border border-white/5">
+                    <div>
+                        <span class="font-semibold text-slate-200">${esc(m.competitor || m.brand || '')}</span>
+                        <span class="text-slate-400 ml-1">${esc(m.product)} (${esc(m.pack_size || '')})</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="font-mono text-slate-300">${rp(m.effective_pack_price)}</span>
+                        <span class="font-mono font-bold ${m.undercuts_candidate ? 'text-rose-400' : 'text-emerald-400'}">${rp(m.price_per_100g)}/100g</span>
+                    </div>
+                </div>
+            `).join('');
+        } else {
+            compList.innerHTML = '<div class="text-slate-400 italic py-2">No competitor promotions in this category.</div>';
+        }
+    }
+
+    function applySimToCampaign() {
+        const prodId = document.getElementById('sim-product-select').value;
+        const p = prodId ? rawOwnProducts.find(x => x.id === prodId) : null;
+        openProductModal(p);
+
+        const pType = document.getElementById('sim-promo-type').value;
+        const reg = parseFloat(document.getElementById('sim-regular-price').value) || 0;
+        const disc = parseFloat(document.getElementById('sim-discount-range').value) || 0;
+        const calcPrice = pType === 'DISCOUNT' ? Math.round(reg * (1 - disc / 100)) : (parseFloat(document.getElementById('sim-promo-price').value) || reg);
+
+        document.getElementById('modal-promo-type').value = pType === 'DIRECT_PRICE' ? 'DISCOUNT' : pType;
+        document.getElementById('modal-promo-price').value = calcPrice;
+        document.getElementById('modal-mechanic').value = `Simulated ${pType} Campaign`;
+    }
+
     function downloadTemplate() {
-        const csv = 'name,brand,category,pack_size,regular_price,sku\nBiskuit Kelapa,MyBrand,BISCUIT,300g,10500,SKU-001\n';
-        const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], {type: 'text/csv'})); a.download = 'own-products-template.csv'; a.click();
+        const csv = 'name,brand,category,pack_size,regular_price,sku,promo_price,promo_type,promo_start_date,promo_end_date,promo_mechanic\nBiskuit Kelapa,MyBrand,BISCUIT,300g,12000,SKU-001,9600,DISCOUNT,2026-11-01,2026-11-30,Weekend Flash Sale\n';
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([csv], {type: 'text/csv'}));
+        a.download = 'own-products-template.csv';
+        a.click();
     }
+
+    // Form handlers
     document.getElementById('add-form').addEventListener('submit', async (e) => {
-        e.preventDefault(); const f = e.target;
-        const r = await api('/api/v1/compare/products', {method: 'POST', json: {name: f.elements['name'].value, category: f.elements['category'].value, pack_size: f.elements['pack_size'].value || null, regular_price: parseFloat(f.elements['regular_price'].value)}});
-        flash(r.ok ? 'Product added.' : await errText(r), r.ok); if (r.ok) f.reset(); refresh();
+        e.preventDefault();
+        const f = e.target;
+        const r = await api('/api/v1/compare/products', {
+            method: 'POST',
+            json: {
+                name: f.elements['name'].value,
+                category: f.elements['category'].value,
+                pack_size: f.elements['pack_size'].value || null,
+                regular_price: parseFloat(f.elements['regular_price'].value),
+            }
+        });
+        flash(r.ok ? 'Product added.' : await errText(r), r.ok);
+        if (r.ok) { f.reset(); refresh(); }
     });
+
     document.getElementById('csv-file').addEventListener('change', async (e) => {
-        const file = e.target.files[0]; if (!file) return;
-        const form = new FormData(); form.append('file', file);
+        const file = e.target.files[0];
+        if (!file) return;
+        const form = new FormData();
+        form.append('file', file);
         const r = await api('/api/v1/compare/products/import', {method: 'POST', body: form});
-        if (r.ok) { const j = await r.json(); flash(`Imported: ${j.created} added, ${j.updated} updated.`, true); }
-        else { let d = 'Import failed'; try { const j = await r.json(); d = typeof j.detail === 'string' ? j.detail : (j.detail.message + ' ' + j.detail.errors.map(x => `Line ${x.line}: ${x.error}`).join('; ')); } catch (x) {} flash(d, false); }
-        e.target.value = ''; refresh();
+        if (r.ok) {
+            const j = await r.json();
+            flash(`Imported: ${j.created} added, ${j.updated} updated.`, true);
+        } else {
+            let d = 'Import failed';
+            try {
+                const j = await r.json();
+                d = typeof j.detail === 'string' ? j.detail : (j.detail.message + ' ' + (j.detail.errors || []).map(x => `Line ${x.line}: ${x.error}`).join('; '));
+            } catch (x) {}
+            flash(d, false);
+        }
+        e.target.value = '';
+        refresh();
     });
+
     loadSession().then(refresh);
 </script>
 </body>

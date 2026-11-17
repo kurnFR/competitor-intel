@@ -126,7 +126,7 @@ def process_document(
                         resolved_entities=resolved_entities,
                         raw_text=chunk,
                         extracted_json=item.model_dump(),
-                        observed_at=result.extracted_at,
+                        observed_at=doc.retrieved_at or result.extracted_at,
                         source_url=doc.url,
                         extraction_metadata=metadata,
                         source_reliability=reliability,

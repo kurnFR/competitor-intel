@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import and_, exists, func, or_
@@ -25,6 +25,7 @@ def eligibility_gates(now: datetime, *, recency_days: int) -> List[Gate]:
     """The ordered rules a promotion must pass to be shown. One definition, used for filtering AND for explaining."""
     dated_active = and_(
         Promotion.status == "ACTIVE",
+        or_(Promotion.start_date.is_(None), Promotion.start_date <= now),
         or_(Promotion.end_date.is_(None), Promotion.end_date >= now),
     )
     undated = and_(Promotion.status == "UNKNOWN", Promotion.start_date.is_(None), Promotion.end_date.is_(None))
@@ -65,7 +66,9 @@ def live_promotion_filter(now: datetime, *, recency_days: int):
 
 def why_hidden(db: Session, promotion_id, *, now: Optional[datetime] = None, recency_days: int = 90) -> List[Dict[str, str]]:
     """The gates a single promotion fails (empty list = it is shown)."""
-    now = now or datetime.now().astimezone()
+    now = now or datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
     failed = []
     for gate in eligibility_gates(now, recency_days=recency_days):
         passes = db.query(Promotion.id).filter(Promotion.id == promotion_id, gate.condition).first() is not None
@@ -76,7 +79,9 @@ def why_hidden(db: Session, promotion_id, *, now: Optional[datetime] = None, rec
 
 def gate_failure_counts(db: Session, *, now: Optional[datetime] = None, recency_days: int = 90) -> Dict[str, Any]:
     """How many stored promotions are shown, and how many fail each gate (a promotion can fail several)."""
-    now = now or datetime.now().astimezone()
+    now = now or datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
     gates = eligibility_gates(now, recency_days=recency_days)
     total = db.query(Promotion).count()
     shown = db.query(Promotion).filter(and_(*[g.condition for g in gates])).count()

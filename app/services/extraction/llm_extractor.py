@@ -9,6 +9,12 @@ from openai import OpenAI
 
 from app.core.config import settings
 from app.schemas.ai import ExtractedPromotionItem
+from app.services.extraction.date_parser import (
+    extract_pack_size_from_name,
+    parse_indonesian_date,
+    parse_indonesian_date_range,
+    sanitize_price,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -140,6 +146,45 @@ Respond with valid JSON matching:
                     })
                     continue
                 try:
+                    # Normalize start_date and end_date if present
+                    start_val = item.get("start_date")
+                    end_val = item.get("end_date")
+                    if start_val and isinstance(start_val, str):
+                        if any(sep in start_val for sep in (" - ", " s/d ", " sd ", " sampai ")):
+                            s_iso, e_iso = parse_indonesian_date_range(start_val, default_year=extraction_date.year)
+                            if s_iso:
+                                item["start_date"] = s_iso
+                            if e_iso and not end_val:
+                                item["end_date"] = e_iso
+                        else:
+                            s_dt = parse_indonesian_date(start_val, default_year=extraction_date.year)
+                            item["start_date"] = s_dt.isoformat() if s_dt else None
+
+                    if end_val and isinstance(end_val, str):
+                        e_dt = parse_indonesian_date(end_val, default_year=extraction_date.year)
+                        item["end_date"] = e_dt.isoformat() if e_dt else None
+
+                    # If both missing, check evidence_quote for date range
+                    if not item.get("end_date") and item.get("evidence_quote"):
+                        ev_start, ev_end = parse_indonesian_date_range(item["evidence_quote"], default_year=extraction_date.year)
+                        if ev_start and not item.get("start_date"):
+                            item["start_date"] = ev_start
+                        if ev_end and not item.get("end_date"):
+                            item["end_date"] = ev_end
+
+                    # Pack size normalization (extract from product_name if missing)
+                    if item.get("pack_size") and isinstance(item["pack_size"], str):
+                        item["pack_size"] = item["pack_size"].strip()
+                    elif not item.get("pack_size") and item.get("product_name"):
+                        extracted_size = extract_pack_size_from_name(item["product_name"])
+                        if extracted_size:
+                            item["pack_size"] = extracted_size
+
+                    # Price sanitization (handle string formats like "Rp 14.500")
+                    for price_field in ("regular_price", "promo_price"):
+                        if item.get(price_field) is not None:
+                            item[price_field] = sanitize_price(item[price_field])
+
                     items.append(ExtractedPromotionItem(**item))
                 except Exception as validation_error:
                     rejected_items.append({

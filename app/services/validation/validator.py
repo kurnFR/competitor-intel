@@ -3,6 +3,8 @@ import logging
 from datetime import date, datetime, time, timezone
 from typing import Tuple, Optional
 from app.schemas.ai import ExtractedPromotionItem
+from app.services.extraction.dates import parse_indonesian_date
+from app.services.extraction.date_parser import parse_indonesian_date
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +42,19 @@ class PromotionValidator:
                 parsed = parsed.replace(tzinfo=timezone.utc)
             return parsed, None
         except ValueError:
-            return None, f"Invalid date format: {value}"
+            pass
+        indo_d = parse_indonesian_date(raw)
+        if indo_d is not None:
+            try:
+                parsed_d = indo_d if isinstance(indo_d, date) else date.fromisoformat(str(indo_d))
+                if end_of_day_for_date_only:
+                    parsed = datetime.combine(parsed_d, time.max, tzinfo=timezone.utc)
+                else:
+                    parsed = datetime.combine(parsed_d, time.min, tzinfo=timezone.utc)
+                return parsed, None
+            except (ValueError, TypeError):
+                pass
+        return None, f"Invalid date format: {value}"
 
     @staticmethod
     def validate_evidence_quote(item: ExtractedPromotionItem, raw_text: Optional[str]) -> Tuple[bool, str]:

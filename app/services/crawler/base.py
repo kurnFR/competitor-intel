@@ -23,7 +23,12 @@ from app.services.crawler.rate_limiter import RateLimitConfig, get_source_rate_l
 from app.services.storage import get_raw_document_store
 
 logger = logging.getLogger(__name__)
-DEFAULT_HEADERS = {"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8", "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7"}
+DEFAULT_HEADERS = {
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+    "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache",
+}
 def _block_internal_requests(request: httpx.Request) -> None:
     """httpx request hook: runs for the first request and for every redirect."""
     try:

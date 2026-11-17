@@ -56,6 +56,23 @@ class LLMExtractorTests(unittest.TestCase):
         self.assertEqual(result.items, [])
         self.assertEqual(result.raw_response, "not-json")
 
+    def test_indonesian_dates_pack_size_and_prices_are_normalized(self) -> None:
+        self._mock_response(
+            '{"promotions": ['
+            '{"product_name": "Oreo Vanilla 133g", "promo_price": "Rp 8.500", "regular_price": "10.500", "start_date": "12 - 14 Mei 2026", "evidence_quote": "Oreo Vanilla 133g Rp 8.500"}'
+            ']}'
+        )
+
+        result = self.extractor.extract_with_metadata("catalog text", current_date=date(2026, 5, 1))
+        self.assertEqual(result.parser_status, "SUCCESS")
+        self.assertEqual(len(result.items), 1)
+        item = result.items[0]
+        self.assertEqual(item.start_date, "2026-05-12")
+        self.assertEqual(item.end_date, "2026-05-14")
+        self.assertEqual(item.pack_size, "133g")
+        self.assertEqual(item.promo_price, 8500.0)
+        self.assertEqual(item.regular_price, 10500.0)
+
 
 if __name__ == "__main__":
     unittest.main()

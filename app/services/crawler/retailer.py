@@ -19,6 +19,7 @@ PROFILES = {
     "indomaret": {"keywords": ("promo", "promosi", "catalog", "katalog", "hemat", "jsm", "tebus")},
     "alfamart": {"keywords": ("promo", "promosi", "katalog", "catalog", "jsm", "serba", "tebus")},
     "klikindogrosir": {"keywords": ("promo", "potongan", "diskon", "product_details", "promosi")},
+    "superindo": {"keywords": ("promo", "promosi", "catalog", "katalog", "hemat", "koran", "super-hemat", "jsm", "diskon")},
 }
 
 
@@ -52,8 +53,15 @@ class RetailerPromotionCrawler(BaseCrawler):
         found: Set[str] = set()
         for anchor in soup.find_all("a", href=True):
             href = urljoin(base_url, anchor["href"])
-            if self._is_relevant_link(href, anchor.get_text(" ", strip=True)):
+            img_text = " ".join(filter(None, [img.get("alt") or img.get("title") for img in anchor.find_all("img")]))
+            combined_text = f"{anchor.get_text(' ', strip=True)} {img_text}".strip()
+            if self._is_relevant_link(href, combined_text):
                 found.add(canonicalize_url(href))
+        for img in soup.find_all("img", src=True):
+            src = urljoin(base_url, img["src"])
+            text = f"{img.get('alt', '')} {img.get('title', '')}".strip()
+            if self._is_relevant_link(src, text):
+                found.add(canonicalize_url(src))
         return sorted(found)
 
     def _record_html(self, url: str, status: int, html: str, metadata: dict) -> Tuple[List[CrawlDocument], str]:
@@ -79,6 +87,12 @@ class RetailerPromotionCrawler(BaseCrawler):
             return []
         acquired = extract_non_html(url, content_type, content)
         if acquired.error or not acquired.text.strip():
+            # Preserve image flyer assets with placeholder text so FlyerVisionExtractor can inspect them
+            if acquired.document_type == "IMAGE" and content:
+                meta = {"asset": True, "document_type": "IMAGE", "retailer": self.retailer_key, **acquired.metadata}
+                fallback_text = acquired.text.strip() or f"{self.retailer_key.capitalize()} Promotional Flyer Asset: {url}"
+                doc = self.record_crawl(url, status, "", fallback_text, title=acquired.title or f"{self.retailer_key.capitalize()} Flyer Asset", metadata=meta, raw_content=content, content_type=content_type)
+                return [doc] if doc else []
             self.record_crawl(url, status, "", "", error_message=acquired.error or "EMPTY_ASSET_TEXT", metadata={"asset": True, "document_type": acquired.document_type, **acquired.metadata}, raw_content=content, content_type=content_type)
             return []
         doc = self.record_crawl(url, status, "", acquired.text, title=acquired.title, metadata={"asset": True, "document_type": acquired.document_type, **acquired.metadata}, raw_content=content, content_type=content_type)

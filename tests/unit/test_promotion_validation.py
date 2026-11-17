@@ -114,3 +114,13 @@ def test_lifecycle_classifies_upcoming_active_and_expired():
         datetime(2026, 8, 31, tzinfo=timezone.utc),
         now=now,
     ) == "EXPIRED"
+
+
+def test_validator_accepts_indonesian_date_format():
+    valid, reason, start_dt, end_dt, _ = PromotionValidator.validate_and_normalize(
+        item(start_date="12 Mei 2026", end_date="14 Mei 2026")
+    )
+    assert valid is True
+    assert reason == "Valid"
+    assert start_dt.year == 2026 and start_dt.month == 5 and start_dt.day == 12
+    assert end_dt.year == 2026 and end_dt.month == 5 and end_dt.day == 14
