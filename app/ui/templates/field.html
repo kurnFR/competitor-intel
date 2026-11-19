@@ -1,0 +1,59 @@
+<!doctype html><html lang="en"><head><title>Field observations</title>{% include "_head.html" %}</head>
+<body class="bg-slate-50 dark:bg-slate-900 dark:text-white">{% include "_nav.html" %}
+<main class="max-w-5xl mx-auto p-6 space-y-6">
+<h1 class="text-2xl font-bold">Field observations</h1>
+<form id="entry" class="bg-white dark:bg-slate-800 p-5 rounded-xl grid gap-4 md:grid-cols-2">
+{% for key,label,kind,required in [('product_name','Product name','text',true),('pack_size','Pack size','text',true),('geography','Store or area','text',true),('promo_price','Offer price per pack (IDR)','number',true),('regular_price','Shelf price per pack (IDR)','number',false),('observed_on','Observed on','date',true),('starts','Offer starts','date',false),('ends','Offer ends','date',false),('source_url','Evidence link (flyer, receipt or photo)','url',false)] %}
+<label>{{ label }}<input name="{{ key }}" type="{{ kind }}" {% if required %}required{% endif %} {% if kind=='number' %}min="0.01" step="0.01"{% endif %} class="block border p-2 rounded w-full dark:bg-slate-900"></label>{% endfor %}
+<label>Store photo or receipt (JPEG/PNG, up to 3 MB)<input type="file" id="photo" accept="image/jpeg,image/png"></label>
+<label>Mechanic<select name="promotion_type">{% for m in ['DISCOUNT','BUY_X_GET_Y','MEMBER_PRICE','BUNDLE','CASHBACK','VOUCHER'] %}<option>{{m}}</option>{% endfor %}</select></label>
+<label>Paid packs<input type="number" name="buy_quantity" min="1"></label><label>Free packs<input type="number" name="free_quantity" min="1"></label>
+<label>Category<select name="category" class="block border p-2 dark:bg-slate-900">{% for c in ['BISCUIT','CRACKER','COOKIE','WAFER','SNACK'] %}<option>{{ c }}</option>{% endfor %}</select></label>
+{% for key,label in [('competitor_id','Competitor'),('retailer_id','Retailer')] %}<label>{{label}}<select name="{{key}}" required class="block border p-2 w-full dark:bg-slate-900"></select></label>{% endfor %}
+<label class="md:col-span-2">Transcribed offer and conditions<textarea name="evidence" minlength="5" maxlength="5000" required class="block border p-2 w-full dark:bg-slate-900"></textarea></label>
+<button class="bg-blue-700 text-white p-2 rounded" disabled>Submit for review</button></form>
+<details class="p-4 border rounded"><summary>Record our price for a retailer and area</summary><form id="scoped-price" class="grid gap-3 mt-4 md:grid-cols-2">
+<label>Our SKU<select name="product" required class="block w-full"></select></label><label>Retailer<select name="retailer_id" required class="block w-full"></select></label>
+<label>Area<input name="region" required placeholder="Jakarta"></label><label>Regular price (IDR)<input type="number" required min="1" name="regular_price"></label>
+<label>Offer price (IDR)<input type="number" min="1" name="promo_price"></label><label>Starts<input required type="date" name="starts"></label>
+<label>Ends<input required type="date" name="ends"></label><button class="underline">Save price period</button></form></details>
+<p id="message" role="status"></p><h2 class="text-xl font-semibold">Review queue</h2><div id="queue" class="space-y-3"></div></main>
+<script>
+const entry=document.querySelector('#entry'), message=document.querySelector('#message');
+let requestId=crypto.randomUUID(), previousId=null, submissions=[];
+const draftKey='field-draft-{{user.id}}';
+entry.addEventListener('input',()=>{sessionStorage.setItem(draftKey,JSON.stringify({fields:Object.fromEntries(new FormData(entry)),requestId,previousId}));});
+async function read(path,opts){const r=await api(path,opts);if(!r.ok)throw Error(await errText(r));return r.json();}
+async function refresh(){
+ const rows=submissions=await read('/api/v1/field/');
+ document.querySelector('#queue').innerHTML=rows.map(r=>{
+ const b=r.payload;
+ return '<article class="p-4 border rounded"><strong>'+esc(b.product_name)+'</strong> · '+esc(r.status)+'<p>'+esc(r.competitor)+' · '+esc(r.retailer)+' · '+esc(b.category)+' · '+esc(b.pack_size)+' · Rp '+esc(b.promo_price)+' · '+esc(b.geography)+'</p><p>'+esc(b.observed_on)+' · '+esc(b.evidence)+'</p>'+
+ '<p>'+esc(b.promotion_type)+' · Shelf '+esc(b.regular_price ?? 'unknown')+' · '+esc(b.starts ?? 'Start unknown')+' – '+esc(b.ends ?? 'End unknown')+'</p>'+
+ (r.has_photo?'<a target="_blank" rel="noopener" class="underline" href="/api/v1/stats/field-photo/'+esc(r.id)+'">Store photo</a> ':'')+
+ (b.source_url?'<a class="underline" target="_blank" rel="noopener" href="'+esc(b.source_url)+'">Evidence</a>':'')+
+ {% if user.role=='ADMIN' %}(r.status==='PENDING'?['approve','reject','correct'].map(d=>'<button class="border rounded ml-3 px-2" data-id="'+esc(r.id)+'" data-decision="'+d+'">'+d+'</button>').join(''):'')+{% endif %}(r.status==='CORRECTION'?'<p>'+esc(r.review_note)+'</p><button class="underline" data-revise="'+esc(r.id)+'">Revise observation</button>':'')+'</article>';
+ }).join('')||'No observations submitted.';
+}
+document.querySelector('#queue').onclick=async e=>{if(e.target.dataset.revise){
+ const row=submissions.find(r=>r.id===e.target.dataset.revise);entry.reset();for(const [k,v] of Object.entries(row.payload))if(entry.elements[k]&&v!=null)entry.elements[k].value=v;
+ previousId=row.id;requestId=crypto.randomUUID();entry.scrollIntoView();message.textContent='Edit the observation and reattach any photo.';return;}
+ if(!e.target.dataset.decision)return;const d=e.target.dataset.decision;const note=d==='correct'?prompt('What needs correcting?'):'';if(d==='correct'&&!note)return;
+ try{await read('/api/v1/field/'+e.target.dataset.id+'/'+d+'?note='+encodeURIComponent(note),{method:'POST'});await refresh();}catch(err){message.textContent=err.message;}};
+entry.onsubmit=async e=>{e.preventDefault();entry.querySelector('button').disabled=true;try{
+ const body=Object.fromEntries([...new FormData(entry)].filter(([,value])=>value!==''));
+ if(previousId)body.previous_id=previousId;
+ const file=document.querySelector('#photo').files[0];
+ if(file){if(file.size>3000000)throw Error('Photo exceeds 3 MB.'); body.photo=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result.split(',')[1]);reader.onerror=()=>reject(Error('Could not read photo.'));reader.readAsDataURL(file);});}
+ await read('/api/v1/field/'+requestId,{method:'PUT',json:body});requestId=crypto.randomUUID();previousId=null;sessionStorage.removeItem(draftKey);entry.reset();message.textContent='Submitted for review.';await refresh();
+}catch(err){message.textContent=err.message;}finally{entry.querySelector('button').disabled=false;}};
+(async()=>{await loadSession();const options=await read('/api/v1/field/options');
+ for(const [key,rows] of [['competitor_id',options.competitors],['retailer_id',options.retailers]])for(const row of rows)entry.elements[key].add(new Option(row.name,row.id));
+ const scoped=document.querySelector('#scoped-price');
+ for(const row of options.retailers)scoped.elements.retailer_id.add(new Option(row.name,row.id));
+ for(const row of await read('/api/v1/compare/products'))scoped.elements.product.add(new Option(row.name,row.id));
+ scoped.onsubmit=async e=>{e.preventDefault();try{const values=Object.fromEntries([...new FormData(scoped)].filter(([,v])=>v!==''));const id=values.product;delete values.product;await read('/api/v1/compare/products/'+id+'/prices',{method:'POST',json:values});scoped.reset();message.textContent='Price period saved.';}catch(err){message.textContent=err.message;}};
+ const saved=sessionStorage.getItem(draftKey);
+ if(saved){const draft=JSON.parse(saved);for(const [k,v] of Object.entries(draft.fields))if(entry.elements[k])entry.elements[k].value=v;requestId=draft.requestId;previousId=draft.previousId;message.textContent='Draft restored. Reattach any photo before submitting.';}
+ entry.querySelector('button').disabled=false;await refresh();})().catch(e=>message.textContent=e.message);
+</script></body></html>

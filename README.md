@@ -143,6 +143,8 @@ curl "http://localhost:8000/api/v1/promotions/top10?category=WAFER&retailer=Indo
 ### 1.1 Product lookup across configured sources
 `GET /api/v1/promotions/search?q=Nissin%20wafer`
 
+Use `GET /api/v1/promotions/search?category=WAFER` to browse a category, or combine `category` and `q` to narrow the results.
+
 Searches eligible promotions already stored from approved, active sources. Every whitespace-separated query term must match at least one product, brand, competitor, retailer, or promotion field. Results are paginated (`limit` 1–100, default 25; `offset` default 0) and include source name, source URL, exact evidence quote, verification time, and source-health coverage for analyst/admin users. It does **not** make a live web/Google search or start a crawl. No result means no matching eligible stored observation was found, not that no market activity exists.
 
 ### 2. Promotion Audit Detail
@@ -212,10 +214,9 @@ Workflow for users discovering new source websites:
 
 ### 45.4 Manual Promotion Entry
 
-1. Navigate to Settings → Master Data → Add Promotion Manually
-2. Fill in promotion details: competitor brand, product name/variant, pack size, promotion type (DISCOUNT, BUY_X_GET_Y, MULTIBUY, CASHBACK, VOUCHER, GIFT_WITH_PURCHASE, MEMBER_PRICE, BUNDLE), regular price (IDR), promo price (IDR), discount percentage, buy quantity, free quantity, minimum purchase, start date, end date, retailer, channel, geography, source URL, evidence text, AI confidence
-3. Save promotion - record added with status DISCOVERED, lower default AI confidence (e.g., 0.70)
-4. Manual entries maintain evidence trail and can be flagged for admin review
+Open **Field observations** from the navigation or dashboard search. Analysts can submit shelf or flyer evidence, optionally attach a JPEG/PNG, and record regular and promotional IDR prices, packs, conditions and validity. An independent Admin reviews the submission. Approved observations appear in eligible search results, comparison and BI reports.
+
+Use **Record our price for a retailer and area** for dated local price periods. Filter Price comparison by retailer and area to use the applicable period. When periods overlap, the latest recorded applicable period wins. Insights provides Viewer access to executive exposure, source coverage and marketing responses. Analysts record responses there.
 
 ### 45.5 User Roles & Permissions
 

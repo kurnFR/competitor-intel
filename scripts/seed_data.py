@@ -24,7 +24,7 @@ def ADAPTER_FOR_DOMAIN(domain: str, source_type: str) -> str:
     return "generic_catalog"
 
 
-def seed_reference_data():
+def seed_reference_data(*, demo_prices=False):
     db: Session = SessionLocal()
     try:
         print("Seeding expanded reference data into competitor_intel...")
@@ -363,7 +363,7 @@ def seed_reference_data():
             {"sku": "OWN-COOK-002", "name": "Brownies Soft Cookies 112g", "brand": "Internal FMCG", "category": "COOKIE", "pack_size": "112g", "regular_price": 8500.0},
             {"sku": "OWN-WAFR-003", "name": "Wafer Roll Stick Chocolate 100g", "brand": "Internal FMCG", "category": "WAFER", "pack_size": "100g", "regular_price": 9000.0},
         ]
-        for p_data in own_product_seeds:
+        for p_data in (own_product_seeds if demo_prices else []):
             existing = db.query(OwnProduct).filter(OwnProduct.sku == p_data["sku"]).first()
             if not existing:
                 db.add(OwnProduct(
@@ -398,4 +398,7 @@ def seed_reference_data():
 
 
 if __name__ == "__main__":
-    seed_reference_data()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--demo-prices", action="store_true", help="Populate sample own prices for demos")
+    seed_reference_data(demo_prices=parser.parse_args().demo_prices)

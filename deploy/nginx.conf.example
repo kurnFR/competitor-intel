@@ -13,7 +13,7 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/intel.example.com/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
 
-    client_max_body_size 2m;          # CSV imports are limited to 1 MB by the app
+    client_max_body_size 5m;          # accommodates JSON with a 3 MB field photo
 
     location / {
         proxy_pass http://127.0.0.1:8000;

@@ -55,7 +55,7 @@ class Top10PromotionItem(BaseModel):
     dates_stated: bool = True
     score_breakdown: Optional[dict] = None
     rank_score: float
-    ai_confidence: float
+    ai_confidence: Optional[float]
     source_reliability: float
     evidence_quote: Optional[str] = None
     source_url: Optional[str] = None
@@ -92,7 +92,7 @@ class PromotionLookupItem(BaseModel):
     source_url: Optional[str] = None
     evidence_quote: Optional[str] = None
     source_reliability: float
-    ai_confidence: float
+    ai_confidence: Optional[float]
     rank_score: float
 
 
@@ -135,7 +135,7 @@ class PromotionDetailOut(BaseModel):
     status: str
     supersedes_promotion_id: Optional[uuid.UUID] = None
     source_reliability: float
-    ai_confidence: float
+    ai_confidence: Optional[float]
     rank_score: float
     first_seen_at: datetime
     last_seen_at: datetime

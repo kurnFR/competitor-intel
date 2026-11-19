@@ -99,3 +99,9 @@ docker compose up -d --build       # migrations run automatically on start
 | A source shows FAILING/STALE (Admin page) | Site changed layout, blocks the bot, or robots.txt disallows it |
 | Dashboard empty after a scan | Check the scan summary in the logs: `rejected` and `documents_failed` counts |
 | Dynamic (JavaScript-only) site returns nothing | Install the browser add-on: `pip install -r requirements-browser.txt && playwright install chromium` |
+
+## Commercial intelligence rollout
+
+Back up PostgreSQL and verify the restore before upgrading. Apply `python -m alembic upgrade head` under the migration identity, then run `python -m scripts.check_schema`. This release adds field submissions, price history, marketing responses and dated retailer prices. Application permissions must cover the new tables and the history identity sequence. Restart the web application with the upgraded code. Restore the backup and matching application revision if rollback would otherwise discard newly submitted observations.
+
+Import the actual own catalog through Price comparison. The reference seeder creates sample own prices only with `--demo-prices`. On older installations review existing “Internal FMCG” sample rows before using portfolio metrics. Configure approved retailer sources and run the existing preflight. Confirm a recent successful scan in Admin. Use two distinct staff accounts for field entry and approval. Check one offer against its original receipt or flyer, then reconcile category search, filtered comparisons, the BI feed and the Viewer Insights page. Confirm source checks, verification timestamps and the local campaign end date against the intended market before accepting live results.

@@ -225,3 +225,8 @@ def pipeline_status(db: Session = Depends(get_db)):
     history = [{"id": str(r.id), "started_at": r.started_at.isoformat(), "finished_at": r.finished_at.isoformat() if r.finished_at else None,
                 "trigger": r.trigger, "triggered_by": r.triggered_by, "status": r.status, "summary": r.summary, "error": r.error} for r in runs]
     return {**pipeline_state, "history": history}
+
+
+@app.get("/field", response_class=HTMLResponse)
+def field_page(request: Request, principal: Optional[Principal] = Depends(get_principal_optional)):
+    return _protected_page(request, "field.html", principal, minimum="ANALYST")

@@ -4,6 +4,8 @@
 <body class="bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 min-h-screen">
 {% include "_nav.html" %}
 <main class="max-w-7xl mx-auto px-4 py-6 space-y-8">
+    <section><h1 class="text-2xl font-bold">Executive overview</h1><p id="coverage" role="status">Loading current price coverage…</p><p id="market-coverage"></p><ul id="exposures" class="space-y-2 my-3"></ul><h2 class="font-bold">Marketing responses</h2><ul id="actions"></ul>
+    {% if user.role in ('ANALYST','ADMIN') %}<form id="response-form" class="flex gap-2 flex-wrap my-2"><select name="offer" aria-label="Offer" required></select><input required name="action" placeholder="Response" maxlength="500"><input required name="owner" placeholder="Owner"><input required name="due" aria-label="Due date" type="date"><select name="status"><option>OPEN</option><option>IN_PROGRESS</option><option>DONE</option></select><button class="underline">Record response</button><span role="status" id="action-result"></span></form>{% endif %}</section>
     <section>
         <div class="flex items-center justify-between mb-3">
             <h2 class="text-lg font-bold">What happened in the last
@@ -34,6 +36,23 @@
     {% endif %}
 </main>
 <script>
+    (async()=>{
+        const r=await fetch('/api/v1/stats/executive');
+        if(!r.ok) throw Error();
+        const data=await r.json(), s=data.summary;
+        document.querySelector('#coverage').textContent=s.comparable_products+' of '+s.own_products+' own SKUs have comparable offers. Shelf price undercut on '+s.under_pressure+' SKUs. Price index vs tracked offers: '+(s.price_index_vs_market ?? 'Unavailable');
+        const totals=obj=>Object.entries(obj).map(([key,value])=>key+' '+value).join(', ');
+        document.querySelector('#market-coverage').textContent='Active sources: '+(totals(data.source_health)||'none configured')+'. New offers still live from the last 7 days: '+(totals(data.recent_by_category)||'none observed')+'. Live offers with field evidence: '+data.field_verified+'.';
+        document.querySelector('#actions').innerHTML=data.actions.map(a=>'<li>'+esc(a.product_name)+' · '+esc(a.action)+' · '+esc(a.owner)+' · '+esc(a.due)+' · '+esc(a.status)+'</li>').join('') || 'No responses recorded.';
+        const form=document.querySelector('#response-form');
+        if(form){
+            for(const x of data.exposures)form.elements.offer.add(new Option(x.name+' / '+x.offer.product,x.offer.promotion_id));
+            form.onsubmit=async e=>{e.preventDefault();const body=Object.fromEntries(new FormData(form));const id=body.offer;delete body.offer;
+                const response=await api('/api/v1/field/actions/'+id+'/record',{method:'POST',json:body});
+                if(response.ok)location.reload();else document.querySelector('#action-result').textContent=await errText(response);};
+        }
+        document.querySelector('#exposures').innerHTML=data.exposures.map(x=>'<li><strong>'+esc(x.name)+'</strong> · '+esc(x.offer.product)+' · '+esc(x.offer.outlet||'Outlet unknown')+' · '+esc(x.offer.gap_pct)+'% vs shelf · <a class="underline" href="/?evidence='+esc(x.offer.promotion_id)+'">Evidence</a></li>').join('');
+    })().catch(()=>document.querySelector('#coverage').textContent='Price coverage unavailable.');
     const card = (label, value, icon, color) => `<div class="bg-white dark:bg-slate-800 rounded-xl shadow p-4 flex items-center gap-4">
         <div class="text-2xl ${color}"><i class="fa-solid ${icon}"></i></div><div><div class="text-2xl font-bold">${esc(value)}</div><div class="text-sm text-slate-500">${esc(label)}</div></div></div>`;
     const empty = '<li class="text-slate-400">Nothing to report.</li>';

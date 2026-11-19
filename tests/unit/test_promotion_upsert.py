@@ -52,6 +52,9 @@ class FakeSession:
     def __init__(self):
         self.rows = {Promotion: [], PromotionObservation: [], PromotionEvidence: [], PromotionChangeEvent: []}
 
+    def execute(self, statement, params):
+        assert "pg_advisory_xact_lock" in str(statement)
+
     def query(self, model):
         return FakeQuery(self.rows[model])
 

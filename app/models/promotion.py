@@ -73,7 +73,7 @@ class Promotion(Base):
     geography_region: Mapped[str] = mapped_column(String(30), nullable=False, default="UNKNOWN", server_default="UNKNOWN")
     status: Mapped[str] = mapped_column(String(50), default="ACTIVE")
     source_reliability: Mapped[float] = mapped_column(Float, default=0.8)
-    ai_confidence: Mapped[float] = mapped_column(Float, default=0.8)
+    ai_confidence: Mapped[Optional[float]] = mapped_column(Float, default=0.8)
     rank_score: Mapped[float] = mapped_column(Float, default=0.0)
     identity_fingerprint: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
     identity_version: Mapped[str] = mapped_column(String(20), default="v1", nullable=False)

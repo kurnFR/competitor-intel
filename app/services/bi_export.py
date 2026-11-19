@@ -16,9 +16,10 @@ from sqlalchemy.orm import Session, contains_eager, selectinload
 
 from app.models.entity import Brand, Competitor, Retailer
 from app.models.own_product import OwnProduct
-from app.models.promotion import Promotion, PromotionEvidence
+from app.models.promotion import Promotion
 from app.services.campaigns import detect_campaign_tags
-from app.services.comparison import effective_pack_price, parse_pack_grams, per_100g
+from app.services.comparison import comparable_offer, effective_pack_price, parse_pack_grams, per_100g
+from app.services.matches import reviewed_matches, offer_key
 from app.services.exporting import safe_cell
 from app.services.promotions.visibility import live_promotion_filter
 
@@ -55,6 +56,7 @@ BI_FEED_COLUMNS = [
     "first_seen_at",
     "last_seen_at",
     "last_verified_at",
+    "evidence_origin",
     "source_url",
     "evidence_quote",
 ]
@@ -77,12 +79,15 @@ def build_bi_feed(
 
     # Pre-fetch own products for undercut detection
     own_products = db.query(OwnProduct).filter(OwnProduct.is_active.is_(True)).all()
-    own_by_cat: Dict[str, List[float]] = {}
+    from app.services.scoped_prices import scoped_catalog
+    own_products = scoped_catalog(db,own_products,retailer_name,region,now)
+    decisions = reviewed_matches(db)
+    own_by_cat = {}
     for own in own_products:
         grams = own.pack_grams or parse_pack_grams(own.pack_size)
         unit = per_100g(own.regular_price, grams)
         if unit is not None:
-            own_by_cat.setdefault((own.category or "").upper(), []).append(unit)
+            own_by_cat.setdefault((own.category or "").upper(), []).append((own.id, grams, unit))
 
     # Base query for promotions
     query = (
@@ -140,14 +145,15 @@ def build_bi_feed(
         # Undercut check: does this competitor item undercut any active product in our portfolio?
         undercuts = False
         cat_own_units = own_by_cat.get((p.category or "").upper(), [])
-        if unit_price is not None and cat_own_units:
-            undercuts = any(unit_price < our_unit for our_unit in cat_own_units)
+        if comparable_offer(p) and unit_price is not None and cat_own_units:
+            undercuts = any(0.5 <= grams / own_grams <= 2 and unit_price < our_unit and decisions.get((own_id,offer_key(p))) is not False
+                            for own_id, own_grams, our_unit in cat_own_units)
 
         # Evidence
         ev_quote = ""
         ev_url = ""
         if p.evidence_items:
-            ev = p.evidence_items[0]
+            ev = max(p.evidence_items, key=lambda item: (item.captured_at, item.created_at, item.id))
             ev_quote = getattr(ev, "evidence_text", "") or ""
             ev_url = getattr(ev, "source_url", "") or ""
 
@@ -177,13 +183,14 @@ def build_bi_feed(
             "status": p.status,
             "is_active": p.status == "ACTIVE" and (p.end_date is None or p.end_date >= now),
             "rank_score": round(p.rank_score, 1) if p.rank_score is not None else 0.0,
-            "ai_confidence": round(p.ai_confidence, 2) if p.ai_confidence is not None else 0.0,
+            "ai_confidence": round(p.ai_confidence, 2) if p.ai_confidence is not None else None,
             "source_reliability": round(p.source_reliability, 2) if p.source_reliability is not None else 0.0,
             "has_conflict": p.has_open_conflict,
             "undercuts_our_product": undercuts,
             "first_seen_at": p.first_seen_at.isoformat() if p.first_seen_at else None,
             "last_seen_at": p.last_seen_at.isoformat() if p.last_seen_at else None,
             "last_verified_at": p.last_verified_at.isoformat() if p.last_verified_at else None,
+            "evidence_origin": ("FIELD" if ev.evidence_type == "APPROVED_FIELD" else "WEB") if p.evidence_items else None,
             "source_url": ev_url,
             "evidence_quote": ev_quote,
         }

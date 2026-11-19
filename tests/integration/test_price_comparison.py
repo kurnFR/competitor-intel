@@ -347,3 +347,40 @@ def test_executive_export_and_overview_metrics(env, monkeypatch):
     # Viewer cannot export
     viewer, _ = env.login("VIEWER")
     assert viewer.get("/api/v1/compare/export?format=csv").status_code == 403
+
+
+def test_scoped_price_comparison_and_history(env):
+    c,h=env.login("ANALYST")
+    product=c.post("/api/v1/compare/products",json={"name":f"Zz{env.tag} Scoped","category":"WAFER","pack_size":"100g","regular_price":10000},headers=h).json()
+    retailer=c.get("/api/v1/field/options").json()["retailers"][0]
+    day=datetime.now(timezone.utc).date()
+    scope={"retailer_id":retailer["id"],"region":"Jakarta","starts":(day-timedelta(days=1)).isoformat(),
+           "ends":(day+timedelta(days=1)).isoformat(),"regular_price":11000,"promo_price":8500}
+    assert c.post(f"/api/v1/compare/products/{product['id']}/prices",json=scope,headers=h).status_code==201
+    rows=c.get("/api/v1/compare/",params={"category":"WAFER","retailer":retailer["name"],"region":"JABODETABEK"}).json()["products"]
+    row=next(r for r in rows if r["id"]==product["id"])
+    assert row["promo_price"]==8500 and row["regular_price"]==11000
+    history=c.get(f"/api/v1/compare/products/{product['id']}/history").json()
+    assert history[0]["snapshot"]["regular_price"]==10000
+
+
+def test_marketing_can_exclude_and_restore_a_product_match(env):
+    own, headers = env.login("ANALYST")
+    offer = env.promo("Comparable pack", pack_size="300g", promo_price=8000)
+    env.db.commit()
+    product = own.post("/api/v1/compare/products", headers=headers, json={
+        "name":f"Zz{env.tag} Match", "pack_size":"300g","regular_price":12000}).json()
+    path = f"/api/v1/compare/products/{product['id']}/matches"
+    params = {"search":f"Zz{env.tag} Comparable pack"}
+    def matches():
+        rows = own.get("/api/v1/compare/",params=params).json()["products"]
+        return [m for r in rows if r["id"]==product["id"] for m in r["comparable"]]
+    assert matches()[0]["match_basis"] == "Category and pack size"
+    for value in (True,False):
+        assert own.put(path,headers=headers,json={"promotion_id":str(offer.id),"accepted":value}).status_code == 200
+        if value:
+            assert matches()[0]["match_basis"] == "Analyst confirmed"
+        else:
+            assert matches() == []
+    assert own.delete(path,headers=headers).status_code == 204
+    assert matches()[0]["match_basis"] == "Category and pack size"

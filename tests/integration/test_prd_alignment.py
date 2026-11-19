@@ -254,6 +254,7 @@ def test_product_lookup_searches_stored_evidence_and_respects_source_approval(en
         env.db,
         approved,
         product_name=f"Zz{env.tag} Nissin Wafer Chocolate",
+        category="WAFER",
         pack_size="160 g",
         promo_price=8000,
     )
@@ -287,6 +288,16 @@ def test_product_lookup_searches_stored_evidence_and_respects_source_approval(en
         "/api/v1/promotions/search", params={"q": "Nissin wafer", "source_id": str(approved.id)}
     ).json()
     assert non_matching_source["total"] == 0
+    category_only = env.client().get(
+        "/api/v1/promotions/search", params={"category": "wafer", "source_id": str(evidence_source.id)}
+    )
+    assert category_only.status_code == 200
+    assert [item["id"] for item in category_only.json()["promotions"]] == [str(promotion.id)]
+    wrong_category = env.client().get(
+        "/api/v1/promotions/search", params={"q": f"Zz{env.tag} Nissin wafer", "category": "CRACKER"}
+    )
+    assert wrong_category.json()["total"] == 0
+    assert env.client().get("/api/v1/promotions/search").status_code == 422
 
 
 def test_identity_and_optional_geography_gates(env, monkeypatch):
@@ -483,4 +494,59 @@ def test_source_health_is_read_only_analyst_data_without_internals(env):
     finally:
         env.db.query(AuditLog).filter(AuditLog.username == viewer).delete(synchronize_session=False)
         env.db.query(User).filter(User.username == viewer).delete(synchronize_session=False)
+        env.db.commit()
+
+
+def test_field_observation_review_and_executive_access(env):
+    c = env.client()
+    hdr = {"X-CSRF-Token": c.get("/api/v1/auth/me").json()["csrf_token"]}
+    opts = c.get("/api/v1/field/options").json()
+    ref = uuid.uuid4()
+    path = f"/api/v1/field/{ref}"
+    name = f"Zz{env.tag} Field biscuit"
+    body = dict(product_name=name, category="BISCUIT", competitor_id=opts["competitors"][0]["id"],
+                retailer_id=opts["retailers"][0]["id"], geography="Jakarta", pack_size="200g",
+                promo_price=8000, regular_price=10000, evidence="Shelf card Rp 8000 for 200g",
+                observed_on=env.now.date().isoformat())
+    import base64
+    import io
+    from PIL import Image
+    image = io.BytesIO()
+    Image.new("RGB",(2,2)).save(image,format="PNG")
+    body["photo"] = base64.b64encode(image.getvalue()).decode("ascii")
+    assert c.put(path, json=body, headers=hdr).status_code == 200
+    assert c.put(path, json=body, headers=hdr).status_code == 200
+    assert c.get("/api/v1/promotions/search", params={"q": name}).json()["total"] == 0
+    assert c.post(path+"/approve", headers=hdr).status_code == 403
+    reviewer = f"review_{env.tag}"
+    auth_service.create_user(env.db, username=reviewer, password=PASSWORD, role="ADMIN")
+    env.db.commit()
+    admin = TestClient(app)
+    ah = {"X-CSRF-Token": admin.post("/api/v1/auth/login",json={"username":reviewer,"password":PASSWORD}).json()["csrf_token"]}
+    try:
+        result = admin.post(path+"/approve", headers=ah)
+        assert result.status_code == 200, result.text
+        assert admin.post(path+"/approve", headers=ah).json() == result.json()
+        found = c.get("/api/v1/promotions/search",params={"q":name}).json()["promotions"]
+        assert len(found) == 1 and found[0]["ai_confidence"] is None
+        assert found[0]["source_name"] == "Approved field observation"
+        photo=c.get(found[0]["source_url"])
+        assert photo.headers["content-type"] == "image/png" and photo.content == image.getvalue()
+        stats=c.get("/api/v1/stats/bi-feed",params={"category":"BISCUIT"}).json()
+        assert any(row.get("evidence_origin")=="FIELD" and row["product_name"]==name for row in stats["data"])
+
+        pid = result.json()["promotion_id"]
+        action = c.post(f"/api/v1/field/actions/{pid}/record",headers=hdr,
+                        json={"action":"Verify placement","owner":"Marketing","due":body["observed_on"],"status":"OPEN"})
+        assert action.status_code == 200
+        overview=c.get("/api/v1/stats/executive").json()
+        assert any(a["promotion_id"]==pid for a in overview["actions"])
+
+        assert c.get("/field").status_code == 200
+    finally:
+        env.db.execute(text("""DELETE FROM competitor_intel.marketing_actions WHERE promotion_id IN
+                                (SELECT promotion_id FROM competitor_intel.field_submissions WHERE id=:id)"""),{"id":ref})
+        env.db.execute(text("DELETE FROM competitor_intel.field_submissions WHERE id=:id"),{"id":ref})
+        env.db.query(AuditLog).filter_by(username=reviewer).delete()
+        env.db.query(User).filter_by(username=reviewer).delete()
         env.db.commit()

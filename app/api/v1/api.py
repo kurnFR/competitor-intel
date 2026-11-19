@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
 
 from app.api.v1.endpoints import auth, compare, promotions, review, sources, stats, system
+from app.api.v1.endpoints import field
 from app.core.deps import require_role
 
 api_router = APIRouter()
@@ -18,3 +19,5 @@ api_router.include_router(sources.router, prefix="/sources", tags=["Sources"],
                           dependencies=[Depends(require_role("ADMIN"))])
 api_router.include_router(system.router, prefix="/system", tags=["System"],
                           dependencies=[Depends(require_role("ADMIN"))])
+
+api_router.include_router(field.router, prefix="/field", tags=["Field observations"])
