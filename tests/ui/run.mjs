@@ -66,6 +66,10 @@ check("dashboard has no leftover template errors", !/undefined|\[object Object\]
 setVal($(p, "#product-lookup-query"), "Nissin wafer");
 await p.w.lookupProduct();
 check("product lookup returns a visible result state", !$(p, "#lookup-status").classList.contains("hidden") && p.errors.length === 0, $(p, "#lookup-status").textContent);
+setVal($(p, "#product-lookup-query"), "");
+setVal($(p, "#product-lookup-category"), "WAFER");
+await p.w.lookupProduct();
+check("category-only lookup returns a result state", /promotions?\b.*WAFER/.test($(p, "#lookup-status").textContent), $(p, "#lookup-status").textContent);
 check("dashboard provides compact promotion cards for narrow screens", !!$(p, "#promo-cards[role='list']") && $(p, ".results-scroll").classList.contains("hidden"));
 check("dashboard has one labelled primary navigation with an active page", !!$(p, 'nav[aria-label="Primary navigation"] [aria-current="page"][href="/"]'));
 check("dashboard navigation labels match the shared shell", !!$(p, 'a[href="/regional"]') && /Regional pricing/.test($(p, 'a[href="/regional"]').textContent) && /Price comparison/.test($(p, 'a[href="/compare"]').textContent));
@@ -84,9 +88,11 @@ check("missing confidence values are presented as unknown", p.w.formatPercent(nu
 }
 
 // ---- 3. Other pages render and load data
-for (const [path, marker] of [["/insights", "Promotion activity by competitor"], ["/regional", "Regional pricing"], ["/competitors", "Competitors"], ["/compare", "Our prices vs competitor promotions"], ["/review", "Matches to confirm"], ["/admin", "Websites we scan"]]) {
+for (const [path, marker] of [["/field", "Field observations"], ["/insights", "Promotion activity by competitor"], ["/regional", "Regional pricing"], ["/competitors", "Competitors"], ["/compare", "Our prices vs competitor promotions"], ["/review", "Matches to confirm"], ["/admin", "Websites we scan"]]) {
   const q = await openPage(path); await sleep(700);
   check(`${path} renders with no script errors`, q.status === 200 && q.errors.length === 0 && q.d.body.textContent.includes(marker), (q.errors || []).join("|"));
+  if(path === "/field")check("field form loads master data", q.d.querySelector('[name=competitor_id]').options.length>0 && !q.d.querySelector('#entry button').disabled,q.d.querySelector('#message').textContent);
+  if(path === "/insights")check("executive coverage loads",q.d.querySelector('#coverage').textContent.includes("own SKUs"));
   if (path === "/regional" && q.status === 200) {
     check("regional search and category controls have visible labels", !!q.d.querySelector('label[for="q"]') && !!q.d.querySelector('label[for="category"]'));
     check("regional data panel has a live status region", !!q.d.querySelector('#regional-status[aria-live="polite"]'));

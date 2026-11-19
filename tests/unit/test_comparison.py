@@ -1,11 +1,14 @@
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 
+from app.models.own_product import OwnProduct
 from app.services.comparison import (
     CATEGORIES,
     build_aggregations,
+    build_comparison,
     calculate_gap_pct,
     effective_pack_price,
     is_product_match,
@@ -15,6 +18,43 @@ from app.services.comparison import (
     per_100g,
     simulate_price,
 )
+
+
+def test_comparison_summary_uses_all_matches_and_reports_coverage(monkeypatch):
+    now = datetime(2026, 11, 19, tzinfo=timezone.utc)
+    db = MagicMock()
+    catalog = db.query.return_value.filter.return_value.order_by.return_value
+    catalog.all.return_value = [
+        OwnProduct(name="Matched", category="BISCUIT", regular_price=12000, pack_size="300g"),
+        OwnProduct(name="Unmatched", category="WAFER", regular_price=12000, pack_size="300g"),
+    ]
+    shortlist = db.query.return_value.outerjoin.return_value.outerjoin.return_value.outerjoin.return_value.options
+    promotions = shortlist.return_value.filter.return_value.filter.return_value
+    promotions.all.return_value = [
+        promo(
+            id=price, product_name="Comparable biscuit", sku=None, category="BISCUIT", pack_size="300g",
+            promo_price=price, brand=None, competitor=None, retailer=None, status="ACTIVE",
+            start_date=None, end_date=None, last_verified_at=now,
+        )
+        for price in (6000, 12000, 18000)
+    ]
+    monkeypatch.setattr("app.services.comparison.MAX_MATCHES", 1)
+
+    result = build_comparison(db, now=now)
+    summary = result["summary"]
+    assert result["products"][0]["comparable_total"] == 3
+    assert len(result["products"][0]["comparable"]) == 1
+    assert summary["price_index_vs_market"] == 100
+    assert summary["pct_under_pressure"] == 100
+    assert summary["comparable_products"] == summary["not_comparable"] == 1
+    assert summary["deepest_discount_by_category"] == {}
+
+    promotions.all.return_value = []
+    summary = build_comparison(db, now=now)["summary"]
+    assert summary["price_index_vs_market"] is None
+    assert summary["price_index_gap_pct"] is None
+    assert summary["pct_under_pressure"] is None
+    assert summary["comparable_products"] == 0
 
 
 @pytest.mark.parametrize("text,expected", [

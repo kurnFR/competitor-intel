@@ -7,6 +7,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.models.promotion import Promotion, PromotionEvidence, PromotionObservation
@@ -106,6 +107,7 @@ def upsert_promotion_observation(db: Session, *, document_id, item: Any, resolve
     fingerprint = promotion_identity_fingerprint(data)
     source_data = _source_identity_data(item)
     source_fingerprint = promotion_source_identity_fingerprint(source_data)
+    db.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:fp, 0))"), {"fp": source_fingerprint})
     now = observed_at or _utc_now()
     metadata = extraction_metadata or {}
     if extracted_json is None and hasattr(item, "model_dump"):

@@ -57,7 +57,7 @@ def explain_scores(db: Session, promotions, *, now: Optional[datetime] = None) -
             "freshness": f"Verified {max(0, (now - (p.last_verified_at or p.last_seen_at)).days)} day(s) ago",
             "relevance": f"{(p.category or 'Other').title()} " + ("is a core category" if result["components"][3]["value"] == 1.0 else "is outside the core categories"),
             "importance": f"Competitor importance {inputs['competitor_importance']:g}",
-            "confidence": f"AI extraction confidence {round((p.ai_confidence or 0) * 100)}%",
+            "confidence": f"AI extraction confidence {round(p.ai_confidence * 100)}%" if p.ai_confidence is not None else "Reviewed field evidence",
             "change": "A material change was seen in the last 7 days" if inputs["change_impact"] > 0 else "No recent change",
         }
         for c in result["components"]:

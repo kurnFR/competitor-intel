@@ -240,10 +240,20 @@
             </div>
             <form id="product-lookup-form" class="flex flex-col sm:flex-row gap-2" onsubmit="event.preventDefault(); lookupProduct();">
                 <label for="product-lookup-query" class="sr-only">Product, brand, or competitor</label>
-                <input id="product-lookup-query" type="search" minlength="2" maxlength="100" placeholder="Try: Nissin wafer" class="min-h-11 flex-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" required>
+                <input id="product-lookup-query" type="search" minlength="2" maxlength="100" placeholder="Try: Nissin wafer" class="min-h-11 flex-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                <label for="product-lookup-category" class="sr-only">Product category</label>
+                <select id="product-lookup-category" class="min-h-11 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm">
+                    <option value="">All categories</option>
+                    <option value="BISCUIT">Biscuit</option>
+                    <option value="CRACKER">Cracker</option>
+                    <option value="COOKIE">Cookie</option>
+                    <option value="WAFER">Wafer</option>
+                    <option value="SNACK">Snack</option>
+                </select>
                 <button id="product-lookup-button" type="submit" class="min-h-11 px-5 rounded-lg bg-blue-700 hover:bg-blue-800 text-white text-sm font-semibold focus-visible:ring-2 focus-visible:ring-sky-500">Find promotions</button>
             </form>
             <p id="lookup-status" class="hidden rounded-lg border px-4 py-3 text-sm" role="status" aria-live="polite"></p>
+            {% if user.role in ('ADMIN','ANALYST') %}<a href="/field" class="underline text-blue-700">Add a field observation</a>{% endif %}
             <div id="lookup-results" class="space-y-3" aria-live="polite"></div>
         </section>
 
@@ -353,6 +363,7 @@
 
         function safeHttpUrl(value) {
             try {
+                if (typeof value === 'string' && /^\/api\/v1\/stats\/field-photo\/[a-f0-9-]{36}$/i.test(value)) return value;
                 const u = new URL(value);
                 return (u.protocol === 'http:' || u.protocol === 'https:') ? u.href : null;
             } catch (e) { return null; }
@@ -464,12 +475,13 @@
 
         async function lookupProduct() {
             const query = document.getElementById('product-lookup-query').value.trim();
+            const category = document.getElementById('product-lookup-category').value;
             const status = document.getElementById('lookup-status');
             const results = document.getElementById('lookup-results');
             const button = document.getElementById('product-lookup-button');
-            if (query.length < 2) {
+            if ((query && query.length < 2) || (!query && !category)) {
                 status.className = 'rounded-lg border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/30 px-4 py-3 text-sm text-amber-900 dark:text-amber-100';
-                status.textContent = 'Enter at least two characters to search.';
+                status.textContent = 'Enter at least two characters or select a category.';
                 status.classList.remove('hidden');
                 return;
             }
@@ -480,6 +492,8 @@
             button.disabled = true;
             try {
                 const params = new URLSearchParams({q: query, limit: '50'});
+                if (category) params.set('category', category);
+                const searchLabel = [query, category].filter(Boolean).join(' · ');
                 const response = await api('/api/v1/promotions/search?' + params);
                 if (!response.ok) throw new Error('Product search failed');
                 const data = await response.json();
@@ -493,11 +507,11 @@
                         : 'No approved, active sources with a supported adapter are configured.';
                 if (!data.total) {
                     status.className = 'rounded-lg border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/30 px-4 py-3 text-sm text-amber-900 dark:text-amber-100';
-                    status.textContent = `No verified stored promotions matched “${query}”. ${sourceSummary} Search only sees collected data; an admin can run Scan now after reviewing source coverage.`;
+                    status.textContent = `No verified stored promotions matched “${searchLabel}”. ${sourceSummary} An admin can run Scan now after reviewing source coverage.`;
                     return;
                 }
                 status.className = 'rounded-lg border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/30 px-4 py-3 text-sm text-emerald-900 dark:text-emerald-100';
-                status.textContent = `Found ${data.total} verified stored promotion(s) for “${query}”. ${sourceSummary}`;
+                status.textContent = `Found ${data.total} verified stored promotion(s) for “${searchLabel}”. ${sourceSummary}`;
                 results.innerHTML = data.promotions.map(item => {
                     const sourceUrl = safeHttpUrl(item.source_url);
                     const sourceLink = sourceUrl ? `<a href="${esc(sourceUrl)}" target="_blank" rel="noopener noreferrer" class="font-semibold text-blue-700 dark:text-blue-300 underline underline-offset-2">Open source evidence</a>` : '<span class="text-slate-600 dark:text-slate-300">No source URL stored</span>';
@@ -707,8 +721,17 @@
             }).join('');
         }
 
-        function openModal(idx, triggerEl) {
-            const p = currentPromotions[idx];
+        async function showEvidenceFromLink(id) {
+            try {
+                const response=await api('/api/v1/promotions/'+id);
+                if(!response.ok)throw Error();
+                const detail=await response.json();
+                const latest=detail.evidence_items.sort((a,b)=>Date.parse(b.captured_at)-Date.parse(a.captured_at))[0];
+                renderEvidence({...detail,last_verified:latest?.captured_at,evidence_quote:latest?.evidence_text,source_url:latest?.source_url});
+            } catch { document.querySelector('#lookup-status').classList.remove('hidden');document.querySelector('#lookup-status').textContent='Evidence unavailable.'; }
+        }
+        function openModal(idx,triggerEl){renderEvidence(currentPromotions[idx],triggerEl);}
+        function renderEvidence(p, triggerEl) {
             if (!p) return;
             document.getElementById('modal-product').textContent = `${p.brand ? p.brand + ' - ' : ''}${p.product_name}`;
             document.getElementById('modal-verified').textContent = formatVerified(p.last_verified);
@@ -758,7 +781,17 @@
         updateThemeIcon();
         const initialQuery = new URLSearchParams(location.search).get('q');
         if (initialQuery) document.getElementById('filter-search').value = initialQuery;
-        loadSession().then(() => { fetchStats(); fetchTop10(); });
+        loadSession().then(() => {
+            fetchStats(); fetchTop10();
+            const category = new URLSearchParams(location.search).get('category');
+            const select = document.querySelector('#product-lookup-category');
+            if ([...select.options].some(o=>o.value===category) && category) {
+                select.value = category;
+                lookupProduct();
+            }
+            const evidence = new URLSearchParams(location.search).get('evidence');
+            if(evidence && /^[a-f0-9-]{36}$/i.test(evidence)) showEvidenceFromLink(evidence);
+        });
     </script>
 </body>
 </html>

@@ -58,13 +58,13 @@
             <!-- Card 1: Overall Price Index vs Market -->
             <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-sm border border-slate-200 dark:border-slate-800 flex flex-col justify-between">
                 <div class="flex items-center justify-between">
-                    <span class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Price Index vs Market</span>
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Price Index vs Tracked Offers</span>
                     <span class="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 flex items-center justify-center text-sm">
                         <i class="fa-solid fa-scale-balanced"></i>
                     </span>
                 </div>
                 <div class="my-2">
-                    <div class="text-3xl font-extrabold text-slate-900 dark:text-white" id="stat-price-index">100.0</div>
+                    <div class="text-3xl font-extrabold text-slate-900 dark:text-white" id="stat-price-index">—</div>
                     <div class="text-xs mt-1" id="stat-price-index-badge">
                         <span class="font-semibold text-slate-500">Calculating index...</span>
                     </div>
@@ -83,9 +83,9 @@
                     </span>
                 </div>
                 <div class="my-2">
-                    <div class="text-3xl font-extrabold text-rose-600 dark:text-rose-400" id="stat-pressure-pct">0%</div>
+                    <div class="text-3xl font-extrabold text-rose-600 dark:text-rose-400" id="stat-pressure-pct">—</div>
                     <div class="text-xs font-medium text-slate-500 dark:text-slate-400 mt-1" id="stat-pressure-count">
-                        0 products undercut
+                        Checking comparison coverage…
                     </div>
                 </div>
                 <div class="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden">
@@ -113,15 +113,15 @@
             <!-- Card 4: Competitor Promo Frequency -->
             <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-sm border border-slate-200 dark:border-slate-800 flex flex-col justify-between">
                 <div class="flex items-center justify-between">
-                    <span class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Competitor Promo Frequency</span>
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Tracked price offers</span>
                     <span class="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-sm">
                         <i class="fa-solid fa-chart-simple"></i>
                     </span>
                 </div>
                 <div class="my-2">
-                    <div class="text-3xl font-extrabold text-indigo-600 dark:text-indigo-400" id="stat-promo-freq">0 Active</div>
+                    <div class="text-3xl font-extrabold text-indigo-600 dark:text-indigo-400" id="stat-promo-freq">—</div>
                     <div class="text-xs text-slate-500 dark:text-slate-400 mt-1" id="stat-promo-sub">
-                        Tracking market frequency...
+                        Checking offer coverage…
                     </div>
                 </div>
                 <div class="text-[11px] text-slate-400 dark:text-slate-500 border-t border-slate-100 dark:border-slate-800 pt-2 flex items-center justify-between">
@@ -284,7 +284,7 @@
             <!-- Category -->
             <div>
                 <label for="filter-category" class="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 uppercase mb-1">Category</label>
-                <select id="filter-category" onchange="applyFilters()" class="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-2 text-slate-800 dark:text-slate-100 font-medium">
+                <select id="filter-category" onchange="loadComparison()" class="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-2 text-slate-800 dark:text-slate-100 font-medium">
                     <option value="">All Categories</option>
                     <option value="BISCUIT">Biscuit</option>
                     <option value="CRACKER">Cracker</option>
@@ -297,7 +297,7 @@
             <!-- Brand -->
             <div>
                 <label for="filter-brand" class="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 uppercase mb-1">Brand</label>
-                <select id="filter-brand" onchange="applyFilters()" class="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-2 text-slate-800 dark:text-slate-100 font-medium">
+                <select id="filter-brand" onchange="loadComparison()" class="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-2 text-slate-800 dark:text-slate-100 font-medium">
                     <option value="">All Brands</option>
                 </select>
             </div>
@@ -305,7 +305,7 @@
             <!-- Competitor -->
             <div>
                 <label for="filter-competitor" class="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 uppercase mb-1">Competitor</label>
-                <select id="filter-competitor" onchange="applyFilters()" class="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-2 text-slate-800 dark:text-slate-100 font-medium">
+                <select id="filter-competitor" onchange="loadComparison()" class="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-2 text-slate-800 dark:text-slate-100 font-medium">
                     <option value="">All Competitors</option>
                 </select>
             </div>
@@ -313,7 +313,7 @@
             <!-- Retailer / Outlet -->
             <div>
                 <label for="filter-retailer" class="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 uppercase mb-1">Retailer / Source</label>
-                <select id="filter-retailer" onchange="applyFilters()" class="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-2 text-slate-800 dark:text-slate-100 font-medium">
+                <select id="filter-retailer" onchange="loadComparison()" class="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-2 text-slate-800 dark:text-slate-100 font-medium">
                     <option value="">All Outlets</option>
                     <option value="Indomaret">Indomaret</option>
                     <option value="Alfamart">Alfamart</option>
@@ -323,10 +323,11 @@
                 </select>
             </div>
 
+            <label>Area<select id="filter-region" onchange="loadComparison()" class="block w-full border rounded dark:bg-slate-800"><option value="">All regions</option>{% for region in ['JAWA','SUMATERA','KALIMANTAN','SULAWESI','BALI_NUSRA','MALUKU','PAPUA','JABODETABEK','NATIONAL','ONLINE'] %}<option>{{region}}</option>{% endfor %}</select></label>
             <!-- Validity Period -->
             <div>
                 <label for="filter-validity" class="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 uppercase mb-1">Validity Period</label>
-                <select id="filter-validity" onchange="applyFilters()" class="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-2 text-slate-800 dark:text-slate-100 font-medium">
+                <select id="filter-validity" onchange="loadComparison()" class="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-2 text-slate-800 dark:text-slate-100 font-medium">
                     <option value="">All Active</option>
                     <option value="EXPIRING_SOON">Expiring &le; 7 Days</option>
                     <option value="STATED_DATES">Stated Dates Only</option>
@@ -337,7 +338,7 @@
             <!-- Pressure Status -->
             <div>
                 <label for="filter-pressure" class="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 uppercase mb-1">Pressure Status</label>
-                <select id="filter-pressure" onchange="applyFilters()" class="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-2 text-slate-800 dark:text-slate-100 font-medium">
+                <select id="filter-pressure" onchange="loadComparison()" class="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-2 text-slate-800 dark:text-slate-100 font-medium">
                     <option value="">All Products</option>
                     <option value="UNDER_PRESSURE">Facing Price Undercut</option>
                     <option value="COMPETITIVE">Competitive / Lead</option>
@@ -348,7 +349,7 @@
         <div class="flex items-center gap-2 pt-1">
             <div class="relative flex-1">
                 <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs"></i>
-                <input id="filter-search" oninput="applyFilters()" placeholder="Filter comparison by product name, SKU, or promotion text..." class="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg pl-8 pr-3 py-2 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                <input id="filter-search" oninput="queueComparison()" placeholder="Filter comparison by product name, SKU, or promotion text..." class="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg pl-8 pr-3 py-2 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:outline-none">
             </div>
         </div>
     </section>
@@ -505,6 +506,8 @@
                         <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Promo Price (Rp)</label>
                         <input id="modal-promo-price" type="number" step="100" min="1" placeholder="e.g. 9600" class="w-full text-sm rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white font-mono">
                     </div>
+                    <label>Paid packs (buy X)<input id="modal-buy" type="number" min="1" class="block w-full rounded border dark:bg-slate-800"></label>
+                    <label>Free packs (get Y)<input id="modal-free" type="number" min="1" class="block w-full rounded border dark:bg-slate-800"></label>
                     <div>
                         <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Campaign Start Date</label>
                         <input id="modal-start-date" type="date" class="w-full text-sm rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white">
@@ -531,6 +534,7 @@
 <script>
     const msg = document.getElementById('msg');
     let comparisonData = { products: [], summary: {}, aggregations: {} };
+    const wibDate = value => new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Jakarta',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(value));
     let rawOwnProducts = [];
     let simTimeout = null;
 
@@ -568,6 +572,10 @@
         if (brand) params.set('brand', brand);
         if (comp) params.set('competitor', comp);
         if (ret) params.set('retailer', ret);
+        for(const key of ['validity','pressure','search','region']){
+            const value=document.querySelector('#filter-'+key).value.trim();
+            if(value)params.set(key,value);
+        }
         params.set('format', format);
         window.location.href = '/api/v1/compare/export?' + params.toString();
     }
@@ -577,24 +585,27 @@
         // 1. Price Index vs Market
         const idxEl = document.getElementById('stat-price-index');
         const idxBadge = document.getElementById('stat-price-index-badge');
-        const pIdx = summary.price_index_vs_market != null ? summary.price_index_vs_market : 100.0;
-        const gap = summary.price_index_gap_pct != null ? summary.price_index_gap_pct : (pIdx - 100.0);
-        idxEl.textContent = pIdx.toFixed(1);
+        const pIdx = summary.price_index_vs_market;
+        const gap = summary.price_index_gap_pct;
+        idxEl.textContent = pIdx == null ? '—' : pIdx.toFixed(1);
 
-        if (gap > 0.5) {
-            idxBadge.innerHTML = `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-400">+${gap.toFixed(1)}% Premium vs Market</span>`;
+        if (pIdx == null) {
+            idxBadge.textContent = 'No comparable offers';
+        } else if (gap > 0.5) {
+            idxBadge.innerHTML = `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-400">+${gap.toFixed(1)}% vs Tracked Offers</span>`;
         } else if (gap < -0.5) {
             idxBadge.innerHTML = `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400">${gap.toFixed(1)}% Competitive Advantage</span>`;
         } else {
-            idxBadge.innerHTML = `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">Market Promo Parity</span>`;
+            idxBadge.innerHTML = `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">Near tracked offer average</span>`;
         }
 
         // 2. Under Price Pressure
-        const pressPct = summary.pct_under_pressure != null ? summary.pct_under_pressure : 0;
-        document.getElementById('stat-pressure-pct').textContent = `${pressPct}%`;
-        document.getElementById('stat-pressure-count').textContent =
-            `${summary.under_pressure || 0} of ${summary.own_products || 0} products undercut`;
-        document.getElementById('stat-pressure-bar').style.width = `${Math.min(100, pressPct)}%`;
+        const pressPct = summary.pct_under_pressure;
+        document.getElementById('stat-pressure-pct').textContent = pressPct == null ? '—' : `${pressPct}%`;
+        document.getElementById('stat-pressure-count').textContent = pressPct == null
+            ? 'No comparable offers'
+            : `${summary.under_pressure} of ${summary.comparable_products} comparable SKUs undercut at shelf price`;
+        document.getElementById('stat-pressure-bar').style.width = `${pressPct ?? 0}%`;
 
         // 3. Deepest Discount by Category
         const deepestEl = document.getElementById('stat-deepest-discount');
@@ -632,10 +643,12 @@
 
     function filterByCat(c) {
         document.getElementById('filter-category').value = c;
-        applyFilters();
+        loadComparison();
     }
 
     // Load comparison
+    let comparisonRequest = 0, searchTimer;
+    function queueComparison(){ clearTimeout(searchTimer); searchTimer=setTimeout(loadComparison,200); }
     async function loadComparison() {
         const cat = document.getElementById('filter-category')?.value || '';
         const brand = document.getElementById('filter-brand')?.value || '';
@@ -646,10 +659,17 @@
         if (brand) params.set('brand', brand);
         if (comp) params.set('competitor', comp);
         if (ret) params.set('retailer', ret);
+        for(const key of ['validity','pressure','search','region']){
+            const value=document.querySelector('#filter-'+key).value.trim();
+            if(value)params.set(key,value);
+        }
 
+        const ticket = ++comparisonRequest;
         const r = await api('/api/v1/compare/?' + params.toString());
         if (!r.ok) { flash('Could not load comparison: ' + await errText(r), false); return; }
-        comparisonData = await r.json();
+        const responseData = await r.json();
+        if(ticket!==comparisonRequest)return;
+        comparisonData = responseData;
 
         if (comparisonData.generated_at) {
             document.getElementById('header-timestamp').textContent =
@@ -657,7 +677,7 @@
         }
 
         renderOverview(comparisonData.summary || {});
-        populateFilterOptions(comparisonData);
+        if(!params.size)populateFilterOptions(comparisonData);
         applyFilters();
     }
 
@@ -684,49 +704,9 @@
 
     // Apply Client-Side Drilldowns & Search
     function applyFilters() {
-        const cat = document.getElementById('filter-category').value.toUpperCase();
-        const brand = document.getElementById('filter-brand').value.toLowerCase();
-        const comp = document.getElementById('filter-competitor').value.toLowerCase();
-        const ret = document.getElementById('filter-retailer').value.toLowerCase();
-        const val = document.getElementById('filter-validity').value;
-        const press = document.getElementById('filter-pressure').value;
-        const search = document.getElementById('filter-search').value.toLowerCase().trim();
-
-        let filtered = (comparisonData.products || []).slice();
-
-        // Filter products
-        if (cat) filtered = filtered.filter(p => (p.category || '').toUpperCase() === cat);
-        if (brand) filtered = filtered.filter(p => (p.brand || '').toLowerCase().includes(brand) || (p.comparable || []).some(m => (m.brand || '').toLowerCase().includes(brand)));
-        if (comp) filtered = filtered.filter(p => (p.comparable || []).some(m => (m.competitor || '').toLowerCase().includes(comp)));
-        if (ret) filtered = filtered.filter(p => (p.comparable || []).some(m => (m.outlet || '').toLowerCase().includes(ret)));
-
-        if (press === 'UNDER_PRESSURE') filtered = filtered.filter(p => p.undercut_count > 0);
-        else if (press === 'COMPETITIVE') filtered = filtered.filter(p => p.undercut_count === 0 && p.price_per_100g != null);
-
-        if (search) {
-            filtered = filtered.filter(p =>
-                (p.name || '').toLowerCase().includes(search) ||
-                (p.sku || '').toLowerCase().includes(search) ||
-                (p.comparable || []).some(m => (m.product || '').toLowerCase().includes(search) || (m.competitor || '').toLowerCase().includes(search))
-            );
-        }
-
-        // Validity filter on matches
-        if (val) {
-            filtered = filtered.map(p => {
-                const matches = (p.comparable || []).filter(m => {
-                    if (val === 'EXPIRING_SOON') return m.validity_status === 'EXPIRING_SOON';
-                    if (val === 'STATED_DATES') return m.dates_stated === true;
-                    if (val === 'ONGOING') return m.validity_status === 'ONGOING' || !m.dates_stated;
-                    return true;
-                });
-                return Object.assign({}, p, { comparable: matches, undercut_count: matches.filter(m => m.undercuts_us).length });
-            });
-        }
-
-        renderMatrix(filtered);
-        document.getElementById('filter-active-count').textContent =
-            `Showing ${filtered.length} of ${comparisonData.products.length} products`;
+        const rows=comparisonData.products || [];
+        renderMatrix(rows);
+        document.getElementById('filter-active-count').textContent=rows.length+' products in view';
     }
 
     function resetFilters() {
@@ -736,8 +716,9 @@
         document.getElementById('filter-retailer').value = '';
         document.getElementById('filter-validity').value = '';
         document.getElementById('filter-pressure').value = '';
+        document.getElementById('filter-region').value = '';
         document.getElementById('filter-search').value = '';
-        applyFilters();
+        loadComparison();
     }
 
     // Render Matrix with Visual Status Indicators
@@ -759,7 +740,7 @@
                 `<span class="badge-undercut px-2.5 py-1 rounded-full text-xs font-bold inline-flex items-center gap-1">
                     <i class="fa-solid fa-arrow-down"></i> ${esc(p.undercut_count)} Cheaper ${p.largest_gap_pct != null ? `(${esc(p.largest_gap_pct)}%)` : ''}
                 </span>` :
-                (p.price_per_100g ? `<span class="badge-competitive px-2.5 py-1 rounded-full text-xs font-bold inline-flex items-center gap-1"><i class="fa-solid fa-check"></i> Competitive Lead</span>` : '');
+                (p.comparable_total > 0 ? `<span class="badge-competitive px-2.5 py-1 rounded-full text-xs font-bold">No cheaper comparable offer</span>` : '');
 
             const ourPromoBadge = hasPromo ?
                 `<div class="mt-1 flex items-center gap-2">
@@ -800,7 +781,7 @@
                             <div class="text-[11px] text-slate-500">${esc(m.brand || '')}</div>
                         </td>
                         <td class="p-3">
-                            <div class="font-semibold text-slate-800 dark:text-slate-200">${esc(m.product)}</div>
+                            <div class="font-semibold text-slate-800 dark:text-slate-200">${esc(m.product)}</div><div class="text-xs">${esc(m.match_basis)} · <button class="underline" onclick="decideMatch('${esc(p.id)}','${esc(m.promotion_id)}',true)">Confirm</button> · <button class="underline" onclick="decideMatch('${esc(p.id)}','${esc(m.promotion_id)}',false)">Exclude</button></div>
                             <div class="text-[11px] text-slate-500 mt-0.5 flex flex-wrap items-center gap-1.5">
                                 <span>${esc(m.pack_size || '')}</span>
                                 ${promoTypeBadge}
@@ -874,6 +855,13 @@
         const r = await api('/api/v1/compare/products');
         if (!r.ok) return;
         rawOwnProducts = await r.json();
+        const options=await api('/api/v1/field/options');
+        if(options.ok){
+            const retailers=(await options.json()).retailers;
+            const select=document.querySelector('#filter-retailer'), prev=select.value;
+            select.replaceChildren(new Option('All outlets',''),...retailers.map(row=>new Option(row.name,row.name)));
+            select.value=prev;
+        }
 
         // Update Simulator dropdown
         const simSelect = document.getElementById('sim-product-select');
@@ -889,7 +877,7 @@
                 '<span class="text-slate-400">Regular shelf price</span>';
 
             const validityInfo = (p.promo_start_date || p.promo_end_date) ?
-                `<div class="text-[11px] text-slate-600 dark:text-slate-400">${esc(p.promo_start_date ? p.promo_start_date.slice(0, 10) : 'Start')} &ndash; ${esc(p.promo_end_date ? p.promo_end_date.slice(0, 10) : 'Ongoing')}</div>` :
+                `<div class="text-[11px] text-slate-600 dark:text-slate-400">${esc(p.promo_start_date ? wibDate(p.promo_start_date) : 'Start')} &ndash; ${esc(p.promo_end_date ? wibDate(p.promo_end_date) : 'Ongoing')}</div>` :
                 '<span class="text-slate-400">--</span>';
 
             return `
@@ -906,7 +894,7 @@
                     <td class="p-3">${promoInfo}</td>
                     <td class="p-3">${validityInfo}</td>
                     <td class="p-3 text-right space-x-2">
-                        <button onclick="editProduct('${esc(p.id)}')" class="text-blue-600 dark:text-blue-400 hover:underline text-xs font-semibold">Edit Campaign</button>
+                        <button onclick="editProduct('${esc(p.id)}')" class="text-blue-600 dark:text-blue-400 hover:underline text-xs font-semibold">Edit Campaign</button><button class="underline" onclick="showPriceHistory('${esc(p.id)}')">Price history</button><button class="underline" onclick="resetMatches('${esc(p.id)}')">Reset matches</button><a class="underline" href="/?category=${esc(p.category)}#product-lookup-title">Find category offers</a>
                         <button onclick="removeProduct('${esc(p.id)}')" class="text-rose-600 hover:underline text-xs font-semibold">Delete</button>
                     </td>
                 </tr>
@@ -933,6 +921,8 @@
 
     // Modal Handling
     function openProductModal(prod = null) {
+        document.getElementById('modal-buy').value=prod?.buy_quantity ?? '';
+        document.getElementById('modal-free').value=prod?.free_quantity ?? '';
         const form = document.getElementById('product-modal-form');
         form.reset();
         if (prod) {
@@ -946,8 +936,8 @@
             document.getElementById('modal-regular-price').value = prod.regular_price || '';
             document.getElementById('modal-promo-type').value = prod.promo_type || 'REGULAR';
             document.getElementById('modal-promo-price').value = prod.promo_price || '';
-            document.getElementById('modal-start-date').value = prod.promo_start_date ? prod.promo_start_date.slice(0, 10) : '';
-            document.getElementById('modal-end-date').value = prod.promo_end_date ? prod.promo_end_date.slice(0, 10) : '';
+            document.getElementById('modal-start-date').value = prod.promo_start_date ? wibDate(prod.promo_start_date) : '';
+            document.getElementById('modal-end-date').value = prod.promo_end_date ? wibDate(prod.promo_end_date) : '';
             document.getElementById('modal-mechanic').value = prod.promo_mechanic || '';
         } else {
             document.getElementById('modal-title').innerHTML = '<i class="fa-solid fa-plus text-blue-600"></i> Add Product & Campaign';
@@ -956,6 +946,27 @@
             document.getElementById('modal-promo-type').value = 'REGULAR';
         }
         document.getElementById('product-modal').classList.remove('hidden');
+    }
+
+    async function decideMatch(id,promotion_id,accepted){
+        const r=await api('/api/v1/compare/products/'+id+'/matches',{method:'PUT',json:{promotion_id,accepted}});
+        if(r.ok)await loadComparison();else flash(await errText(r),false);
+    }
+    async function resetMatches(id){
+        if(!confirm('Reset all reviewed matches for this SKU?'))return;
+        const r=await api('/api/v1/compare/products/'+id+'/matches',{method:'DELETE'});
+        if(r.ok)await loadComparison();else flash(await errText(r),false);
+    }
+    async function showPriceHistory(id){
+        try {
+            const responses=await Promise.all(['history','prices'].map(path=>api('/api/v1/compare/products/'+id+'/'+path)));
+            if(responses.some(r=>!r.ok))throw Error('Could not load price history.');
+            const [history,local]=await Promise.all(responses.map(r=>r.json()));
+            const dialog=document.createElement('dialog');dialog.className='p-5 rounded-xl max-w-2xl';
+            dialog.innerHTML='<button class="float-right underline">Close</button><h2 class="text-xl font-bold">Price history</h2><h3>Catalog revisions</h3><ul>'+history.map(r=>'<li>'+esc(r.recorded_at.slice(0,10))+' · '+esc(r.operation)+' · Shelf '+esc(rp(r.snapshot.regular_price))+' · Offer '+esc(r.snapshot.promo_price?rp(r.snapshot.promo_price):'—')+'</li>').join('')+'</ul><h3>Retailer and area periods</h3><ul>'+local.map(r=>'<li>'+esc(r.retailer)+' · '+esc(r.region)+' · '+esc(r.starts)+' – '+esc(r.ends)+' · Shelf '+esc(rp(r.regular_price))+' · Offer '+esc(r.promo_price?rp(r.promo_price):'—')+'</li>').join('')+'</ul>';
+            dialog.querySelector('button').onclick=()=>dialog.close();
+            dialog.onclose=()=>dialog.remove();document.body.append(dialog);dialog.showModal();
+        }catch(err){flash(err.message,false);}
     }
 
     function editProduct(id) {
@@ -970,6 +981,8 @@
     function clearModalCampaign() {
         document.getElementById('modal-promo-type').value = 'REGULAR';
         document.getElementById('modal-promo-price').value = '';
+        document.getElementById('modal-buy').value='';
+        document.getElementById('modal-free').value='';
         document.getElementById('modal-start-date').value = '';
         document.getElementById('modal-end-date').value = '';
         document.getElementById('modal-mechanic').value = '';
@@ -986,6 +999,8 @@
             pack_size: document.getElementById('modal-pack-size').value.trim() || null,
             regular_price: parseFloat(document.getElementById('modal-regular-price').value),
             promo_type: document.getElementById('modal-promo-type').value,
+            buy_quantity: Number(document.getElementById('modal-buy').value)||null,
+            free_quantity: Number(document.getElementById('modal-free').value)||null,
             promo_price: document.getElementById('modal-promo-price').value ? parseFloat(document.getElementById('modal-promo-price').value) : null,
             promo_start_date: document.getElementById('modal-start-date').value || null,
             promo_end_date: document.getElementById('modal-end-date').value || null,
@@ -1181,6 +1196,10 @@
 
         document.getElementById('modal-promo-type').value = pType === 'DIRECT_PRICE' ? 'DISCOUNT' : pType;
         document.getElementById('modal-promo-price').value = calcPrice;
+        if(pType==='BUY_X_GET_Y'){
+            document.getElementById('modal-buy').value=document.getElementById('sim-buy-q').value;
+            document.getElementById('modal-free').value=document.getElementById('sim-free-q').value;
+        }
         document.getElementById('modal-mechanic').value = `Simulated ${pType} Campaign`;
     }
 

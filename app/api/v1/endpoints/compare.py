@@ -2,6 +2,7 @@
 import csv
 import io
 from datetime import date, datetime, time, timezone
+from zoneinfo import ZoneInfo
 from typing import List, Optional
 from uuid import UUID
 
@@ -22,12 +23,14 @@ MAX_IMPORT_BYTES = 1_000_000
 MAX_IMPORT_ROWS = 1000
 
 
-def _parse_csv_datetime(val: Optional[str]) -> Optional[datetime]:
+def _parse_csv_datetime(val: Optional[str], *, end=False) -> Optional[datetime]:
     if not val:
         return None
     val = val.strip()
     if not val:
         return None
+    if len(val) == 10:
+        return datetime.combine(date.fromisoformat(val), time.max if end else time.min, ZoneInfo("Asia/Jakarta"))
     try:
         dt = datetime.fromisoformat(val.replace("Z", "+00:00"))
         if dt.tzinfo is None:
@@ -43,7 +46,16 @@ def _parse_csv_datetime(val: Optional[str]) -> Optional[datetime]:
     raise ValueError(f"Invalid date format: {val}")
 
 
-class OwnProductIn(BaseModel):
+class CampaignDates(BaseModel):
+    @field_validator("promo_start_date", "promo_end_date", mode="before", check_fields=False)
+    @classmethod
+    def normalize_date(cls, value, info):
+        if isinstance(value, str):
+            return _parse_csv_datetime(value, end=info.field_name == "promo_end_date")
+        return value
+
+
+class OwnProductIn(CampaignDates):
     name: str = Field(min_length=1, max_length=255)
     brand: Optional[str] = Field(default=None, max_length=120)
     sku: Optional[str] = Field(default=None, max_length=64)
@@ -86,7 +98,7 @@ class OwnProductIn(BaseModel):
         return self
 
 
-class OwnProductPatch(BaseModel):
+class OwnProductPatch(CampaignDates):
     name: Optional[str] = Field(default=None, min_length=1, max_length=255)
     brand: Optional[str] = Field(default=None, max_length=120)
     sku: Optional[str] = Field(default=None, max_length=64)
@@ -200,6 +212,10 @@ def compare(
     competitor: Optional[str] = Query(None, max_length=120),
     retailer: Optional[str] = Query(None, max_length=120),
     channel: Optional[str] = Query(None, max_length=50),
+    region: Optional[str] = Query(None, max_length=30),
+    validity: Optional[str] = Query(None, pattern="^(EXPIRING_SOON|STATED_DATES|ONGOING)$"),
+    pressure: Optional[str] = Query(None, pattern="^(UNDER_PRESSURE|COMPETITIVE)$"),
+    search: Optional[str] = Query(None, max_length=150),
     _: Principal = analyst,
     db: Session = Depends(get_db),
 ):
@@ -212,7 +228,7 @@ def compare(
         brand=brand,
         competitor=competitor,
         retailer=retailer,
-        channel=channel,
+        channel=channel, region=region, validity=validity, pressure=pressure, search=search,
     )
 
 
@@ -226,6 +242,10 @@ def export_comparison(
     competitor: Optional[str] = Query(None, max_length=120),
     retailer: Optional[str] = Query(None, max_length=120),
     channel: Optional[str] = Query(None, max_length=50),
+    region: Optional[str] = Query(None, max_length=30),
+    validity: Optional[str] = Query(None, pattern="^(EXPIRING_SOON|STATED_DATES|ONGOING)$"),
+    pressure: Optional[str] = Query(None, pattern="^(UNDER_PRESSURE|COMPETITIVE)$"),
+    search: Optional[str] = Query(None, max_length=150),
     _: Principal = analyst,
     db: Session = Depends(get_db),
 ):
@@ -238,7 +258,7 @@ def export_comparison(
         brand=brand,
         competitor=competitor,
         retailer=retailer,
-        channel=channel,
+        channel=channel, region=region, validity=validity, pressure=pressure, search=search, all_matches=True,
     )
     content, media_type, ext = build_comparison_export(comp, format)
     filename = f"executive_price_comparison_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.{ext}"
@@ -282,7 +302,7 @@ def simulate_promotion(
             unstated_recency_days=body.unstated_recency_days,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get("/aggregations")
@@ -346,6 +366,13 @@ def update_product(product_id: UUID, body: OwnProductPatch, request: Request,
         changes["free_quantity"] = changes["get_y"]
     elif "free_quantity" in changes and "get_y" not in changes:
         changes["get_y"] = changes["free_quantity"]
+    for field in ("name", "regular_price", "category", "is_active", "promo_type"):
+        if field in changes and changes[field] is None:
+            raise HTTPException(422, f"{field} is required.")
+    start = changes.get("promo_start_date", product.promo_start_date)
+    end = changes.get("promo_end_date", product.promo_end_date)
+    if start and end and start > end:
+        raise HTTPException(422, "Promotion end precedes its start.")
     for key, value in changes.items():
         setattr(product, key, value)
     if "pack_size" in changes:
@@ -437,7 +464,7 @@ async def import_products(request: Request, file: UploadFile = File(...),
             promo_raw = r.get("promo_price")
             promo_price = parse_price(promo_raw) if promo_raw else None
             promo_start = _parse_csv_datetime(r.get("promo_start_date"))
-            promo_end = _parse_csv_datetime(r.get("promo_end_date"))
+            promo_end = _parse_csv_datetime(r.get("promo_end_date"), end=True)
 
             buy_q_raw = r.get("buy_quantity") or r.get("buy_x")
             buy_q = int(buy_q_raw) if buy_q_raw else None
@@ -485,3 +512,103 @@ async def import_products(request: Request, file: UploadFile = File(...),
                        detail={"created": created, "updated": updated})
     db.commit()
     return {"created": created, "updated": updated}
+
+
+@router.get("/products/{product_id}/history")
+def price_history(product_id: UUID, _: Principal = analyst, db: Session = Depends(get_db)):
+    from sqlalchemy import text
+
+    return (
+        db.execute(
+            text("""SELECT revision,recorded_at,operation,snapshot FROM competitor_intel.own_price_history
+                              WHERE product_id=:id ORDER BY revision DESC LIMIT 100"""),
+            {"id": product_id},
+        )
+        .mappings()
+        .all()
+    )
+
+
+class ScopedPrice(BaseModel):
+    retailer_id: UUID
+    region: str = Field(min_length=1, max_length=30)
+    starts: date
+    ends: date
+    regular_price: float = Field(gt=0, lt=10000000)
+    promo_price: Optional[float] = Field(None, gt=0, lt=10000000)
+
+
+@router.post("/products/{product_id}/prices", status_code=201)
+def scoped_price(product_id: UUID, body: ScopedPrice, principal: Principal = analyst, db: Session = Depends(get_db)):
+    from sqlalchemy import text
+    from uuid import uuid4
+    from app.models.entity import Retailer
+    from app.services.geography import normalize_region, REGION_LABELS
+
+    _get(db, product_id)
+    if not db.get(Retailer, body.retailer_id):
+        raise HTTPException(422, "Unknown retailer.")
+    region = body.region.strip().upper()
+    if region not in REGION_LABELS:
+        region = normalize_region(body.region)
+    if region in {"UNKNOWN", "UNMAPPED"} or body.ends < body.starts or (body.promo_price and body.promo_price > body.regular_price):
+        raise HTTPException(422, "Check region, campaign dates and price.")
+    identifier = uuid4()
+    db.execute(
+        text("""INSERT INTO competitor_intel.scoped_prices
+        (id,product_id,retailer_id,region,starts,ends,regular_price,promo_price,recorded_by)
+        VALUES(:id,:product,:retailer_id,:region,:starts,:ends,:regular_price,:promo_price,:actor)"""),
+        {**body.model_dump(), "id": identifier, "region": region, "product": product_id, "actor": principal.user.id},
+    )
+    db.commit()
+    return {"id": identifier, "region": region}
+
+
+@router.get("/products/{product_id}/prices")
+def scoped_history(product_id: UUID, _: Principal = analyst, db: Session = Depends(get_db)):
+    from sqlalchemy import text
+
+    return (
+        db.execute(
+            text("""SELECT r.name AS retailer,s.region,s.starts,s.ends,s.regular_price,s.promo_price,s.recorded_at
+                              FROM competitor_intel.scoped_prices s JOIN competitor_intel.retailers r ON r.id=s.retailer_id
+                              WHERE s.product_id=:id ORDER BY s.recorded_at DESC LIMIT 100"""),
+            {"id": product_id},
+        )
+        .mappings()
+        .all()
+    )
+
+
+class MatchDecision(BaseModel):
+    promotion_id: UUID
+    accepted: bool
+
+
+@router.put("/products/{product_id}/matches")
+def decide_match(product_id: UUID, body: MatchDecision, principal: Principal = analyst, db: Session = Depends(get_db)):
+    from sqlalchemy import text
+    from app.models.promotion import Promotion
+    from app.services.matches import offer_key
+
+    _get(db, product_id)
+    offer = db.get(Promotion, body.promotion_id)
+    if not offer:
+        raise HTTPException(404, "Unknown offer.")
+    db.execute(
+        text("""INSERT INTO competitor_intel.product_matches(own_id,offer_key,product_name,accepted,reviewed_by)
+                    VALUES(:own,:key,:name,:accepted,:user) ON CONFLICT(own_id,offer_key) DO UPDATE
+                    SET accepted=excluded.accepted,reviewed_by=excluded.reviewed_by,reviewed_at=now()"""),
+        {"own": product_id, "key": offer_key(offer), "name": offer.product_name, "accepted": body.accepted, "user": principal.user.id},
+    )
+    db.commit()
+    return {"accepted": body.accepted}
+
+
+@router.delete("/products/{product_id}/matches", status_code=204)
+def reset_matches(product_id: UUID, _: Principal = analyst, db: Session = Depends(get_db)):
+    from sqlalchemy import text
+
+    _get(db, product_id)
+    db.execute(text("DELETE FROM competitor_intel.product_matches WHERE own_id=:id"), {"id": product_id})
+    db.commit()

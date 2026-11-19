@@ -8,12 +8,14 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple, Union
 from uuid import UUID
 
-from sqlalchemy import and_, or_
+from sqlalchemy import or_
 from sqlalchemy.orm import Session, contains_eager
 
 from app.models.entity import Brand, Competitor, Retailer
 from app.models.own_product import OwnProduct
 from app.models.promotion import Promotion
+from app.services.matches import offer_key, reviewed_matches
+from app.services.scoped_prices import scoped_catalog
 from app.services.exporting import safe_cell
 from app.services.promotions.visibility import live_promotion_filter
 
@@ -23,6 +25,7 @@ _MULTI = re.compile(rf"{_NUM}\s*[x\u00d7]\s*{_NUM}\s*{_UNIT}", re.I)      # 12 x
 _SINGLE = re.compile(rf"{_NUM}\s*{_UNIT}", re.I)                          # 300 g, 1,5 kg
 
 CATEGORIES = ("BISCUIT", "CRACKER", "COOKIE", "WAFER", "SNACK")
+CONDITIONAL_OFFERS = {"BUNDLE", "CASHBACK", "VOUCHER", "MEMBER_PRICE", "GIFT_WITH_PURCHASE"}
 MIN_PACK_RATIO, MAX_PACK_RATIO = 0.5, 2.0
 MAX_MATCHES = 5
 DEFAULT_UNSTATED_RECENCY_DAYS = 14
@@ -53,6 +56,15 @@ def parse_pack_grams(pack_size: Optional[str]) -> Optional[float]:
 
 
 _THOUSANDS_DOT = re.compile(r"\d{1,3}(\.\d{3})+(,\d+)?")
+
+
+def comparable_offer(p) -> bool:
+    return (
+        getattr(p, "currency", "IDR") == "IDR"
+        and p.promotion_type not in CONDITIONAL_OFFERS
+        and not getattr(p, "minimum_purchase_amount", None)
+        and (not getattr(p, "minimum_purchase_quantity", None) or p.promotion_type == "BUY_X_GET_Y")
+    )
 
 
 def parse_price(value: Any) -> float:
@@ -278,6 +290,7 @@ def is_product_match(
 def build_aggregations(
     candidates: List[Tuple[Promotion, float, float, float, Optional[float], Optional[float]]],
     own_products: List[OwnProduct],
+    decisions=None,
 ) -> Dict[str, Any]:
     """Break down competitor promo activities by brand, category, retailer/channel, and mechanic."""
     by_brand_map: Dict[str, Dict[str, Any]] = {}
@@ -290,11 +303,11 @@ def build_aggregations(
         cat = (own.category or "").upper()
         g = own.pack_grams or parse_pack_grams(own.pack_size)
         reg_unit = per_100g(own.regular_price, g)
-        promo_unit = per_100g(own.promo_price, g) if own.has_active_promo else None
+        promo_unit = per_100g(effective_pack_price(own), g) if own.has_active_promo else None
         if reg_unit is not None:
             own_by_cat.setdefault(cat, []).append((own, reg_unit, promo_unit))
 
-    for p, grams, promo_price, promo_unit, reg_price, reg_unit in candidates:
+    for p, grams, _, promo_unit, _, _ in candidates:
         cat = (p.category or "OTHER").upper()
         brand_name = p.brand.name if p.brand else (p.competitor.name if p.competitor else "Unknown")
         comp_name = p.competitor.name if p.competitor else None
@@ -306,7 +319,9 @@ def build_aggregations(
         undercuts_any = False
         cat_owns = own_by_cat.get(cat, [])
         for own_prod, own_reg_u, own_promo_u in cat_owns:
-            own_g = own_prod.pack_grams or 1
+            if decisions and decisions.get((own_prod.id, offer_key(p))) is False:
+                continue
+            own_g = own_prod.pack_grams or parse_pack_grams(own_prod.pack_size)
             ratio = grams / own_g
             if MIN_PACK_RATIO <= ratio <= MAX_PACK_RATIO:
                 target_unit = own_promo_u if own_promo_u is not None else own_reg_u
@@ -391,7 +406,7 @@ def build_aggregations(
 
     # 5. By Competitor
     by_comp_map: Dict[str, Dict[str, Any]] = {}
-    for p, grams, promo_price, promo_unit, reg_price, reg_unit in candidates:
+    for p, *_ in candidates:
         comp_name = p.competitor.name if p.competitor else (p.brand.name if p.brand else "Unknown")
         if comp_name not in by_comp_map:
             by_comp_map[comp_name] = {"competitor": comp_name, "count": 0, "brands": set()}
@@ -484,6 +499,11 @@ def build_comparison(
     competitor: Optional[str] = None,
     retailer: Optional[str] = None,
     channel: Optional[str] = None,
+    region: Optional[str] = None,
+    validity: Optional[str] = None,
+    pressure: Optional[str] = None,
+    search: Optional[str] = None,
+    all_matches: bool = False,
     sku_mappings: Optional[Dict[str, List[str]]] = None,
     brand_mappings: Optional[Dict[str, List[str]]] = None,
     min_pack_ratio: float = MIN_PACK_RATIO,
@@ -502,6 +522,8 @@ def build_comparison(
             own_products = own_q.order_by(OwnProduct.category, OwnProduct.name).all()
     else:
         own_products = own_q.order_by(OwnProduct.category, OwnProduct.name).all()
+
+    own_products = scoped_catalog(db, own_products, retailer, region, now)
 
     # Query active competitor promotions using live filter + strict validity window
     promos_q = (
@@ -528,6 +550,8 @@ def build_comparison(
         ),
     )
 
+    if region:
+        promos_q = promos_q.filter(Promotion.geography_region == region.upper())
     if category:
         promos_q = promos_q.filter(Promotion.category == category.upper())
     if competitor:
@@ -546,6 +570,14 @@ def build_comparison(
     for p in promos:
         if not is_valid_active_promotion(p, now, unstated_recency_days=unstated_recency_days, max_recency_days=days):
             continue
+        if not comparable_offer(p):
+            continue
+        if validity == "STATED_DATES" and not (p.start_date or p.end_date):
+            continue
+        if validity == "ONGOING" and (p.start_date or p.end_date):
+            continue
+        if validity == "EXPIRING_SOON" and not (p.end_date and p.end_date <= now + timedelta(days=7)):
+            continue
         grams = parse_pack_grams(p.pack_size)
         promo_price = effective_pack_price(p, price_type="promo")
         promo_unit = per_100g(promo_price, grams)
@@ -555,20 +587,18 @@ def build_comparison(
             candidates.append((p, grams, promo_price, promo_unit, reg_price, reg_unit))
 
     # Aggregations
-    aggregations = build_aggregations(candidates, own_products)
+    decisions = reviewed_matches(db)
+    aggregations = build_aggregations(candidates, own_products, decisions)
 
     # Compare each own product
     rows: List[Dict[str, Any]] = []
+    price_indices = []
     now_utc = now if now.tzinfo is not None else now.replace(tzinfo=timezone.utc)
     for own in own_products:
         own_grams = own.pack_grams or parse_pack_grams(own.pack_size)
         own_regular_unit = per_100g(own.regular_price, own_grams)
 
-        own_has_promo = (
-            own.promo_price is not None
-            and (own.promo_start_date is None or now >= own.promo_start_date)
-            and (own.promo_end_date is None or now <= own.promo_end_date)
-        )
+        own_has_promo = own.promo_active_at(now_utc)
         own_promo_pack = effective_pack_price(own, price_type="promo") if own_has_promo else None
         own_promo_unit = per_100g(own_promo_pack, own_grams) if own_has_promo else None
 
@@ -591,6 +621,7 @@ def build_comparison(
             "promo_end_date": own.promo_end_date.strftime("%Y-%m-%d") if own.promo_end_date else None,
             "promo_mechanic": own.promo_mechanic if own_has_promo else None,
             "comparable": [],
+            "comparable_total": 0,
             "undercut_count": 0,
             "promo_undercut_count": 0 if own_has_promo else None,
             "largest_gap_pct": None,
@@ -598,13 +629,20 @@ def build_comparison(
             "note": None,
         }
 
+        term = (search or "").strip().casefold()
+        own_matches_term = not term or term in own.name.casefold() or term in (own.sku or "").casefold()
         if own_regular_unit is None:
+            if pressure or not own_matches_term:
+                continue
             item["note"] = "Add a pack size in grams (for example 300g) to enable comparison."
             rows.append(item)
             continue
 
         matches: List[Dict[str, Any]] = []
         for p, grams, promo_price, promo_unit, reg_price, reg_unit in candidates:
+            decision = decisions.get((own.id, offer_key(p))) if decisions else None
+            if decision is False:
+                continue
             if not is_product_match(
                 own,
                 p,
@@ -617,6 +655,8 @@ def build_comparison(
             ):
                 continue
 
+            if not own_matches_term and term not in p.product_name.casefold() and term not in (p.competitor.name if p.competitor else "").casefold():
+                continue
             regular_to_promo_gap = calculate_gap_pct(promo_unit, own_regular_unit)
             promo_to_promo_gap = calculate_gap_pct(promo_unit, own_promo_unit) if own_promo_unit else None
             reg_to_reg_gap = calculate_gap_pct(reg_unit, own_regular_unit) if reg_unit else None
@@ -645,6 +685,7 @@ def build_comparison(
                 comp_disc = round((1.0 - promo_price / reg_price) * 100.0, 1)
 
             matches.append({
+                "match_basis": "Analyst confirmed" if decision else "Category and pack size",
                 "promotion_id": str(p.id),
                 "product": p.product_name,
                 "sku": p.sku,
@@ -684,33 +725,36 @@ def build_comparison(
                 (m["promo_to_promo_gap_pct"] for m in matches if m["promo_to_promo_gap_pct"] is not None),
                 default=None,
             )
+        if not matches and (pressure or not own_matches_term):
+            continue
+        if pressure == "UNDER_PRESSURE" and not item["undercut_count"]:
+            continue
+        if pressure == "COMPETITIVE" and item["undercut_count"]:
+            continue
         item["comparable_total"] = len(matches)
-        item["comparable"] = matches[:MAX_MATCHES]
+        item["comparable"] = matches if all_matches else matches[:MAX_MATCHES]
+        if matches:
+            own_effective_unit = own_promo_unit if own_promo_unit is not None else own_regular_unit
+            average_competitor_unit = sum(m["price_per_100g"] for m in matches) / len(matches)
+            if average_competitor_unit > 0:
+                price_indices.append(own_effective_unit / average_competitor_unit * 100.0)
+        else:
+            item["note"] = "No comparable competitor offers in the selected data."
         rows.append(item)
 
     rows.sort(key=lambda r: (r["largest_gap_pct"] is None, r["largest_gap_pct"] if r["largest_gap_pct"] is not None else 0))
 
     # Executive Overview Calculations
-    price_indices = []
-    for r in rows:
-        eff_unit = r["promo_price_per_100g"] if r["has_active_promo"] and r["promo_price_per_100g"] else r["price_per_100g"]
-        if eff_unit and r.get("comparable"):
-            c_units = [m["price_per_100g"] for m in r["comparable"] if m.get("price_per_100g")]
-            if c_units:
-                avg_c = sum(c_units) / len(c_units)
-                if avg_c > 0:
-                    price_indices.append((eff_unit / avg_c) * 100.0)
+    overall_price_index = round(sum(price_indices) / len(price_indices), 1) if price_indices else None
+    price_index_gap_pct = round(overall_price_index - 100.0, 1) if overall_price_index is not None else None
 
-    overall_price_index = round(sum(price_indices) / len(price_indices), 1) if price_indices else 100.0
-    price_index_gap_pct = round(overall_price_index - 100.0, 1)
-
-    comparable_prods = [r for r in rows if r["price_per_100g"] is not None]
+    comparable_prods = [r for r in rows if r["comparable_total"]]
     under_pressure_count = sum(1 for r in comparable_prods if r["undercut_count"] > 0)
-    pct_under_pressure = round((under_pressure_count / len(comparable_prods) * 100.0), 1) if comparable_prods else 0.0
+    pct_under_pressure = round(under_pressure_count / len(comparable_prods) * 100.0, 1) if comparable_prods else None
 
     deepest_by_cat: Dict[str, Any] = {}
     deepest_overall = None
-    for p, grams, promo_p, promo_u, reg_p, reg_u in candidates:
+    for p, _, promo_p, _, reg_p, _ in candidates:
         cat = (p.category or "OTHER").upper()
         disc = p.discount_percentage
         if disc is None and reg_p and promo_p and reg_p > promo_p:
@@ -726,26 +770,6 @@ def build_comparison(
                 }
             if deepest_overall is None or disc > deepest_overall["discount_pct"]:
                 deepest_overall = deepest_by_cat[cat]
-
-    for cat in CATEGORIES:
-        if cat not in deepest_by_cat:
-            cat_rows = [r for r in rows if (r.get("category") or "").upper() == cat]
-            min_gap = None
-            top_m = None
-            for r in cat_rows:
-                for m in r.get("comparable", []):
-                    if m.get("gap_pct") is not None and (min_gap is None or m["gap_pct"] < min_gap):
-                        min_gap = m["gap_pct"]
-                        top_m = m
-            if min_gap is not None and min_gap < 0:
-                deepest_by_cat[cat] = {
-                    "category": cat,
-                    "discount_pct": abs(min_gap),
-                    "undercut_pct": min_gap,
-                    "product": top_m["product"],
-                    "competitor": top_m["competitor"] or top_m["brand"],
-                    "outlet": top_m["outlet"],
-                }
 
     total_active_promos = len(candidates)
     brand_count = len(aggregations.get("by_brand", []))
@@ -767,7 +791,8 @@ def build_comparison(
         "summary": {
             "own_products": len(rows),
             "under_pressure": under_pressure_count,
-            "not_comparable": sum(1 for r in rows if r["price_per_100g"] is None),
+            "comparable_products": len(comparable_prods),
+            "not_comparable": len(rows) - len(comparable_prods),
             "active_competitor_promotions": total_active_promos,
             "price_index_vs_market": overall_price_index,
             "price_index_gap_pct": price_index_gap_pct,
@@ -917,7 +942,7 @@ def simulate_price(
         prod_pack_size = pack_size or product.pack_size
         prod_pack_grams = pack_grams or product.pack_grams or parse_pack_grams(prod_pack_size)
         base_regular_price = candidate_regular_price or regular_price or product.regular_price
-        curr_has_promo = product.has_active_promo
+        curr_has_promo = product.promo_active_at(now)
     else:
         prod_name = name or "Simulated Product"
         prod_category = (category or "BISCUIT").upper()
@@ -981,6 +1006,7 @@ def simulate_price(
     )
     promos = promos_q.all()
 
+    decisions = reviewed_matches(db) if product else {}
     comparable_matches = []
     comp_units = []
 
@@ -992,6 +1018,10 @@ def simulate_price(
             continue
         ratio = g / prod_pack_grams
         if not (min_pack_ratio <= ratio <= max_pack_ratio):
+            continue
+        if not comparable_offer(p):
+            continue
+        if product and decisions.get((product.id,offer_key(p))) is False:
             continue
         c_price = effective_pack_price(p, price_type="promo")
         c_unit = per_100g(c_price, g)

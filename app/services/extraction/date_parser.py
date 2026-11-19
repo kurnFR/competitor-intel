@@ -12,7 +12,7 @@ Handles common Modern Trade flyer date patterns:
 from __future__ import annotations
 
 import re
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timedelta
 from typing import Any, Dict, Optional, Tuple
 
 INDONESIAN_MONTH_MAP: Dict[str, int] = {

@@ -65,9 +65,12 @@ class OwnProduct(Base):
     @property
     def has_active_promo(self) -> bool:
         """True if promo_price is set and current time is within promo_start_date and promo_end_date (if specified)."""
-        if self.promo_price is None:
+        return self.promo_active_at(datetime.now(timezone.utc))
+
+    def promo_active_at(self, now: datetime) -> bool:
+        has_bundle = self.promo_type == "BUY_X_GET_Y" and self.buy_quantity and self.free_quantity
+        if self.promo_price is None and not has_bundle:
             return False
-        now = datetime.now(timezone.utc)
         if self.promo_start_date and now < self.promo_start_date:
             return False
         if self.promo_end_date and now > self.promo_end_date:

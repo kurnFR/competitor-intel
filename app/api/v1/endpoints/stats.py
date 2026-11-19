@@ -1,3 +1,4 @@
+from uuid import UUID
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, Query
@@ -230,3 +231,73 @@ def get_shrinkflation(
         "total_signals": len(events),
         "signals": events,
     }
+
+
+@router.get("/executive")
+def executive(db: Session = Depends(get_db)):
+    from app.services.comparison import build_comparison
+    from sqlalchemy import text
+
+    actions = (
+        db.execute(
+            text("""SELECT a.*,p.product_name FROM competitor_intel.marketing_actions a
+                                  JOIN competitor_intel.promotions p ON p.id=a.promotion_id
+                                  ORDER BY recorded_at DESC LIMIT 30""")
+        )
+        .mappings()
+        .all()
+    )
+    from collections import Counter
+    from app.services.source_health import compute_health
+    from app.models.source import SourceRegistry
+    from app.models.promotion import PromotionEvidence
+
+    now = datetime.now(timezone.utc)
+    sources = db.query(SourceRegistry).filter_by(approval_status="APPROVED", is_active=True).all()
+    health = dict(Counter(compute_health(source, now) for source in sources))
+    recent = dict(
+        db.query(Promotion.category, func.count(Promotion.id))
+        .filter(live_promotion_filter(now, recency_days=90), Promotion.first_seen_at >= now - timedelta(days=7))
+        .group_by(Promotion.category)
+        .all()
+    )
+    field_count = (
+        db.query(Promotion)
+        .filter(
+            live_promotion_filter(now, recency_days=90), Promotion.evidence_items.any(PromotionEvidence.evidence_type == "APPROVED_FIELD")
+        )
+        .count()
+    )
+    data = build_comparison(db)
+    return {
+        "generated_at": data["generated_at"],
+        "summary": data["summary"],
+        "actions": actions,
+        "source_health": health,
+        "recent_by_category": recent,
+        "field_verified": field_count,
+        "exposures": [
+            {"name": row["name"], "category": row["category"], "offer": row["comparable"][0]}
+            for row in data["products"]
+            if row["undercut_count"]
+        ][:10],
+    }
+
+
+@router.get("/field-photo/{submission_id}")
+def field_photo(submission_id: UUID, actor=Depends(require_role("VIEWER")), db: Session = Depends(get_db)):
+    import base64
+    from fastapi import HTTPException, Response
+    from sqlalchemy import text
+
+    photo = db.execute(
+        text("""SELECT payload->>'photo' FROM competitor_intel.field_submissions WHERE id=:id
+                               AND (status='APPROVED' OR :reviewer)"""),
+        {"id": submission_id, "reviewer": actor.user.role in {"ANALYST", "ADMIN"}},
+    ).scalar()
+    if not photo:
+        raise HTTPException(404, "Photo unavailable.")
+    raw = base64.b64decode(photo)
+    return Response(
+        raw, media_type="image/png" if raw.startswith(b"\x89PNG") else "image/jpeg", headers={"Cache-Control": "private, no-store"}
+    )

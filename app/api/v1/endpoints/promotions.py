@@ -147,14 +147,14 @@ def get_top10_promotions(
             ai_confidence=p.ai_confidence, source_reliability=p.source_reliability,
             evidence_quote=latest_evidence.evidence_text if latest_evidence else None,
             source_url=latest_evidence.source_url if latest_evidence else None,
-            source_status=("Verified source" if latest_evidence and latest_evidence.source_url and latest_evidence.evidence_text else "Unverified source"),
+            source_status=("Reviewed field evidence" if latest_evidence and latest_evidence.evidence_type == "APPROVED_FIELD" else "Verified source" if latest_evidence and latest_evidence.source_url and latest_evidence.evidence_text else "Unverified source"),
             last_verified=p.last_verified_at,
         ))
     return Top10Response(generated_at=now.isoformat(), count=len(items), promotions=items)
 
 @router.get("/search", response_model=PromotionLookupResponse)
 def search_promotions(
-    q: str = Query(..., min_length=2, max_length=100, description="Product, brand, or competitor search; every term must match"),
+    q: str = Query("", max_length=100, description="Product, brand, or competitor search; every term must match"),
     category: Optional[str] = Query(None, max_length=50),
     outlet: Optional[str] = Query(None, max_length=100),
     source_id: Optional[UUID] = Query(None, description="Restrict results to one configured source"),
@@ -165,9 +165,11 @@ def search_promotions(
     db: Session = Depends(get_db),
 ):
     """Search eligible promotions already collected from approved sources; this does not crawl the web."""
-    terms = [term for term in q.strip().split() if term]
-    if not terms:
-        raise HTTPException(status_code=422, detail="Enter a product, brand, or competitor name.")
+    q = q.strip()
+    category = (category or "").strip().upper()
+    terms = q.split()
+    if (q and len(q) < 2) or not (q or category):
+        raise HTTPException(status_code=422, detail="Enter at least two characters or select a category.")
     if len(terms) > 8:
         raise HTTPException(status_code=422, detail="Search with eight terms or fewer.")
 
@@ -185,7 +187,7 @@ def search_promotions(
             _ilike(Retailer.name, term),
         ))
     if category:
-        query = query.filter(_ilike(Promotion.category, category))
+        query = query.filter(Promotion.category == category)
     if outlet:
         query = query.filter(_ilike(Retailer.name, outlet))
     if source_id:
@@ -256,7 +258,7 @@ def search_promotions(
             dates_stated=dates_stated,
             last_verified=p.last_verified_at,
             source_id=resolved_source_id,
-            source_name=source_names.get(resolved_source_id),
+            source_name=("Approved field observation" if evidence and evidence.evidence_type == "APPROVED_FIELD" else source_names.get(resolved_source_id)),
             source_url=evidence.source_url if evidence else None,
             evidence_quote=evidence.evidence_text if evidence else None,
             source_reliability=p.source_reliability,

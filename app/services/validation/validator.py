@@ -3,7 +3,6 @@ import logging
 from datetime import date, datetime, time, timezone
 from typing import Tuple, Optional
 from app.schemas.ai import ExtractedPromotionItem
-from app.services.extraction.dates import parse_indonesian_date
 from app.services.extraction.date_parser import parse_indonesian_date
 
 logger = logging.getLogger(__name__)
